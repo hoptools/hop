@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 // GTK4-specific harness for the shared ShapeRenderingTests: an offscreen Cairo image surface driving
-// the real GTK4Backend.drawShape. Cairo image surfaces need no display.
+// the real GTK4Toolkit.drawShape. Cairo image surfaces need no display.
 
 import CGTK4
 @testable import HopGTK4
 import HopUI
 
-enum ShapeBackend { static let name = "gtk4" }
+enum ShapeToolkit { static let name = "gtk4" }
 
 /// An offscreen raster canvas backed by a white Cairo ARGB32 image surface.
 final class ShapeCanvas {
@@ -24,7 +24,7 @@ final class ShapeCanvas {
     deinit { cairo_destroy(cr); cairo_surface_destroy(surface) }
 
     @MainActor func draw(_ spec: ShapeSpec, frameWidth: Double, frameHeight: Double, bleedX: Double = 0, bleedY: Double = 0) {
-        GTK4Backend.drawShape(spec, frameWidth: frameWidth, frameHeight: frameHeight, bleedX: bleedX, bleedY: bleedY, cr: cr)
+        GTK4Toolkit.drawShape(spec, frameWidth: frameWidth, frameHeight: frameHeight, bleedX: bleedX, bleedY: bleedY, cr: cr)
     }
 
     @MainActor func translated(_ dx: Double, _ dy: Double, _ body: () -> Void) {

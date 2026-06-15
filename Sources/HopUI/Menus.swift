@@ -78,7 +78,7 @@ public struct Divider: View, PrimitiveView {
 
 // MARK: - Picker (selection drop-down)
 
-/// Everything a backend needs to drive a selection popup: the option labels, which one is selected,
+/// Everything a toolkit needs to drive a selection popup: the option labels, which one is selected,
 /// and a callback when the user picks an index. Carried on a `.picker` `RenderNode`.
 public struct PickerSpec {
     public let title: String

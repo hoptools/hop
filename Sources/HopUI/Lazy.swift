@@ -28,7 +28,7 @@ enum ScrollContextStore {
 }
 
 /// A scrollable viewport. Mirrors SwiftUI's `ScrollView`. The content is laid out at its natural size
-/// along the scroll axis and scrolled within the viewport by the backend's native scroll container.
+/// along the scroll axis and scrolled within the viewport by the toolkit's native scroll container.
 public struct ScrollView<Content: View>: View, PrimitiveView {
     let axis: Axis
     let content: () -> Content

@@ -82,7 +82,7 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
     // GTK invokes `activate` on the main thread, so assert main-actor isolation to build the window.
     MainActor.assumeIsolated {
         let window = hop_window_new(appPointer.raw)!
-        context.backend.window = window
+        context.toolkit.window = window
         hop_window_set_title(window, context.title)
         hop_window_set_default_size(window, 820, 760)
 
@@ -90,11 +90,11 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
         // mounted root within it.
         let container = hop_fixed_new()!
         hop_window_set_child(window, container)
-        context.backend.rootContainer = container
+        context.toolkit.rootContainer = container
 
         // Re-run layout whenever the window resizes.
-        let backendPtr = Unmanaged.passUnretained(context.backend).toOpaque()
-        hop_window_connect_resize(window, gtk4ResizeCallback, backendPtr)
+        let toolkitPtr = Unmanaged.passUnretained(context.toolkit).toOpaque()
+        hop_window_connect_resize(window, gtk4ResizeCallback, toolkitPtr)
 
         context.onReady(GTK4Widget(container))
         hop_window_present(window)
@@ -241,16 +241,16 @@ private let gtk4DrawCallback: @convention(c) (UnsafeMutableRawPointer?, OpaquePo
         // Fall back to the allocated size when no explicit frame was given.
         let frameW = box.frameWidth > 0 ? box.frameWidth : Double(width)
         let frameH = box.frameHeight > 0 ? box.frameHeight : Double(height)
-        GTK4Backend.drawShape(spec, frameWidth: frameW, frameHeight: frameH,
+        GTK4Toolkit.drawShape(spec, frameWidth: frameW, frameHeight: frameH,
                               bleedX: box.bleedX, bleedY: box.bleedY, cr: wrapped.cr)
     }
 }
 
-// Window resize (notify::default-width/height): re-run the layout engine. user_data is the backend.
+// Window resize (notify::default-width/height): re-run the layout engine. user_data is the toolkit.
 private let gtk4ResizeCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, _, userData in
     guard let userData else { return }
-    let backend = Unmanaged<GTK4Backend>.fromOpaque(userData).takeUnretainedValue()
-    MainActor.assumeIsolated { backend.relayoutHandler?() }
+    let toolkit = Unmanaged<GTK4Toolkit>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { toolkit.relayoutHandler?() }
 }
 
 // Scrolled-window adjustment "value-changed": report the new offset so virtualized content re-materializes.
@@ -278,20 +278,20 @@ private let gtk4IdleCallback: @convention(c) (UnsafeMutableRawPointer?) -> Int32
 
 /// Carries the app's title and mount callback into the GTK `activate` signal.
 final class GTK4RunContext {
-    let backend: GTK4Backend
+    let toolkit: GTK4Toolkit
     let title: String
     let onReady: @MainActor (GTK4Widget) -> Void
-    init(backend: GTK4Backend, title: String, onReady: @escaping @MainActor (GTK4Widget) -> Void) {
-        self.backend = backend
+    init(toolkit: GTK4Toolkit, title: String, onReady: @escaping @MainActor (GTK4Widget) -> Void) {
+        self.toolkit = toolkit
         self.title = title
         self.onReady = onReady
     }
 }
 
-/// GTK4 backend: maps HopUI widgets onto GtkBox / GtkLabel / GtkButton and runs the GtkApplication
+/// GTK4 toolkit: maps HopUI widgets onto GtkBox / GtkLabel / GtkButton and runs the GtkApplication
 /// main loop. Works on macOS, Linux, and Windows wherever GTK4 is installed (the MVP lets GtkBox
 /// perform layout; the geometry-owning layout engine is a later phase).
-public final class GTK4Backend: AppBackend {
+public final class GTK4Toolkit: AppToolkit {
     public typealias Handle = GTK4Widget
 
     private var app: UnsafeMutableRawPointer?
@@ -546,7 +546,7 @@ public final class GTK4Backend: AppBackend {
     public func configureOutline(_ handle: GTK4Widget, _ spec: OutlineSpec) {
         guard let box = handle.actionBox else { return }
         let flat = spec.flattened()
-        // The backends only carry string keys natively, so map each key back to its original AnyHashable
+        // The toolkits only carry string keys natively, so map each key back to its original AnyHashable
         // id to preserve the binding's selection type (the List does `id.base as? SelectionValue`).
         let idByKey = Dictionary(flat.map { ($0.node.key, $0.node.id) }, uniquingKeysWith: { first, _ in first })
         box.onSelectKey = { key in spec.onSelect(key.flatMap { idByKey[$0] }) }
@@ -881,7 +881,7 @@ public final class GTK4Backend: AppBackend {
         installGTK4MainExecutor()
         let app = hop_app_new("dev.skip.hopui.demo")!
         self.app = app
-        let context = GTK4RunContext(backend: self, title: title, onReady: onReady)
+        let context = GTK4RunContext(toolkit: self, title: title, onReady: onReady)
         _ = hop_connect_activate(app, gtk4ActivateCallback, Unmanaged.passRetained(context).toOpaque())
         _ = hop_app_run(app)
     }

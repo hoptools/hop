@@ -6,13 +6,13 @@ import Foundation  // Bundle / URL / Data for resolving image sources
 #endif
 
 // SwiftUI's `Image` displayed through a native image widget (NSImageView / GtkPicture / QLabel+QPixmap).
-// The same call sites compile against HopUI and Apple's SwiftUI. `ImageSpec` is the backend-agnostic
-// payload (like `ShapeSpec`); the backend resolves `source` to a native image and applies the rest.
+// The same call sites compile against HopUI and Apple's SwiftUI. `ImageSpec` is the toolkit-agnostic
+// payload (like `ShapeSpec`); the toolkit resolves `source` to a native image and applies the rest.
 
-/// Everything a backend needs to display an image: where the pixels come from, how it scales, and how
+/// Everything a toolkit needs to display an image: where the pixels come from, how it scales, and how
 /// it's tinted/labeled. Reapplied on every reconcile (not `Equatable`), like ``ShapeSpec``.
 public struct ImageSpec {
-    /// Where an image's pixels come from. `named`/`file`/`data` render identically on every backend;
+    /// Where an image's pixels come from. `named`/`file`/`data` render identically on every toolkit;
     /// `system` (SF Symbol) is native on AppKit and best-effort (icon theme + fallback) on GTK/Qt.
     public enum Source {
         case named(String, Bundle?)
@@ -52,7 +52,7 @@ public struct ImageSpec {
     }
 
     /// Resolve a `named`/`file` source to a file URL (trying common image extensions for `named`). The
-    /// backends use this so bundle lookup isn't duplicated; `system`/`data` return nil here.
+    /// toolkits use this so bundle lookup isn't duplicated; `system`/`data` return nil here.
     public func resolvedURL() -> URL? {
         switch source {
         case .file(let url):
@@ -72,7 +72,7 @@ public struct ImageSpec {
         }
     }
 
-    /// The raw bytes for a `data`/`file`/`named` source (decoding is left to the backend); `system` ⇒ nil.
+    /// The raw bytes for a `data`/`file`/`named` source (decoding is left to the toolkit); `system` ⇒ nil.
     public func resolvedData() -> Data? {
         switch source {
         case .data(let data): return data
@@ -83,7 +83,7 @@ public struct ImageSpec {
 }
 
 /// A view that displays an image. Mirrors SwiftUI's `Image`. The `named`/`file`/`data` sources render
-/// identically on all four backends; `systemName` is a native SF Symbol on AppKit/SwiftUI and a
+/// identically on all four toolkits; `systemName` is a native SF Symbol on AppKit/SwiftUI and a
 /// best-effort icon-theme lookup on GTK/Qt. Modifiers (`.resizable()`, `.aspectRatio(_:contentMode:)`,
 /// `.scaledToFit()`, `.scaledToFill()`, `.renderingMode(_:)`) return an `Image`, so the same chains
 /// compile against HopUI and Apple's SwiftUI.

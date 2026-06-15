@@ -201,16 +201,16 @@ private let qtPaintCallback: @convention(c) (UnsafeMutableRawPointer?, Int32, In
         // Fall back to the widget size when no explicit frame was given.
         let frameW = box.frameWidth > 0 ? box.frameWidth : Double(width)
         let frameH = box.frameHeight > 0 ? box.frameHeight : Double(height)
-        QtBackend.drawShape(spec, frameWidth: frameW, frameHeight: frameH,
+        QtToolkit.drawShape(spec, frameWidth: frameW, frameHeight: frameH,
                             bleedX: box.bleedX, bleedY: box.bleedY, painter: wrapped.ptr)
     }
 }
 
-// Root-container resize: re-run the layout engine. user_data is the backend.
+// Root-container resize: re-run the layout engine. user_data is the toolkit.
 private let qtResizeCallback: @convention(c) (Int32, Int32, UnsafeMutableRawPointer?) -> Void = { _, _, userData in
     guard let userData else { return }
-    let backend = Unmanaged<QtBackend>.fromOpaque(userData).takeUnretainedValue()
-    MainActor.assumeIsolated { backend.relayoutHandler?() }
+    let toolkit = Unmanaged<QtToolkit>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { toolkit.relayoutHandler?() }
 }
 
 // QScrollArea scrollbar value-changed: report the new offset so virtualized content re-materializes.
@@ -233,9 +233,9 @@ private let qtPostCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = 
     MainActor.assumeIsolated { thunk.work() }
 }
 
-/// Qt backend: maps HopUI widgets onto QWidget/QVBoxLayout/QHBoxLayout/QLabel/QPushButton/QLineEdit
+/// Qt toolkit: maps HopUI widgets onto QWidget/QVBoxLayout/QHBoxLayout/QLabel/QPushButton/QLineEdit
 /// and runs the QApplication event loop. Uses the locally-installed Homebrew Qt6 via the CQt shim.
-public final class QtBackend: AppBackend {
+public final class QtToolkit: AppToolkit {
     public typealias Handle = QtWidget
 
     private var app: UnsafeMutableRawPointer?
@@ -493,7 +493,7 @@ public final class QtBackend: AppBackend {
     public func configureOutline(_ handle: QtWidget, _ spec: OutlineSpec) {
         guard let box = handle.actionBox else { return }
         let flat = spec.flattened()
-        // The backend carries only string keys natively, so map each key back to its original AnyHashable
+        // The toolkit carries only string keys natively, so map each key back to its original AnyHashable
         // id to preserve the binding's selection type (the List does `id.base as? SelectionValue`).
         let idByKey = Dictionary(flat.map { ($0.node.key, $0.node.id) }, uniquingKeysWith: { first, _ in first })
         box.onSelectKey = { key in spec.onSelect(key.flatMap { idByKey[$0] }) }

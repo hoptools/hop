@@ -4,4 +4,4 @@
 import HopUI
 import HopGTK4
 
-runApp(HopDemoApp(), backend: GTK4Backend())
+runApp(HopDemoApp(), toolkit: GTK4Toolkit())

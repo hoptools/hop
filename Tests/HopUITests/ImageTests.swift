@@ -6,11 +6,11 @@ import Foundation
 @testable import HopUI
 
 @MainActor @Suite struct ImageTests {
-    /// Render a view through the MockBackend and return the produced `.image` node's spec.
+    /// Render a view through the MockToolkit and return the produced `.image` node's spec.
     private func imageSpec(_ view: some View) -> ImageSpec? {
-        let backend = MockBackend()
-        runHopApp(view, backend: backend, title: "test")
-        return backend.widgets.first { $0.kind == .image }?.imageSpec
+        let toolkit = MockToolkit()
+        runHopApp(view, toolkit: toolkit, title: "test")
+        return toolkit.widgets.first { $0.kind == .image }?.imageSpec
     }
 
     @Test func testSystemNameIsTemplateSymbol() throws {
@@ -51,26 +51,26 @@ import Foundation
     }
 
     @Test func testMeasureIntrinsicVsGreedy() {
-        let backend = MockBackend()
+        let toolkit = MockToolkit()
         let natural = MockWidget(kind: .image)
         natural.imageSpec = ImageSpec(source: .system("x"), resizable: false)
-        #expect(backend.measure(natural, ProposedViewSize(width: 200, height: 200)) == CGSize(width: 30, height: 20))
+        #expect(toolkit.measure(natural, ProposedViewSize(width: 200, height: 200)) == CGSize(width: 30, height: 20))
 
         let greedy = MockWidget(kind: .image)
         greedy.imageSpec = ImageSpec(source: .system("x"), resizable: true)
-        #expect(backend.measure(greedy, ProposedViewSize(width: 200, height: 200)) == CGSize(width: 200, height: 200))
+        #expect(toolkit.measure(greedy, ProposedViewSize(width: 200, height: 200)) == CGSize(width: 200, height: 200))
     }
 
     @Test func testReconcileReconfiguresImageWithoutRebuild() throws {
-        let backend = MockBackend()
-        runHopApp(ToggleImageView(), backend: backend, title: "test")
-        #expect(backend.ops.contains("image:system:a"))
+        let toolkit = MockToolkit()
+        runHopApp(ToggleImageView(), toolkit: toolkit, title: "test")
+        #expect(toolkit.ops.contains("image:system:a"))
 
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.kind == .button }).action?()
-        backend.drainMainThread()
-        #expect(backend.ops.contains("image:system:b"))  // the same widget is reconfigured…
-        #expect(backend.makeCount == 0)                   // …not rebuilt
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.kind == .button }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.ops.contains("image:system:b"))  // the same widget is reconfigured…
+        #expect(toolkit.makeCount == 0)                   // …not rebuilt
     }
 }
 

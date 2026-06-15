@@ -11,7 +11,7 @@ public struct Text: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         // Read inherited text styling from the ambient environment (set by .font/.fontWeight/
-        // .foregroundStyle on an ancestor), baking it into the node so the backend can apply it.
+        // .foregroundStyle on an ancestor), baking it into the node so the toolkit can apply it.
         let environment = EnvironmentStore.current
         return RenderNode(id: context.id, kind: .label,
                           patch: WidgetPatch(text: content,
@@ -156,7 +156,7 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
         switch source {
         case let .flat(count, rowText, selectedIndex, select):
             // In a NavigationSplitView's leading column, render as a source-list sidebar (the kind — not a
-            // runtime flag — selects the styling so the backend bakes it in at creation).
+            // runtime flag — selects the styling so the toolkit bakes it in at creation).
             let kind: WidgetKind = SidebarColumnContext.active ? .sidebarList : .list
             return RenderNode(id: context.id, kind: kind, list: ListSpec(
                 count: count, rowText: rowText, selectedIndex: selectedIndex(), onSelect: select))

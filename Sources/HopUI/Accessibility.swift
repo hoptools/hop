@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // Common accessibility modifiers, mirroring SwiftUI. Each is a per-view modifier that records its
-// value on the node's patch; the backends then apply it to the toolkit-idiomatic accessibility API
+// value on the node's patch; the toolkits then apply it to the toolkit-idiomatic accessibility API
 // (NSAccessibility / GtkAccessible / QAccessible), so assistive technologies see it.
 
 /// Characteristics of an accessibility element, mirroring SwiftUI's `AccessibilityTraits`.

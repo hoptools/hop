@@ -58,7 +58,7 @@ public final class HopShapeView: NSView {
 
     public override func draw(_ dirtyRect: NSRect) {
         guard let spec, let ctx = NSGraphicsContext.current?.cgContext else { return }
-        AppKitBackend.drawShape(spec, in: bounds, context: ctx)
+        AppKitToolkit.drawShape(spec, in: bounds, context: ctx)
     }
 }
 
@@ -229,9 +229,9 @@ public final class AppKitToolbarController: NSObject, NSToolbarDelegate {
     public func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { identifiers }
 }
 
-/// AppKit (macOS) backend: maps HopUI widgets onto NSStackView / NSTextField / NSButton and lets
+/// AppKit (macOS) toolkit: maps HopUI widgets onto NSStackView / NSTextField / NSButton and lets
 /// AppKit's stack views perform layout (the MVP defers the geometry-owning layout engine).
-public final class AppKitBackend: AppBackend {
+public final class AppKitToolkit: AppToolkit {
     public typealias Handle = AppKitWidget
 
     private var window: NSWindow?

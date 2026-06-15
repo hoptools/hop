@@ -3,7 +3,7 @@
 
 // HopUI's geometry types. On Apple platforms we use the real CoreGraphics types (so the Shape/Path
 // surface matches SwiftUI exactly and bridges straight to CGContext/NSBezierPath). On non-Apple
-// platforms (e.g. Linux/Windows where the GTK4 backend runs) CoreGraphics doesn't exist, so we
+// platforms (e.g. Linux/Windows where the GTK4 toolkit runs) CoreGraphics doesn't exist, so we
 // provide API-compatible CGFloat / CGPoint / CGSize / CGRect implementations of our own.
 
 #if canImport(CoreGraphics)

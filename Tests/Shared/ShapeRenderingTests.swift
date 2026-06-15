@@ -1,14 +1,14 @@
 // Copyright 2026
 // SPDX-License-Identifier: MPL-2.0
 //
-// SHARED across the AppKit, GTK4, and Qt test targets via a symlink (Tests/<Backend>Tests/
+// SHARED across the AppKit, GTK4, and Qt test targets via a symlink (Tests/<Toolkit>Tests/
 // ShapeRenderingTests.swift -> ../Shared/ShapeRenderingTests.swift). It renders shapes through each
-// backend's REAL drawing path into a headless offscreen canvas and inspects the resulting pixels —
+// toolkit's REAL drawing path into a headless offscreen canvas and inspects the resulting pixels —
 // CoreGraphics (AppKit), Cairo (GTK4), and QPainter (Qt) all produce the same output, with no display.
 //
-// The backend-specific details live in a sibling `ShapeBackend.swift` in each test folder, which defines
-// a `ShapeCanvas` (offscreen surface + the backend's drawShape + pixel read + PNG save) and a
-// `ShapeBackend.name`. This file stays entirely backend-agnostic.
+// The toolkit-specific details live in a sibling `ShapeToolkit.swift` in each test folder, which defines
+// a `ShapeCanvas` (offscreen surface + the toolkit's drawShape + pixel read + PNG save) and a
+// `ShapeToolkit.name`. This file stays entirely toolkit-agnostic.
 
 import Testing
 import HopUI
@@ -90,6 +90,6 @@ import HopUI
             }
         }
         canvas.finish()
-        #expect(canvas.savePNG("/tmp/hop-shapes-montage-\(ShapeBackend.name).png"))
+        #expect(canvas.savePNG("/tmp/hop-shapes-montage-\(ShapeToolkit.name).png"))
     }
 }

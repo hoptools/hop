@@ -10,49 +10,49 @@ import Testing
 // the content reflects the measured geometry.
 @MainActor @Suite struct GeometryReaderTests {
     @Test func testRootGeometryReaderReportsWindowSize() throws {
-        let backend = MockBackend()  // content area is 800×600
+        let toolkit = MockToolkit()  // content area is 800×600
         runHopApp(GeometryReader { proxy in
             Text("\(Int(proxy.size.width))x\(Int(proxy.size.height))")
-        }, backend: backend, title: "t")
-        backend.drainMainThread()  // run the deferred re-render triggered by the size feedback
+        }, toolkit: toolkit, title: "t")
+        toolkit.drainMainThread()  // run the deferred re-render triggered by the size feedback
 
         // A GeometryReader is greedy, so at the root it fills the window; its content sees 800×600.
-        #expect(backend.widgets.contains { $0.text == "800x600" })
+        #expect(toolkit.widgets.contains { $0.text == "800x600" })
     }
 
     @Test func testFramedGeometryReaderReportsFrameSize() throws {
-        let backend = MockBackend()
+        let toolkit = MockToolkit()
         runHopApp(VStack {
             GeometryReader { proxy in
                 Text("\(Int(proxy.size.width))x\(Int(proxy.size.height))")
             }
             .frame(width: 300, height: 200)
-        }, backend: backend, title: "t")
-        backend.drainMainThread()
+        }, toolkit: toolkit, title: "t")
+        toolkit.drainMainThread()
 
         // The frame constrains the reader to 300×200; its content sees exactly that.
-        #expect(backend.widgets.contains { $0.text == "300x200" })
+        #expect(toolkit.widgets.contains { $0.text == "300x200" })
     }
 
     @Test func testGeometryReaderPlacesChildAtNaturalSizeTopLeading() throws {
-        let backend = MockBackend()
-        runHopApp(GeometryReader { _ in Text("Hi") }, backend: backend, title: "t")
-        backend.drainMainThread()
+        let toolkit = MockToolkit()
+        runHopApp(GeometryReader { _ in Text("Hi") }, toolkit: toolkit, title: "t")
+        toolkit.drainMainThread()
         // The child keeps its natural size (24×20 for "Hi") at the top-leading corner — it is NOT stretched
         // to fill the reader's 800×600 bounds (matching SwiftUI).
-        let t = try #require(backend.widgets.first { $0.text == "Hi" })
+        let t = try #require(toolkit.widgets.first { $0.text == "Hi" })
         #expect(t.frame == CGRect(x: 0, y: 0, width: 24, height: 20))
     }
 
     @Test func testGeometryReaderReRendersOnlyWhenSizeChanges() throws {
         // The size feedback must converge: after the content settles at the measured size, draining again
         // performs no further re-render (the size is unchanged, so no new flush is scheduled).
-        let backend = MockBackend()
-        runHopApp(GeometryReader { proxy in Text("\(Int(proxy.size.width))") }, backend: backend, title: "t")
-        backend.drainMainThread()
+        let toolkit = MockToolkit()
+        runHopApp(GeometryReader { proxy in Text("\(Int(proxy.size.width))") }, toolkit: toolkit, title: "t")
+        toolkit.drainMainThread()
         let settled = GraphContext.flushCount
-        backend.drainMainThread()  // nothing pending should remain → no additional flush
+        toolkit.drainMainThread()  // nothing pending should remain → no additional flush
         #expect(GraphContext.flushCount == settled)
-        #expect(backend.widgets.contains { $0.text == "800" })
+        #expect(toolkit.widgets.contains { $0.text == "800" })
     }
 }

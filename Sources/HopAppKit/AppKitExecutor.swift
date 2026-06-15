@@ -7,7 +7,7 @@ import HopUI
 
 // Run-loop executor for AppKit: posts Swift Concurrency jobs onto the main dispatch queue (which the
 // Cocoa run loop drains). AppKit doesn't strictly need a custom executor — a `Task { @MainActor in }`
-// already works there — but installing one keeps `hopTask` uniform across all backends (its body runs
+// already works there — but installing one keeps `hopTask` uniform across all toolkits (its body runs
 // on the main thread everywhere, not on a background global-executor thread).
 
 private nonisolated func appKitScheduleOnLoop(_ work: @escaping @Sendable () -> Void) {

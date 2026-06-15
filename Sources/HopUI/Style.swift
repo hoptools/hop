@@ -6,7 +6,7 @@
 // (a `Text` reads the ambient values), so styling a container styles its text descendants; a
 // background is a per-view layer.
 
-/// A color, mirroring SwiftUI's `Color`. Components are 0...1. Backends convert to NSColor / GdkRGBA
+/// A color, mirroring SwiftUI's `Color`. Components are 0...1. Toolkits convert to NSColor / GdkRGBA
 /// / QColor.
 public nonisolated struct Color: Equatable, Sendable {
     public var red: Double
@@ -38,7 +38,7 @@ public nonisolated struct Color: Equatable, Sendable {
     public static let white = Color(red: 1.0, green: 1.0, blue: 1.0)
     public static let clear = Color(red: 0.0, green: 0.0, blue: 0.0, opacity: 0.0)
 
-    /// `rgba(...)` form used by the GTK4 CSS and Qt stylesheet backends.
+    /// `rgba(...)` form used by the GTK4 CSS and Qt stylesheet toolkits.
     public var cssRGBA: String {
         "rgba(\(Int((red * 255).rounded())),\(Int((green * 255).rounded())),\(Int((blue * 255).rounded())),\(opacity))"
     }
@@ -54,7 +54,7 @@ public nonisolated struct Font: Equatable, Sendable {
     public enum Weight: Equatable, Sendable {
         case ultraLight, thin, light, regular, medium, semibold, bold, heavy, black
 
-        /// CSS numeric weight (100...900) for the GTK4/Qt backends.
+        /// CSS numeric weight (100...900) for the GTK4/Qt toolkits.
         public var cssValue: Int {
             switch self {
             case .ultraLight: return 100

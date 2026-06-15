@@ -5,12 +5,12 @@
 import Foundation  // sin/cos for the transform-bleed bounding box
 #endif
 
-// SwiftUI's Shape system: a `Shape` produces a `Path` for a given rect; the backend draws it with its
+// SwiftUI's Shape system: a `Shape` produces a `Path` for a given rect; the toolkit draws it with its
 // native vector API (CoreGraphics / Cairo / QPainter). Built-ins (Rectangle, RoundedRectangle, Circle,
 // Capsule, Ellipse) and custom `Path`s are all `Shape`s, and the same fill/stroke/frame/transform
 // modifiers apply to all of them.
 
-/// Everything a backend needs to draw a shape: how to build its path for a given rect, plus fill /
+/// Everything a toolkit needs to draw a shape: how to build its path for a given rect, plus fill /
 /// stroke style and an (offset, rotation, scale) transform applied around the shape's center.
 public struct ShapeSpec {
     public let path: @MainActor (CGRect) -> Path
@@ -45,7 +45,7 @@ public struct ShapeSpec {
         var minX = CGFloat.greatestFiniteMagnitude, minY = CGFloat.greatestFiniteMagnitude
         var maxX = -CGFloat.greatestFiniteMagnitude, maxY = -CGFloat.greatestFiniteMagnitude
         for corner in [CGPoint(x: 0, y: 0), CGPoint(x: width, y: 0), CGPoint(x: width, y: height), CGPoint(x: 0, y: height)] {
-            // Same order the backends draw with: scale, then rotate, then offset — about the center.
+            // Same order the toolkits draw with: scale, then rotate, then offset — about the center.
             let sx = (corner.x - cx) * scaleX, sy = (corner.y - cy) * scaleY
             let px = cx + offset.width + (sx * cosT - sy * sinT)
             let py = cy + offset.height + (sx * sinT + sy * cosT)

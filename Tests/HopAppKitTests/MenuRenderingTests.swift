@@ -13,10 +13,10 @@ import HopUI
 @MainActor @Suite struct MenuRenderingTests {
 
     @Test func testActionMenuBuildsPullDownPopupWithSeparatorAndSubmenu() throws {
-        let backend = AppKitBackend()
-        let handle = backend.makeWidget(.menu)
+        let toolkit = AppKitToolkit()
+        let handle = toolkit.makeWidget(.menu)
         var fired = ""
-        backend.configureMenu(handle, MenuContent(label: "Actions", entries: [
+        toolkit.configureMenu(handle, MenuContent(label: "Actions", entries: [
             .button(title: "New", action: { fired = "New" }),
             .separator,
             .button(title: "Save", action: { fired = "Save" }),
@@ -41,10 +41,10 @@ import HopUI
     }
 
     @Test func testPickerPopulatesOptionsSelectsAndReportsChanges() throws {
-        let backend = AppKitBackend()
-        let handle = backend.makeWidget(.picker)
+        let toolkit = AppKitToolkit()
+        let handle = toolkit.makeWidget(.picker)
         var picked = -1
-        backend.configurePicker(handle, PickerSpec(title: "Number", options: ["One", "Two", "Three"],
+        toolkit.configurePicker(handle, PickerSpec(title: "Number", options: ["One", "Two", "Three"],
                                                    selectedIndex: 2, onSelect: { picked = $0 }))
 
         let popup = handle.view as! NSPopUpButton

@@ -3,7 +3,7 @@
 
 // Light/dark appearance, mirroring SwiftUI's `ColorScheme`, `.preferredColorScheme(_:)`, and the
 // `\.colorScheme` environment value. `.preferredColorScheme` drives the whole window's native
-// appearance (each backend has its own light/dark switch); `@Environment(\.colorScheme)` exposes the
+// appearance (each toolkit has its own light/dark switch); `@Environment(\.colorScheme)` exposes the
 // value to view code.
 
 /// The light or dark appearance, mirroring SwiftUI's `ColorScheme`. `nonisolated` so its `Equatable`

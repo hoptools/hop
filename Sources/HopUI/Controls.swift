@@ -55,7 +55,7 @@ struct _ToggleControl: View, PrimitiveView {
 // MARK: - Stepper
 
 /// A control that increments/decrements a bound value, mirroring SwiftUI's `Stepper(_:value:in:step:)`.
-/// Composed as a label + a −/+ button pair (native buttons on every backend); the value itself is shown
+/// Composed as a label + a −/+ button pair (native buttons on every toolkit); the value itself is shown
 /// by the caller in the label, as in SwiftUI.
 public struct Stepper<V: Strideable>: View {
     let title: String

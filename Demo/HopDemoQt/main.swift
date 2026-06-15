@@ -4,4 +4,4 @@
 import HopUI
 import HopQt
 
-runApp(HopDemoApp(), backend: QtBackend())
+runApp(HopDemoApp(), toolkit: QtToolkit())

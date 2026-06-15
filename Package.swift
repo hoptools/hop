@@ -1,4 +1,4 @@
-// swift-tools-version: 6.3
+// swift-tools-version: 6.2
 import PackageDescription
 import Foundation
 
@@ -7,7 +7,7 @@ import Foundation
 // HopGraph (the pure reactive core) is deliberately left isolation-agnostic.
 let uiIsolation: [SwiftSetting] = [.defaultIsolation(MainActor.self)]
 
-// The GTK4/Qt backends install a custom main-actor executor (so Swift Concurrency runs on the toolkit
+// The GTK4/Qt toolkits install a custom main-actor executor (so Swift Concurrency runs on the toolkit
 // loop). Enable the experimental custom-executors feature on those targets.
 let customExecutors: [SwiftSetting] = [.enableExperimentalFeature("ExperimentalCustomExecutors")]
 
@@ -47,16 +47,16 @@ qtCxxFlags = []
 qtLinkFlags = []
 #endif
 
-// HopUI: a native-Swift, multi-backend, demand-driven SwiftUI implementation for the desktop.
-// See ARCHITECTURE.md for the full blueprint. Backends: GTK4 (cross-platform), Qt6 (cross-platform),
+// HopUI: a native-Swift, multi-toolkit, demand-driven SwiftUI implementation for the desktop.
+// See ARCHITECTURE.md for the full blueprint. Toolkits: GTK4 (cross-platform), Qt6 (cross-platform),
 // AppKit (macOS), plus a native-SwiftUI build of the demo (macOS) for side-by-side comparison.
 
-// Which backend(s) to include in the package. CI sets `HOP_BACKEND` to build/test ONE backend in
-// isolation on a runner that has only that toolkit installed — e.g. `HOP_BACKEND=qt` on a Qt-only box
+// Which toolkit(s) to include in the package. CI sets `HOP_TOOLKIT` to build/test ONE toolkit in
+// isolation on a runner that has only that toolkit installed — e.g. `HOP_TOOLKIT=qt` on a Qt-only box
 // keeps the GTK targets (which need GTK) out of the build graph entirely, so `swift build`/`swift test`
-// don't require GTK. Unset includes every backend (local dev and the macOS CI job).
-let selectedBackend = ProcessInfo.processInfo.environment["HOP_BACKEND"]?.lowercased()
-func backendEnabled(_ name: String) -> Bool { selectedBackend == nil || selectedBackend == name }
+// don't require GTK. Unset includes every toolkit (local dev and the macOS CI job).
+let selectedToolkit = ProcessInfo.processInfo.environment["HOP_TOOLKIT"]?.lowercased()
+func toolkitEnabled(_ name: String) -> Bool { selectedToolkit == nil || selectedToolkit == name }
 
 // The reactive core + SwiftUI-mirroring API surface — zero toolkit dependencies, always included.
 var products: [Product] = [
@@ -70,7 +70,7 @@ var targets: [Target] = [
     .testTarget(name: "HopUITests", dependencies: ["HopUI"]),
 ]
 
-if backendEnabled("gtk") {
+if toolkitEnabled("gtk") {
     products += [
         .library(name: "HopGTK4", targets: ["HopGTK4"]),
         .executable(name: "hop-demo-gtk4", targets: ["HopDemoGTK4"]),
@@ -90,18 +90,18 @@ if backendEnabled("gtk") {
         .testTarget(name: "HopGTK4Tests", dependencies: ["HopGTK4", "CGTK4"]),
         .executableTarget(name: "HopDemoGTK4", dependencies: ["HopGTK4"], path: "Demo/HopDemoGTK4",
                           resources: [.copy("hop-logo.png")],
-                          swiftSettings: uiIsolation + [.define("HOPUI_BACKEND_GTK4")] + noPrespecialize),
+                          swiftSettings: uiIsolation + [.define("HOPUI_TOOLKIT_GTK4")] + noPrespecialize),
         .executableTarget(name: "HopExecutorCheck", dependencies: ["HopUI", "HopGTK4", "CGTK4"], swiftSettings: customExecutors),
     ]
 }
 
-if backendEnabled("qt") {
+if toolkitEnabled("qt") {
     products += [
         .library(name: "HopQt", targets: ["HopQt"]),
         .executable(name: "hop-demo-qt", targets: ["HopDemoQt"]),
     ]
     targets += [
-        // Qt6 backend. Qt has no C ABI, so CQt is a C++ target exposing a pure-C header; the include/link
+        // Qt6 toolkit. Qt has no C ABI, so CQt is a C++ target exposing a pure-C header; the include/link
         // flags above adapt to macOS frameworks vs Linux/Windows include+lib dirs (override via QT_ROOT).
         .target(
             name: "CQt",
@@ -113,25 +113,25 @@ if backendEnabled("qt") {
         .testTarget(name: "HopQtTests", dependencies: ["HopQt", "CQt"]),
         .executableTarget(name: "HopDemoQt", dependencies: ["HopQt"], path: "Demo/HopDemoQt",
                           resources: [.copy("hop-logo.png")],
-                          swiftSettings: uiIsolation + [.define("HOPUI_BACKEND_QT")] + noPrespecialize),
+                          swiftSettings: uiIsolation + [.define("HOPUI_TOOLKIT_QT")] + noPrespecialize),
     ]
 }
 
-if backendEnabled("appkit") {
+if toolkitEnabled("appkit") {
     products += [
         .library(name: "HopAppKit", targets: ["HopAppKit"]),
         .executable(name: "hop-demo-appkit", targets: ["HopDemoAppKit"]),
     ]
     targets += [
-        // The AppKit backend (macOS only; file contents are guarded by #if canImport(AppKit)).
+        // The AppKit toolkit (macOS only; file contents are guarded by #if canImport(AppKit)).
         .target(name: "HopAppKit", dependencies: ["HopUI"], swiftSettings: uiIsolation),
         .testTarget(name: "HopAppKitTests", dependencies: ["HopAppKit"]),
         // Each demo executable compiles its OWN copy of the shared Demo/ContentView.swift +
         // Demo/HopDemoApp.swift (symlinked into the target's folder under Demo/) with exactly one
-        // HOPUI_BACKEND_* define, so shared app code can interpose toolkit-specific code via #if.
+        // HOPUI_TOOLKIT_* define, so shared app code can interpose toolkit-specific code via #if.
         .executableTarget(name: "HopDemoAppKit", dependencies: ["HopAppKit"], path: "Demo/HopDemoAppKit",
                           resources: [.copy("hop-logo.png")],
-                          swiftSettings: uiIsolation + [.define("HOPUI_BACKEND_APPKIT")] + noPrespecialize),
+                          swiftSettings: uiIsolation + [.define("HOPUI_TOOLKIT_APPKIT")] + noPrespecialize),
     ]
 }
 
@@ -146,16 +146,16 @@ let package = Package(
 
 #if os(macOS)
 // The native-SwiftUI build of the demo runs only on Apple platforms (SwiftUI is Apple-only). It
-// compiles the SAME shared ContentView with HOPUI_BACKEND_SWIFTUI, importing Apple's SwiftUI instead
-// of HopUI — no shims, no HopUI dependency. Grouped with the AppKit (Apple) backend selection.
-if backendEnabled("appkit") {
+// compiles the SAME shared ContentView with HOPUI_TOOLKIT_SWIFTUI, importing Apple's SwiftUI instead
+// of HopUI — no shims, no HopUI dependency. Grouped with the AppKit (Apple) toolkit selection.
+if toolkitEnabled("appkit") {
     package.products += [
         .executable(name: "hop-demo-native", targets: ["HopDemoNative"]),
     ]
     package.targets += [
         .executableTarget(name: "HopDemoNative", path: "Demo/HopDemoNative",
                           resources: [.copy("hop-logo.png")],
-                          swiftSettings: [.define("HOPUI_BACKEND_SWIFTUI")] + noPrespecialize),
+                          swiftSettings: [.define("HOPUI_TOOLKIT_SWIFTUI")] + noPrespecialize),
     ]
 }
 #endif

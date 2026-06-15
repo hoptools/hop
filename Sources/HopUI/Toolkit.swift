@@ -1,14 +1,14 @@
 // Copyright 2026
 // SPDX-License-Identifier: MPL-2.0
 
-/// The backend-agnostic seam between HopUI and a native widget toolkit.
+/// The toolkit-agnostic seam between HopUI and a native widget toolkit.
 ///
-/// A backend owns opaque `Handle`s wrapping native widgets and exposes idempotent operations to
+/// A toolkit owns opaque `Handle`s wrapping native widgets and exposes idempotent operations to
 /// create, configure, and arrange them. The ``Reconciler`` calls only these operations, so it is
 /// entirely free of GTK/AppKit types — which is what lets GTK4, AppKit, and (later) WinUI plug in
 /// behind the same protocol.
 @MainActor
-public protocol RenderBackend: AnyObject {
+public protocol RenderToolkit: AnyObject {
     associatedtype Handle: AnyObject
 
     func makeWidget(_ kind: WidgetKind) -> Handle
@@ -26,10 +26,10 @@ public protocol RenderBackend: AnyObject {
     /// `nil` for non-toggle widgets (a no-op).
     func setBoolHandler(_ handle: Handle, _ handler: (@MainActor (Bool) -> Void)?)
     /// Configure a lazily-virtualized list widget. Called once on creation and again whenever the
-    /// row count or selection changes; the backend owns row recycling and on-demand row fetching.
+    /// row count or selection changes; the toolkit owns row recycling and on-demand row fetching.
     func configureList(_ handle: Handle, _ spec: ListSpec)
     /// Configure a custom-drawn shape widget. Called once on creation and again on every reconcile
-    /// (the spec is not `Equatable`), so the backend stores the spec and triggers a redraw using its
+    /// (the spec is not `Equatable`), so the toolkit stores the spec and triggers a redraw using its
     /// native 2D drawing API (CoreGraphics / Cairo / QPainter).
     func configureShape(_ handle: Handle, _ spec: ShapeSpec)
     /// Configure a drop-down action menu (``Menu``): set the button label and (re)build the popup of
@@ -61,22 +61,22 @@ public protocol RenderBackend: AnyObject {
     func measure(_ handle: Handle, _ proposal: ProposedViewSize) -> CGSize
     /// The widget's current actual size (used to lay out content inside a native composite's panes).
     func sizeOf(_ handle: Handle) -> CGSize
-    /// Install a scroll handler on a `.scroll` widget: the backend calls it with the current content
+    /// Install a scroll handler on a `.scroll` widget: the toolkit calls it with the current content
     /// offset whenever the user scrolls, so virtualized content can re-materialize its visible window.
     /// Called with `nil` for non-scroll widgets (a no-op).
     func setScrollHandler(_ handle: Handle, _ handler: (@MainActor (CGSize) -> Void)?)
 }
 
-/// A backend that can also host a window and run the platform main loop.
+/// A toolkit that can also host a window and run the platform main loop.
 @MainActor
-public protocol AppBackend: RenderBackend {
+public protocol AppToolkit: RenderToolkit {
     /// Create the application window titled `title`, then call `onReady` with the content
     /// container handle (into which the root view is mounted) and run the platform main loop.
     func run(title: String, onReady: @escaping @MainActor (Handle) -> Void)
 
     /// Open an additional, secondary window titled `title` while the main loop is already running,
     /// calling `onReady` with its content container handle. Used by `openWindow(id:)` to present the
-    /// windows declared by `Window(_:id:)` scenes. The backend retains the window.
+    /// windows declared by `Window(_:id:)` scenes. The toolkit retains the window.
     func openWindow(title: String, onReady: @escaping @MainActor (Handle) -> Void)
 
     /// Install the window's top toolbar from the given items (text and buttons). Called on mount
@@ -99,7 +99,7 @@ public protocol AppBackend: RenderBackend {
 
     /// The window's current content size (the layout engine's root proposal).
     func contentSize() -> CGSize
-    /// Install a handler the backend calls whenever the window content size changes, so the runtime can
+    /// Install a handler the toolkit calls whenever the window content size changes, so the runtime can
     /// re-run the layout pass. Called once on mount.
     func setRelayoutHandler(_ handler: @escaping @MainActor () -> Void)
 }

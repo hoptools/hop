@@ -2,21 +2,21 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // The SAME ContentView builds against either HopUI or Apple's SwiftUI — no shims. Each executable
-// target defines exactly one HOPUI_BACKEND_* constant (see Package.swift); the SwiftUI one imports
+// target defines exactly one HOPUI_TOOLKIT_* constant (see Package.swift); the SwiftUI one imports
 // SwiftUI, the others import HopUI, whose API mirrors SwiftUI's.
-#if HOPUI_BACKEND_SWIFTUI
+#if HOPUI_TOOLKIT_SWIFTUI
 import SwiftUI
 import AppKit  // NSImage, to load the bundled demo image (SwiftUI has no plain-file Image init)
 #else
 import HopUI
 #endif
 import Observation  // @Observable — the same macro is used whether building against HopUI or SwiftUI
-import Foundation   // sin/cos for the star's points (same on either backend)
+import Foundation   // sin/cos for the star's points (same on either toolkit)
 
 /// Load the bundled demo image. HopUI has a direct file initializer; SwiftUI loads a plain bundled PNG
 /// via `NSImage` (its `Image(_:bundle:)` needs an asset catalog). Mirrors the `hopTask` shim pattern.
 func demoImage(_ name: String) -> Image {
-    #if HOPUI_BACKEND_SWIFTUI
+    #if HOPUI_TOOLKIT_SWIFTUI
     if let url = Bundle.module.url(forResource: name, withExtension: "png"), let nsImage = NSImage(contentsOf: url) {
         return Image(nsImage: nsImage)
     }
@@ -29,17 +29,17 @@ func demoImage(_ name: String) -> Image {
     #endif
 }
 
-/// The toolkit this build is running against, derived from the per-backend compile constant. This is
+/// The toolkit this build is running against, derived from the per-toolkit compile constant. This is
 /// the mechanism for interposing toolkit-specific code in a shared app codebase. Module-internal (not
 /// file-private) so the shared HopDemoApp / AboutView can read it too.
-let hopuiBackendName: String = {
-    #if HOPUI_BACKEND_GTK4
+let hopuiToolkitName: String = {
+    #if HOPUI_TOOLKIT_GTK4
     return "GTK4"
-    #elseif HOPUI_BACKEND_QT
+    #elseif HOPUI_TOOLKIT_QT
     return "Qt"
-    #elseif HOPUI_BACKEND_APPKIT
+    #elseif HOPUI_TOOLKIT_APPKIT
     return "AppKit"
-    #elseif HOPUI_BACKEND_SWIFTUI
+    #elseif HOPUI_TOOLKIT_SWIFTUI
     return "SwiftUI"
     #else
     return "HopUI"
@@ -102,7 +102,7 @@ enum Playground: String, CaseIterable, Hashable {
 
     /// The playground a demo starts on: the one named by the `HOP_PLAYGROUND_ID` environment variable (its
     /// raw value, e.g. `textField`), or `nil` (no selection) when unset/unrecognized. Lets
-    /// `HOP_PLAYGROUND_ID=textField ./run_demo.sh all` open every backend on the same playground (the env
+    /// `HOP_PLAYGROUND_ID=textField ./run_demo.sh all` open every toolkit on the same playground (the env
     /// is inherited by each binary).
     static var defaultSelection: Playground? {
         let id = ProcessInfo.processInfo.environment["HOP_PLAYGROUND_ID"]?
@@ -155,9 +155,9 @@ let sidebarTree: [SidebarItem] = [
     ]),
 ]
 
-// `hopTask` runs async work on the backend's run loop. The HopUI build gets it from `import HopUI`;
+// `hopTask` runs async work on the toolkit's run loop. The HopUI build gets it from `import HopUI`;
 // the native-SwiftUI build defines an equivalent that runs on the main actor.
-#if HOPUI_BACKEND_SWIFTUI
+#if HOPUI_TOOLKIT_SWIFTUI
 @MainActor func hopTask(_ body: @escaping @Sendable () async -> Void) { Task { @MainActor in await body() } }
 #endif
 
@@ -167,7 +167,7 @@ enum Flavor: String, CaseIterable, Hashable {
     var label: String { rawValue.capitalized }
 }
 
-/// A showcase shared by every backend (AppKit, GTK4, Qt, native SwiftUI). The sidebar `List` is a
+/// A showcase shared by every toolkit (AppKit, GTK4, Qt, native SwiftUI). The sidebar `List` is a
 /// playground selector; selecting a playground navigates the detail to it inside a `NavigationStack`
 /// (which provides the title bar and supports pushing further — e.g. the Buttons playground pushes a
 /// detail page via `NavigationLink`). The same source compiles against HopUI and Apple's SwiftUI.
@@ -221,7 +221,7 @@ public struct ContentView: View {
         .toolbar {
             Button(model.colorScheme == .dark ? "☀ Light" : "☾ Dark") { model.toggleColorScheme() }
             Button("About") { openWindow(id: "about") }
-            Text(hopuiBackendName)
+            Text(hopuiToolkitName)
         }
     }
 
@@ -504,7 +504,7 @@ struct ImagePlayground: View {
                     .foregroundStyle(.blue)
             }
 
-            Text("Bundled image — renders identically on every backend")
+            Text("Bundled image — renders identically on every toolkit")
             demoImage("hop-logo").resizable().scaledToFit().frame(width: 96, height: 96)
 
             Text("Content modes in a 130×72 frame: scaledToFit · stretch")
@@ -686,7 +686,7 @@ struct ProgressPlayground: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Determinate progress driven by async tasks (Task + await on the backend's run loop)")
+            Text("Determinate progress driven by async tasks (Task + await on the toolkit's run loop)")
 
             ProgressView(value: model.downloadProgress)
             Text("Download: \(Int(model.downloadProgress * 100))%")
@@ -798,7 +798,7 @@ struct DisclosurePlayground: View {
                 }
             }
 
-            DisclosureGroup("Native tree backends") {
+            DisclosureGroup("Native tree toolkits") {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("• AppKit — NSOutlineView")
                     Text("• GTK4 — GtkTreeListModel + GtkListView")

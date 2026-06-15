@@ -6,7 +6,7 @@ import HopUI
 
 // Custom run-loop executor for GTK4: posts Swift Concurrency jobs onto GLib's main loop via
 // `g_idle_add` (thread-safe; wakes the loop; its callback runs on the main thread). Installed by the
-// backend so `hopTask { … }` / `await` continuations run on GTK's loop, which never drains libdispatch.
+// toolkit so `hopTask { … }` / `await` continuations run on GTK's loop, which never drains libdispatch.
 
 /// Holds a `@Sendable` closure so it can cross from a background `enqueue` into the GLib idle callback.
 private nonisolated final class GTK4WorkBox {

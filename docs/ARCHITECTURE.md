@@ -2,8 +2,8 @@
 
 HopUI is a native-Swift, demand-driven SwiftUI implementation for the **desktop** (macOS, Windows,
 Linux). It compiles with the official Swift toolchain and renders through native widget toolkits.
-The cross-platform backend is **GTK4** (one toolkit that runs on all three OSes via its C ABI); an
-**AppKit** backend is included to prove the multi-backend seam, and a WinUI backend is sketched
+The cross-platform toolkit is **GTK4** (one toolkit that runs on all three OSes via its C ABI); an
+**AppKit** toolkit is included to prove the multi-toolkit seam, and a WinUI toolkit is sketched
 below.
 
 > **The central problem.** Desktop toolkits are *retained-mode*: a `GtkButton`/`NSButton` is a dumb
@@ -17,7 +17,7 @@ below.
 ## Layers
 
 ```
-User SwiftUI code  →  View + @ViewBuilder  →  ViewGraph  →  AttributeGraph  →  DisplayList  →  RenderBackend  →  native widgets
+User SwiftUI code  →  View + @ViewBuilder  →  ViewGraph  →  AttributeGraph  →  DisplayList  →  RenderToolkit  →  native widgets
 ```
 
 | Layer | Module | Role |
@@ -25,10 +25,10 @@ User SwiftUI code  →  View + @ViewBuilder  →  ViewGraph  →  AttributeGraph
 | `View` / `@ViewBuilder` / `@State` | `HopUI` | SwiftUI-mirroring authoring surface |
 | ViewGraph + evaluation | `HopUI` | walks the view tree into a `RenderNode` tree, reading `@State` |
 | AttributeGraph | `HopGraph` | demand-driven reactive core: pull-based eval, dynamic edges, dirty propagation |
-| DisplayList (`RenderNode`) | `HopUI` | backend-agnostic value-type render tree keyed by identity |
-| Reconciler | `HopUI` | diffs successive `RenderNode` trees → minimal backend ops |
-| `RenderBackend` | `HopUI` | the multi-OS seam (create/configure/insert/remove/setAction) |
-| GTK4 / AppKit / Qt backends | `HopGTK4`, `HopAppKit`, `HopQt` | translate ops to native widgets + run the platform loop |
+| DisplayList (`RenderNode`) | `HopUI` | toolkit-agnostic value-type render tree keyed by identity |
+| Reconciler | `HopUI` | diffs successive `RenderNode` trees → minimal toolkit ops |
+| `RenderToolkit` | `HopUI` | the multi-OS seam (create/configure/insert/remove/setAction) |
+| GTK4 / AppKit / Qt toolkits | `HopGTK4`, `HopAppKit`, `HopQt` | translate ops to native widgets + run the platform loop |
 | GTK4 / Qt C ABI shims | `CGTK4`, `CQt` | hand-rolled C(++) shims over `gtk/gtk.h` and Qt6 |
 
 ## AttributeGraph (`HopGraph`)
@@ -49,22 +49,22 @@ This is the reactive substrate a retained-mode toolkit does not provide. The MVP
 (UI-thread) and uses a single root render rule; per-view-body attributes and lifetime *subgraphs*
 are the next refinement (see Roadmap).
 
-## Reconciler + RenderBackend (`HopUI`)
+## Reconciler + RenderToolkit (`HopUI`)
 
 Evaluation produces a `RenderNode` tree (`id`, `kind`, `WidgetPatch`, `children`, `action`). The
 `Reconciler` keeps a map of `id → native handle` and diffs new vs. previous by structural identity,
-calling only the `RenderBackend` operations needed (a `configure` for a changed label, no
-`makeWidget` for unchanged nodes). The `RenderBackend` protocol is pure value-types plus an opaque
-`Handle`, so no GTK/AppKit type appears above the backend module — that is what makes backends
+calling only the `RenderToolkit` operations needed (a `configure` for a changed label, no
+`makeWidget` for unchanged nodes). The `RenderToolkit` protocol is pure value-types plus an opaque
+`Handle`, so no GTK/AppKit type appears above the toolkit module — that is what makes toolkits
 pluggable.
 
 Event flow: a native click invokes the stored Swift `action` → mutates `@State` → `Graph.setValue`
 marks the render rule dirty → a flush re-pulls the tree → the reconciler applies the minimal native
 mutation.
 
-## Backends
+## Toolkits
 
-- **GTK4 (`HopGTK4` + `CGTK4`)** — the cross-platform backend. `CGTK4` is a `systemLibrary` whose
+- **GTK4 (`HopGTK4` + `CGTK4`)** — the cross-platform toolkit. `CGTK4` is a `systemLibrary` whose
   `module.modulemap` wraps a `shim.h` that `#include`s `<gtk/gtk.h>` and exposes a thin
   `void *`-based C surface (keeping the `GTK_*()` cast macros and `g_signal_connect` plumbing on the
   C side). Include/link flags come from `pkg-config gtk4`, which resolves identically on macOS
@@ -78,8 +78,8 @@ mutation.
   wired once with `QObject::connect` + a capturing lambda (no `moc` step). Runs `QApplication`.
   Added to the package only on macOS (`#if os(macOS)` in `Package.swift`), linking Homebrew Qt6
   frameworks via `-F`; the same shim approach extends to Qt on Linux/Windows by swapping the flags.
-- **WinUI (sketch)** — a future backend would wrap XAML elements (via swift-winrt) behind the same
-  `RenderBackend`, with a `Canvas` for absolute placement and `DispatcherQueue` for flushes.
+- **WinUI (sketch)** — a future toolkit would wrap XAML elements (via swift-winrt) behind the same
+  `RenderToolkit`, with a `Canvas` for absolute placement and `DispatcherQueue` for flushes.
 
 ## MVP simplifications (and the road past them)
 
@@ -88,7 +88,7 @@ simplifications, each with a clear upgrade path:
 
 1. **Native containers do layout.** The MVP uses `GtkBox`/`NSStackView`. The blueprint's
    geometry-owning layout engine (parent-proposes/child-chooses modeled as attributes, absolute
-   placement in `GtkFixed`) replaces this — it is what keeps layout identical across backends.
+   placement in `GtkFixed`) replaces this — it is what keeps layout identical across toolkits.
 2. **Single root render rule.** All state feeds one render attribute; the reconciler still minimizes
    *widget* mutations. Per-view-body attributes will make *recompute* incremental too.
 3. **Synchronous flush.** State writes flush immediately. A frame-batched flush (`g_idle_add` /
@@ -103,4 +103,4 @@ simplifications, each with a clear upgrade path:
 3. Widget breadth: `Toggle`, `Slider`, `TextField`, `Picker`, `List`, `ScrollView`, `Image`;
    `Color`/`Font`/`Shape` (via `GtkDrawingArea` + Cairo).
 4. `Environment`, `@Binding` to nested state, `ForEach` identity, animations.
-5. Cross-OS hardening (Linux apt, Windows MSYS2) and the AppKit/WinUI backends as the real seam test.
+5. Cross-OS hardening (Linux apt, Windows MSYS2) and the AppKit/WinUI toolkits as the real seam test.

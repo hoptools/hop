@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build and launch the HopUI demo app against a chosen backend paradigm.
+# Build and launch the HopUI demo app against a chosen toolkit paradigm.
 #
 # Usage: scripts/run_demo.sh <gtk4|appkit|qt|swiftui|all>
 #
-#   gtk4     GTK4 backend      (macOS/Linux/Windows; needs GTK4 — macOS: `brew install gtk4`)
-#   appkit   AppKit backend    (macOS only)
-#   qt       Qt6 backend       (macOS; needs Homebrew Qt6 — `brew install qt`)
+#   gtk4     GTK4 toolkit      (macOS/Linux/Windows; needs GTK4 — macOS: `brew install gtk4`)
+#   appkit   AppKit toolkit    (macOS only)
+#   qt       Qt6 toolkit       (macOS; needs Homebrew Qt6 — `brew install qt`)
 #   swiftui  Apple SwiftUI     (macOS only; the same ContentView built against real SwiftUI)
 #   all      build everything, then launch all four side by side
 #

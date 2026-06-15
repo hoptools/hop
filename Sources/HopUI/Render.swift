@@ -1,7 +1,7 @@
 // Copyright 2026
 // SPDX-License-Identifier: MPL-2.0
 
-/// The kinds of native widget a ``RenderNode`` can map to. The backend translates each to a
+/// The kinds of native widget a ``RenderNode`` can map to. The toolkit translates each to a
 /// concrete toolkit widget (GtkBox/NSStackView, GtkLabel/NSTextField, GtkButton/NSButton, …).
 public enum WidgetKind: Equatable {
     case window
@@ -18,7 +18,7 @@ public enum WidgetKind: Equatable {
     case sidebarList
     /// A two-pane navigation split (sidebar + detail), backed by a native split widget.
     case splitView
-    /// A custom-drawn vector shape, rendered via the backend's native 2D drawing API
+    /// A custom-drawn vector shape, rendered via the toolkit's native 2D drawing API
     /// (CoreGraphics / Cairo / QPainter). Carries a ``ShapeSpec`` instead of child widgets.
     case shape
     /// A button that presents a drop-down of actions (``Menu``). Carries a ``MenuContent``.
@@ -56,7 +56,7 @@ public enum WidgetKind: Equatable {
     /// (NSSecureTextField / GtkEntry with visibility off / QLineEdit in password mode).
     case secureField
     /// A bordered, rounded "card" container (``GroupBox`` / ``Section`` / ``Form`` grouping), drawn by the
-    /// backend (NSView layer / GTK `.card` / QFrame stylesheet). Laid out as a vertical stack of its
+    /// toolkit (NSView layer / GTK `.card` / QFrame stylesheet). Laid out as a vertical stack of its
     /// content; the chrome is baked in at creation.
     case groupBox
     /// A tabbed container (``TabView``) backed by the toolkit's native tab widget (NSTabView /
@@ -76,7 +76,7 @@ public enum ContentMode: Equatable, Sendable {
 
 /// Configures a `.tabView`: the tab titles (one per page child, in order), the selected page index, and
 /// the callback fired when the user switches tabs. Reapplied on each reconcile (not `Equatable`); the
-/// backend builds the native tab widget's tabs from the page children + these titles.
+/// toolkit builds the native tab widget's tabs from the page children + these titles.
 public struct TabSpec {
     public let titles: [String]
     public var selectedIndex: Int
@@ -90,7 +90,7 @@ public struct TabSpec {
     }
 }
 
-/// Describes a lazily-virtualized list. The backend drives a native list widget that pulls
+/// Describes a lazily-virtualized list. The toolkit drives a native list widget that pulls
 /// `rowText` only for visible rows, so a list of 100,000 rows materializes only what's on screen.
 public struct ListSpec {
     public let count: Int
@@ -107,7 +107,7 @@ public struct ListSpec {
     }
 }
 
-/// Describes a hierarchical disclosure tree for a `.outline`/`.sidebarOutline` node. The backend builds a
+/// Describes a hierarchical disclosure tree for a `.outline`/`.sidebarOutline` node. The toolkit builds a
 /// native tree from `roots`, reflects `selectedID`, and reports user selection via `onSelect`. Not
 /// `Equatable` — reapplied on every reconcile (like ``ListSpec``).
 public struct OutlineSpec {
@@ -121,7 +121,7 @@ public struct OutlineSpec {
         public init(id: AnyHashable, title: String, children: [Node] = [], selectable: Bool = true) {
             self.id = id; self.title = title; self.children = children; self.selectable = selectable
         }
-        /// A stable string key for backend bookkeeping (native item identity / row maps).
+        /// A stable string key for toolkit bookkeeping (native item identity / row maps).
         public var key: String { "\(id.base)" }
     }
     public let roots: [Node]
@@ -135,7 +135,7 @@ public struct OutlineSpec {
         self.onSelect = onSelect
     }
 
-    /// A cheap signature of the tree's shape + row titles. A backend rebuilds its native tree only when
+    /// A cheap signature of the tree's shape + row titles. A toolkit rebuilds its native tree only when
     /// this changes, so an unrelated reconcile doesn't collapse the user's expansion state or disturb an
     /// in-progress selection. (Selection itself is carried separately in `selectedID`.)
     public var structureSignature: String {
@@ -145,7 +145,7 @@ public struct OutlineSpec {
         return sig(roots)
     }
 
-    /// The tree flattened to a pre-order list of `(node, depth)` pairs, for backends whose tree widget is
+    /// The tree flattened to a pre-order list of `(node, depth)` pairs, for toolkits whose tree widget is
     /// populated row-by-row with an explicit indentation level (e.g. Qt `QTreeWidget` items, GTK rows).
     public func flattened() -> [(node: Node, depth: Int)] {
         var out: [(Node, Int)] = []
@@ -158,7 +158,7 @@ public struct OutlineSpec {
 }
 
 /// A struct-of-optionals describing widget properties. The reconciler diffs old vs. new and the
-/// backend applies only the fields that are present.
+/// toolkit applies only the fields that are present.
 public struct WidgetPatch: Equatable {
     public var text: String?
     public var title: String?
@@ -184,7 +184,7 @@ public struct WidgetPatch: Equatable {
     public var fontWeight: Font.Weight?
     /// Progress fraction (0...1) for a `.progress` widget; `nil` means indeterminate (animated).
     public var progressValue: Double?
-    /// Accessibility information, applied to the toolkit's native accessibility API by the backend.
+    /// Accessibility information, applied to the toolkit's native accessibility API by the toolkit.
     public var accessibilityLabel: String?
     public var accessibilityValue: String?
     public var accessibilityHint: String?
@@ -215,7 +215,7 @@ public struct WidgetPatch: Equatable {
 }
 
 /// A value-type snapshot of one node in the render tree, keyed by a stable ``id``. This is the
-/// backend-agnostic intermediate representation the reconciler diffs.
+/// toolkit-agnostic intermediate representation the reconciler diffs.
 public struct RenderNode {
     public let id: String
     public let kind: WidgetKind
@@ -253,7 +253,7 @@ public struct RenderNode {
     /// (viewport) size, so a ``GeometryReader``/``ScrollView`` can feed it back into its content. Not
     /// part of equality.
     public var onGeometry: (@MainActor (CGSize) -> Void)?
-    /// For a `.scroll` node: called by the backend with the current scroll offset when the user scrolls,
+    /// For a `.scroll` node: called by the toolkit with the current scroll offset when the user scrolls,
     /// so virtualized content can re-materialize the visible window. Not part of equality.
     public var onScroll: (@MainActor (CGSize) -> Void)?
     /// For a `.lazyStack` node: called by the layout engine with a materialized row's measured extent, so

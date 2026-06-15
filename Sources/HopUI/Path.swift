@@ -21,10 +21,10 @@ public nonisolated struct Angle: Equatable, Sendable {
 }
 
 /// The outline of a 2D shape, mirroring SwiftUI's `Path`. It records a list of drawing elements that
-/// each backend replays into its native path API (CoreGraphics / Cairo / QPainterPath).
+/// each toolkit replays into its native path API (CoreGraphics / Cairo / QPainterPath).
 public struct Path: Equatable {
     /// One drawing instruction. Higher-level primitives (rect/ellipse/arc) are kept intact so each
-    /// backend can use its exact native equivalent rather than a Bézier approximation.
+    /// toolkit can use its exact native equivalent rather than a Bézier approximation.
     public enum Element: Equatable {
         case move(to: CGPoint)
         case line(to: CGPoint)

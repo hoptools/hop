@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 // AppKit-specific harness for the shared ShapeRenderingTests: an offscreen NSBitmapImageRep + CoreGraphics
-// context driving the real AppKitBackend.drawShape. Needs no on-screen window; 1× (unlike a Retina
+// context driving the real AppKitToolkit.drawShape. Needs no on-screen window; 1× (unlike a Retina
 // cacheDisplay rep), so pixel coordinates are direct.
 
 #if canImport(AppKit)
@@ -10,7 +10,7 @@ import AppKit
 @testable import HopAppKit
 import HopUI
 
-enum ShapeBackend { static let name = "appkit" }
+enum ShapeToolkit { static let name = "appkit" }
 
 /// An offscreen raster canvas backed by a white NSBitmapImageRep, drawn into via its CoreGraphics context.
 final class ShapeCanvas {
@@ -26,14 +26,14 @@ final class ShapeCanvas {
         let c = nsContext.cgContext
         c.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         c.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        // Flip to top-left / y-down so AppKitBackend.drawShape (which assumes the flipped on-screen view)
+        // Flip to top-left / y-down so AppKitToolkit.drawShape (which assumes the flipped on-screen view)
         // matches, and `colorAt(x:y:)` (top-left) reads consistently with the GTK4/Qt canvases.
         c.translateBy(x: 0, y: CGFloat(height))
         c.scaleBy(x: 1, y: -1)
     }
 
     @MainActor func draw(_ spec: ShapeSpec, frameWidth: Double, frameHeight: Double, bleedX: Double = 0, bleedY: Double = 0) {
-        AppKitBackend.drawShape(spec, in: CGRect(x: bleedX, y: bleedY, width: frameWidth, height: frameHeight), context: ctx)
+        AppKitToolkit.drawShape(spec, in: CGRect(x: bleedX, y: bleedY, width: frameWidth, height: frameHeight), context: ctx)
     }
 
     @MainActor func translated(_ dx: Double, _ dy: Double, _ body: () -> Void) {

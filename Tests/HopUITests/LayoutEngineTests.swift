@@ -4,11 +4,11 @@
 import Testing
 @testable import HopUI
 
-// Drives the LayoutEngine directly with stub closures (no backend), so layout behavior that depends on
+// Drives the LayoutEngine directly with stub closures (no toolkit), so layout behavior that depends on
 // native-allocated sizes — chiefly split-view panes — can be tested deterministically. The split itself
 // stays native: the toolkit positions the panes; HopUI lays out the CONTENT inside each pane's size.
 @MainActor @Suite struct LayoutEngineTests {
-    /// A label's intrinsic size, matching the MockBackend's measure: `text.count * 8 + 8` wide, 20 tall.
+    /// A label's intrinsic size, matching the MockToolkit's measure: `text.count * 8 + 8` wide, 20 tall.
     private static func measure(_ node: RenderNode, _ proposal: ProposedViewSize) -> CGSize {
         if node.kind == .label { return CGSize(width: Double((node.patch.text ?? "").count) * 8 + 8, height: 20) }
         return proposal.resolved(.zero)

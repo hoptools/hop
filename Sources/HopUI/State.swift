@@ -12,8 +12,8 @@ public enum GraphContext {
     static var current: Graph?
     /// Performs one re-render: re-pulls the render tree and applies the minimal native mutations.
     static var flush: (@MainActor () -> Void)?
-    /// Defers work onto the backend's main loop (installed by the runtime, wrapping
-    /// `AppBackend.scheduleOnMainThread`). All flushes route through this so they run on the loop —
+    /// Defers work onto the toolkit's main loop (installed by the runtime, wrapping
+    /// `AppToolkit.scheduleOnMainThread`). All flushes route through this so they run on the loop —
     /// after the current native event finishes — rather than reentrantly inside an event handler.
     static var scheduleOnMain: (@MainActor (@escaping @MainActor () -> Void) -> Void)?
     /// Invalidates the root render rule so the next flush re-evaluates the tree. Needed for

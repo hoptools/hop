@@ -41,7 +41,7 @@ public struct OutlineGroup<Data, ID, Content>: View, PrimitiveView
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         // In a NavigationSplitView's leading column, render as a source-list sidebar tree; the kind —
-        // not a runtime flag — selects the styling so the backend bakes it in at creation.
+        // not a runtime flag — selects the styling so the toolkit bakes it in at creation.
         let kind: WidgetKind = SidebarColumnContext.active ? .sidebarOutline : .outline
         return RenderNode(id: context.id, kind: kind, outline: OutlineSpec(roots: buildRoots()))
     }
@@ -60,7 +60,7 @@ extension OutlineGroup where Data.Element: Identifiable, ID == Data.Element.ID {
 /// { … }`, expansion held in a per-identity graph source) and a bound one (`DisclosureGroup("Title",
 /// isExpanded: $flag) { … }`). Composed from existing primitives — a header `.button` row over the
 /// conditionally-included content in a leading-aligned `.vstack` — so it works uniformly on every
-/// backend without a native composite-disclosure widget.
+/// toolkit without a native composite-disclosure widget.
 public struct DisclosureGroup<Content: View>: View, PrimitiveView {
     private let title: String
     private let isExpanded: Binding<Bool>?

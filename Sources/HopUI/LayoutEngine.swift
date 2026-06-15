@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // The layout pass: walks a RenderNode tree, computes a size for each node (measuring leaves through the
-// backend) and a frame for each widget, applying the SwiftUI "parent proposes / child chooses" contract
-// plus the unary modifier chain (padding, frame). It is backend-agnostic — `measureLeaf` and `setFrame`
+// toolkit) and a frame for each widget, applying the SwiftUI "parent proposes / child chooses" contract
+// plus the unary modifier chain (padding, frame). It is toolkit-agnostic — `measureLeaf` and `setFrame`
 // are supplied by the runtime (wired to the reconciler's id→handle map).
 
 struct LayoutEngine {
-    /// Measure a leaf/native widget's chosen size for a proposal (backend intrinsic sizing).
+    /// Measure a leaf/native widget's chosen size for a proposal (toolkit intrinsic sizing).
     let measureLeaf: (RenderNode, ProposedViewSize) -> CGSize
     /// Position a node's widget at an absolute frame in its parent's coordinate space.
     let setFrame: (RenderNode, CGRect) -> Void
@@ -18,7 +18,7 @@ struct LayoutEngine {
     private func role(of node: RenderNode) -> LayoutRole {
         switch node.kind {
         case .vstack, .groupBox:
-            // A group box is a vertical stack of its content; the backend draws the card chrome behind it.
+            // A group box is a vertical stack of its content; the toolkit draws the card chrome behind it.
             return .stack(axis: .vertical, spacing: node.patch.spacing, alignment: node.layout.alignment ?? .center)
         case .hstack:
             return .stack(axis: .horizontal, spacing: node.patch.spacing, alignment: node.layout.alignment ?? .center)

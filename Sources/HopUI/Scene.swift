@@ -22,7 +22,7 @@ extension Scene {
     public func _commands() -> [MenuSpec] { [] }
 }
 
-/// A backend-agnostic description of one window: its identity (`nil` for the primary `WindowGroup`),
+/// A toolkit-agnostic description of one window: its identity (`nil` for the primary `WindowGroup`),
 /// its title, and a factory for its root content. Public only so the cross-module runtime can read it.
 public struct _WindowDef {
     public let id: String?
@@ -162,8 +162,8 @@ public enum SceneBuilder {
     }
 }
 
-/// The entry point of a HopUI app. Mirrors SwiftUI's `App`. A HopUI executable selects its backend
-/// in `main.swift` and calls `runApp(MyApp(), backend:)`; the native (SwiftUI) build uses `@main`
+/// The entry point of a HopUI app. Mirrors SwiftUI's `App`. A HopUI executable selects its toolkit
+/// in `main.swift` and calls `runApp(MyApp(), toolkit:)`; the native (SwiftUI) build uses `@main`
 /// and Apple's own `App.main()`.
 @MainActor
 public protocol App {

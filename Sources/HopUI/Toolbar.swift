@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 /// A single item in a window's top toolbar. Basic support covers text labels and buttons; the
-/// backend renders these with the platform-idiomatic toolbar (NSToolbar / GtkHeaderBar / QToolBar).
+/// toolkit renders these with the platform-idiomatic toolbar (NSToolbar / GtkHeaderBar / QToolBar).
 public struct ToolbarItemSpec {
     public enum Kind {
         case text(String)

@@ -4,7 +4,7 @@
 import Foundation
 
 // Grouping containers (GroupBox / Section / Form) and a tabbed container (TabView). GroupBox/Section/Form
-// are composed around a native "card" container (`.groupBox`), which each backend draws with a rounded,
+// are composed around a native "card" container (`.groupBox`), which each toolkit draws with a rounded,
 // bordered, filled chrome. TabView composes a tab-button bar over switched content. Every call site
 // compiles against HopUI and Apple's SwiftUI.
 
@@ -37,7 +37,7 @@ public struct GroupBox<Content: View>: View {
 }
 
 /// The native "card" container behind ``GroupBox`` / ``Section`` content. Produces a `.groupBox` node
-/// (one padded child); the backend draws the rounded bordered chrome.
+/// (one padded child); the toolkit draws the rounded bordered chrome.
 struct _CardBox<Content: View>: View, PrimitiveView {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }

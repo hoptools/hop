@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // HopUI's framework-owned layout engine: a faithful SwiftUI "parent proposes a size, child chooses its
-// size" model. The engine computes a frame (origin + size) for every node and tells the backend to place
-// each widget absolutely (`setFrame`), measuring leaf widgets via the backend (`measure`). Backends use
+// size" model. The engine computes a frame (origin + size) for every node and tells the toolkit to place
+// each widget absolutely (`setFrame`), measuring leaf widgets via the toolkit (`measure`). Toolkits use
 // plain absolute-positioning containers instead of native stack/box layout, so geometry is identical
 // across AppKit / GTK4 / Qt. Native composite widgets (List, the split view) keep their own internal
 // layout; the engine only sizes their outer frame.
@@ -135,7 +135,7 @@ public enum LayoutModifier: Equatable, Sendable {
 /// produced containers — Navigation bars, modifier wrappers — get stack/zstack layout automatically),
 /// parameterized by the extras in ``LayoutInfo`` (alignment, spacing, spacer length).
 enum LayoutRole {
-    /// A leaf whose size is measured by the backend (text, button, slider, shape, …).
+    /// A leaf whose size is measured by the toolkit (text, button, slider, shape, …).
     case leaf
     /// A stack along an axis: lay children out in sequence, distributing extra space to spacers.
     case stack(axis: Axis, spacing: Double?, alignment: Alignment)
@@ -147,7 +147,7 @@ enum LayoutRole {
     /// out its own internals (and the engine lays out content inside each of its panes — see the runtime).
     case native
     /// A scroll viewport (engine sizes the viewport; its single content child is laid out at its natural
-    /// size and the backend scrolls it).
+    /// size and the toolkit scrolls it).
     case scroll(axis: Axis)
     /// A ``GeometryReader``: fills the offered space and reports its size back (via the node's
     /// `onGeometry`) so content can react to the available geometry. Its single child fills it.

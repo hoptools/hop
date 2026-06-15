@@ -5,7 +5,7 @@
 import HopUI
 import HopAppKit
 
-runApp(HopDemoApp(), backend: AppKitBackend())
+runApp(HopDemoApp(), toolkit: AppKitToolkit())
 #else
 print("The AppKit demo requires macOS.")
 #endif

@@ -5,7 +5,7 @@ import CQt
 import HopUI
 
 // Custom run-loop executor for Qt: posts Swift Concurrency jobs onto Qt's event loop via a thread-safe
-// queued invocation (`hopqt_run_on_main`). Installed by the backend so `hopTask { … }` / `await`
+// queued invocation (`hopqt_run_on_main`). Installed by the toolkit so `hopTask { … }` / `await`
 // continuations run on Qt's loop.
 
 /// Holds a `@Sendable` closure so it can cross from a background `enqueue` into the Qt main-thread call.

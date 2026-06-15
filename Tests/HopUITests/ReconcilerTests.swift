@@ -5,8 +5,8 @@ import Testing
 @testable import HopUI
 import Observation
 
-/// A backend that records every operation and never opens a window, so the full
-/// view-graph → reconciler → backend pipeline can be tested headlessly.
+/// A toolkit that records every operation and never opens a window, so the full
+/// view-graph → reconciler → toolkit pipeline can be tested headlessly.
 @MainActor
 final class MockWidget {
     let kind: WidgetKind
@@ -40,14 +40,14 @@ final class MockWidget {
     var hasProgress = false
     var frame: CGRect?  // set by the layout engine via setFrame
     var scrollHandler: (@MainActor (CGSize) -> Void)?  // wired for .scroll widgets; tests invoke to scroll
-    // Live child order, maintained by the backend's insert/move/remove so tests can assert ordering
+    // Live child order, maintained by the toolkit's insert/move/remove so tests can assert ordering
     // and handle reuse (object identity) across reconciliation.
     var children: [MockWidget] = []
     init(kind: WidgetKind) { self.kind = kind }
 }
 
 @MainActor
-final class MockBackend: AppBackend {
+final class MockToolkit: AppToolkit {
     typealias Handle = MockWidget
 
     private(set) var ops: [String] = []
@@ -208,63 +208,63 @@ private struct TestCounter: View {
 
 @MainActor @Suite struct ReconcilerTests {
     @Test func testStateMutationProducesMinimalUpdate() throws {
-        let backend = MockBackend()
-        runHopApp(TestCounter(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(TestCounter(), toolkit: toolkit, title: "test")
 
         // Initial mount renders the label at its starting value and creates real widgets.
-        #expect(backend.widgets.contains { $0.text == "Count: 0" })
-        #expect(backend.makeCount > 0)
+        #expect(toolkit.widgets.contains { $0.text == "Count: 0" })
+        #expect(toolkit.makeCount > 0)
 
-        backend.clearOps()
+        toolkit.clearOps()
 
         // Drive the button's action exactly as a real click would.
-        let button = try #require(backend.widgets.first { $0.kind == .button })
+        let button = try #require(toolkit.widgets.first { $0.kind == .button })
         button.action?()
-        backend.drainMainThread()
+        toolkit.drainMainThread()
 
         // The label now reflects the new state...
-        #expect(backend.widgets.contains { $0.text == "Count: 1" })
+        #expect(toolkit.widgets.contains { $0.text == "Count: 1" })
         // ...and the reconciler reused existing widgets (no new ones) and updated only the label.
-        #expect(backend.makeCount == 0)
-        #expect(backend.ops.contains("text:Count: 1"))
+        #expect(toolkit.makeCount == 0)
+        #expect(toolkit.ops.contains("text:Count: 1"))
     }
 
     @Test func testTextFieldEditUpdatesBoundStateAndDependentLabel() throws {
-        let backend = MockBackend()
-        runHopApp(TestCounter(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(TestCounter(), toolkit: toolkit, title: "test")
 
-        #expect(backend.widgets.contains { $0.text == "Hello, !" })
-        backend.clearOps()
+        #expect(toolkit.widgets.contains { $0.text == "Hello, !" })
+        toolkit.clearOps()
 
-        // Simulate the user typing into the field exactly as the backend's change handler would.
-        let field = try #require(backend.widgets.first { $0.kind == .textField })
+        // Simulate the user typing into the field exactly as the toolkit's change handler would.
+        let field = try #require(toolkit.widgets.first { $0.kind == .textField })
         field.onChange?("Ada")
-        backend.drainMainThread()
+        toolkit.drainMainThread()
 
         // The label bound to the same @State updates, and no widgets were recreated.
-        #expect(backend.widgets.contains { $0.text == "Hello, Ada!" })
-        #expect(backend.makeCount == 0)
+        #expect(toolkit.widgets.contains { $0.text == "Hello, Ada!" })
+        #expect(toolkit.makeCount == 0)
     }
 
     @Test func testSliderSharesCountStateWithButtonAndLabel() throws {
-        let backend = MockBackend()
-        runHopApp(TestCounter(), backend: backend, title: "test")
-        backend.clearOps()
+        let toolkit = MockToolkit()
+        runHopApp(TestCounter(), toolkit: toolkit, title: "test")
+        toolkit.clearOps()
 
         // Dragging the slider updates the same @State the counter button and label use.
-        let slider = try #require(backend.widgets.first { $0.kind == .slider })
+        let slider = try #require(toolkit.widgets.first { $0.kind == .slider })
         slider.onChangeDouble?(5)
-        backend.drainMainThread()
+        toolkit.drainMainThread()
 
-        #expect(backend.widgets.contains { $0.text == "Count: 5" })
-        #expect(backend.makeCount == 0)
+        #expect(toolkit.widgets.contains { $0.text == "Count: 5" })
+        #expect(toolkit.makeCount == 0)
 
         // And the button still drives the same state, now visible on the slider.
-        let button = try #require(backend.widgets.first { $0.kind == .button })
+        let button = try #require(toolkit.widgets.first { $0.kind == .button })
         button.action?()
-        backend.drainMainThread()
-        #expect(backend.widgets.contains { $0.text == "Count: 6" })
-        #expect(backend.widgets.first { $0.kind == .slider }?.doubleValue == 6)
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.text == "Count: 6" })
+        #expect(toolkit.widgets.first { $0.kind == .slider }?.doubleValue == 6)
     }
 }
 
@@ -280,24 +280,24 @@ private struct ListSelectionView: View {
 
 @MainActor @Suite struct ListTests {
     @Test func testListIsLazyAndSelectionBindsToState() throws {
-        let backend = MockBackend()
-        runHopApp(ListSelectionView(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(ListSelectionView(), toolkit: toolkit, title: "test")
 
-        let list = try #require(backend.widgets.first { $0.kind == .list })
+        let list = try #require(toolkit.widgets.first { $0.kind == .list })
         let spec = try #require(list.listSpec)
 
         // The whole 100k-row list is one widget — rows are fetched lazily, not materialized.
         #expect(spec.count == 100_000)
-        #expect(backend.widgets.filter { $0.kind == .label }.count == 1) // only the detail label
+        #expect(toolkit.widgets.filter { $0.kind == .label }.count == 1) // only the detail label
         #expect(spec.rowText(99_999) == "Row 99999")
-        #expect(backend.widgets.contains { $0.text == "No selection" })
+        #expect(toolkit.widgets.contains { $0.text == "No selection" })
 
         // Selecting a row updates the bound @State, which the detail label reflects.
-        backend.clearOps()
+        toolkit.clearOps()
         list.listSpec?.onSelect(42)
-        backend.drainMainThread()
-        #expect(backend.widgets.contains { $0.text == "Selected Row 42" })
-        #expect(backend.makeCount == 0) // no new widgets created for the update
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.text == "Selected Row 42" })
+        #expect(toolkit.makeCount == 0) // no new widgets created for the update
     }
 }
 
@@ -325,13 +325,13 @@ private struct ToolbarDemo: View {
 
 @MainActor @Suite struct StandardMenuTests {
     @Test func testStandardMenusInstalledAutomatically() throws {
-        let backend = MockBackend()
-        runHopApp(Text("hi"), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(Text("hi"), toolkit: toolkit, title: "test")
 
         // HopUI installs the standard menu bar automatically — no app code required.
-        #expect(backend.menus.map { $0.title } == ["File", "Edit", "View", "Window", "Help"])
+        #expect(toolkit.menus.map { $0.title } == ["File", "Edit", "View", "Window", "Help"])
 
-        let edit = try #require(backend.menus.first { $0.title == "Edit" })
+        let edit = try #require(toolkit.menus.first { $0.title == "Edit" })
         let commands = edit.items.compactMap { item -> String? in
             if case .command(let title, _) = item.kind { return title }
             return nil
@@ -342,15 +342,15 @@ private struct ToolbarDemo: View {
 
 @MainActor @Suite struct ToolbarTests {
     @Test func testToolbarItemsAndButtonAction() throws {
-        let backend = MockBackend()
-        runHopApp(ToolbarDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(ToolbarDemo(), toolkit: toolkit, title: "test")
 
-        #expect(backend.toolbarItems.count == 2)
-        guard case .button(let title, let action) = backend.toolbarItems[0].kind else {
+        #expect(toolkit.toolbarItems.count == 2)
+        guard case .button(let title, let action) = toolkit.toolbarItems[0].kind else {
             Issue.record("first toolbar item should be a button"); return
         }
         #expect(title == "Inc")
-        if case .text(let string) = backend.toolbarItems[1].kind {
+        if case .text(let string) = toolkit.toolbarItems[1].kind {
             #expect(string == "Title")
         } else {
             Issue.record("second toolbar item should be text")
@@ -358,8 +358,8 @@ private struct ToolbarDemo: View {
 
         // A toolbar button mutates app state, which re-renders the content.
         action()
-        backend.drainMainThread()
-        #expect(backend.widgets.contains { $0.text == "Count: 1" })
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.text == "Count: 1" })
     }
 }
 
@@ -385,22 +385,22 @@ private struct A11yDemo: View {
 
 @MainActor @Suite struct AccessibilityTests {
     @Test func testAccessibilityModifiersRecordedOnNodes() throws {
-        let backend = MockBackend()
-        runHopApp(A11yDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(A11yDemo(), toolkit: toolkit, title: "test")
 
         // Label overrides the visible text; value is separate.
-        let rating = try #require(backend.widgets.first { $0.axLabel == "Rating" })
+        let rating = try #require(toolkit.widgets.first { $0.axLabel == "Rating" })
         #expect(rating.text == "★★★★☆")            // the visible content is unchanged
         #expect(rating.axValue == "4 out of 5 stars")
 
         // A button carries a label + hint.
-        let save = try #require(backend.widgets.first { $0.kind == .button })
+        let save = try #require(toolkit.widgets.first { $0.kind == .button })
         #expect(save.axLabel == "Save document")
         #expect(save.axHint == "Writes your changes to disk")
 
         // Hidden + traits + identifier.
-        #expect(backend.widgets.contains { $0.axHidden == true })
-        let heading = try #require(backend.widgets.first { $0.axIdentifier == "the-heading" })
+        #expect(toolkit.widgets.contains { $0.axHidden == true })
+        let heading = try #require(toolkit.widgets.first { $0.axIdentifier == "the-heading" })
         #expect(heading.axTraits == .isHeader)
     }
 }
@@ -442,15 +442,15 @@ private struct SchemeApp: App {
 
 @MainActor @Suite struct ColorSchemeTests {
     @Test func testPreferredColorSchemeAndMenuToggle() throws {
-        let backend = MockBackend()
-        runApp(SchemeApp(), backend: backend)
+        let toolkit = MockToolkit()
+        runApp(SchemeApp(), toolkit: toolkit)
 
         // Initial: light. The window appearance is applied and @Environment(\.colorScheme) reflects it.
-        #expect(backend.appliedColorScheme == .light)
-        #expect(backend.liveLabels().contains("scheme:light"))
+        #expect(toolkit.appliedColorScheme == .light)
+        #expect(toolkit.liveLabels().contains("scheme:light"))
 
         // The app's .commands contributed an "Appearance" menu (merged into the menu bar after "View").
-        let appearance = try #require(backend.menus.first { $0.title == "Appearance" })
+        let appearance = try #require(toolkit.menus.first { $0.title == "Appearance" })
         guard case .button(_, let toggle) = try #require(appearance.items.first).kind else {
             Issue.record("expected a button command"); return
         }
@@ -458,9 +458,9 @@ private struct SchemeApp: App {
         // Toggling from the menu flips the model; the @Observable re-render applies dark to the window
         // and updates the environment value.
         toggle()
-        backend.drainMainThread()
-        #expect(backend.appliedColorScheme == .dark)
-        #expect(backend.liveLabels().contains("scheme:dark"))
+        toolkit.drainMainThread()
+        #expect(toolkit.appliedColorScheme == .dark)
+        #expect(toolkit.liveLabels().contains("scheme:dark"))
     }
 }
 
@@ -484,31 +484,31 @@ private struct StyleDemo: View {
 
 @MainActor @Suite struct TextStyleTests {
     @Test func testStyleModifiersApplyAndInherit() throws {
-        let backend = MockBackend()
-        runHopApp(StyleDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(StyleDemo(), toolkit: toolkit, title: "test")
 
-        let plain = try #require(backend.widgets.first { $0.text == "plain" })
+        let plain = try #require(toolkit.widgets.first { $0.text == "plain" })
         #expect(plain.font == nil)
         #expect(plain.foregroundColor == nil)
 
-        let styled = try #require(backend.widgets.first { $0.text == "styled" })
+        let styled = try #require(toolkit.widgets.first { $0.text == "styled" })
         #expect(styled.font?.size == 22)
         #expect(styled.font?.weight == .bold)
         #expect(styled.foregroundColor == .red)
 
         // .fontWeight alone is a weight override that doesn't introduce a full font.
-        let weighted = try #require(backend.widgets.first { $0.text == "weighted" })
+        let weighted = try #require(toolkit.widgets.first { $0.text == "weighted" })
         #expect(weighted.font == nil)
         #expect(weighted.fontWeight == .bold)
 
         // `.background` wraps the view in a container painted with the color (so it covers any padding/
         // frame, matching SwiftUI) — the yellow is on the wrapping container, with the text as its child.
-        let bgContainer = try #require(backend.widgets.first { $0.backgroundColor == .yellow })
+        let bgContainer = try #require(toolkit.widgets.first { $0.backgroundColor == .yellow })
         #expect(bgContainer.kind == .zstack)
         #expect(bgContainer.children.contains { $0.text == "bg" })
 
         // Font and foreground style are environment-inherited from the enclosing VStack.
-        let inherited = try #require(backend.widgets.first { $0.text == "inherited" })
+        let inherited = try #require(toolkit.widgets.first { $0.text == "inherited" })
         #expect(inherited.font?.size == 10)
         #expect(inherited.foregroundColor == .blue)
     }
@@ -550,44 +550,44 @@ private struct NavDemo: View {
 
 @MainActor @Suite struct NavigationTests {
     @Test func testSidebarSelectionAndStackPushPop() throws {
-        let backend = MockBackend()
-        runHopApp(NavDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(NavDemo(), toolkit: toolkit, title: "test")
 
         // Initial: PageA selected → its body and title show; PageB's body does not.
-        #expect(backend.liveLabels().contains("BodyA"))
-        #expect(backend.liveLabels().contains("PageA"))   // navigation title
-        #expect(!(backend.liveLabels().contains("BodyB")))
+        #expect(toolkit.liveLabels().contains("BodyA"))
+        #expect(toolkit.liveLabels().contains("PageA"))   // navigation title
+        #expect(!(toolkit.liveLabels().contains("BodyB")))
 
         // Master-detail navigation: selecting B in the sidebar navigates the detail to B. A List in the
         // NavigationSplitView's leading column renders as a `.sidebarList` (source-list styling).
-        let list = try #require(backend.widgets.first { $0.kind == .sidebarList })
+        let list = try #require(toolkit.widgets.first { $0.kind == .sidebarList })
         list.listSpec?.onSelect(1)
-        backend.drainMainThread()
-        #expect(backend.liveLabels().contains("BodyB"))
-        #expect(backend.liveLabels().contains("PageB"))
-        #expect(!(backend.liveLabels().contains("BodyA")))
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("BodyB"))
+        #expect(toolkit.liveLabels().contains("PageB"))
+        #expect(!(toolkit.liveLabels().contains("BodyA")))
 
         // Back to A, then push via NavigationLink → the destination replaces the root, Back appears.
         list.listSpec?.onSelect(0)
-        backend.drainMainThread()
-        #expect(backend.liveLabels().contains("BodyA"))
-        try #require(backend.widgets.first { $0.kind == .button && $0.title == "go" }).action?()
-        backend.drainMainThread()
-        #expect(backend.liveLabels().contains("DeepPage"))
-        #expect(backend.liveLabels().contains("Deep"))    // pushed view's navigation title
-        #expect(backend.liveLabels().contains("‹ Back"))
-        #expect(!(backend.liveLabels().contains("BodyA")))
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("BodyA"))
+        try #require(toolkit.widgets.first { $0.kind == .button && $0.title == "go" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("DeepPage"))
+        #expect(toolkit.liveLabels().contains("Deep"))    // pushed view's navigation title
+        #expect(toolkit.liveLabels().contains("‹ Back"))
+        #expect(!(toolkit.liveLabels().contains("BodyA")))
 
         // Pop via Back → root view restored, destination gone.
-        try #require(backend.widgets.first { $0.kind == .button && $0.title == "‹ Back" }).action?()
-        backend.drainMainThread()
-        #expect(backend.liveLabels().contains("BodyA"))
-        #expect(!(backend.liveLabels().contains("DeepPage")))
+        try #require(toolkit.widgets.first { $0.kind == .button && $0.title == "‹ Back" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("BodyA"))
+        #expect(!(toolkit.liveLabels().contains("DeepPage")))
 
         // Selecting a different playground resets the navigation path (no stale pushed page).
         list.listSpec?.onSelect(0)
-        backend.drainMainThread()
-        #expect(!(backend.liveLabels().contains("DeepPage")))
+        toolkit.drainMainThread()
+        #expect(!(toolkit.liveLabels().contains("DeepPage")))
     }
 }
 
@@ -620,23 +620,23 @@ private struct EnvConsumer: View {
 
 @MainActor @Suite struct ObservableEnvironmentTests {
     @Test func testObservableInjectedThroughEnvironmentIsReadAndWritten() throws {
-        let backend = MockBackend()
-        runHopApp(EnvProducer(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(EnvProducer(), toolkit: toolkit, title: "test")
 
         // The object is visible in the descendant (via @Environment) and the ancestor (which owns it).
-        #expect(backend.widgets.contains { $0.text == "parent: 0" })
-        #expect(backend.widgets.contains { $0.text == "child: 0" })
+        #expect(toolkit.widgets.contains { $0.text == "parent: 0" })
+        #expect(toolkit.widgets.contains { $0.text == "child: 0" })
 
-        backend.clearOps()
+        toolkit.clearOps()
         // Writing through the environment-provided instance, in the child view.
-        try #require(backend.widgets.first { $0.title == "inc" }).action?()
+        try #require(toolkit.widgets.first { $0.title == "inc" }).action?()
         // The @Observable mutation defers its re-render; run it.
-        backend.drainMainThread()
+        toolkit.drainMainThread()
 
         // Both views — child and parent — reflect the shared model, with no widgets rebuilt.
-        #expect(backend.widgets.contains { $0.text == "child: 1" })
-        #expect(backend.widgets.contains { $0.text == "parent: 1" })
-        #expect(backend.makeCount == 0)
+        #expect(toolkit.widgets.contains { $0.text == "child: 1" })
+        #expect(toolkit.widgets.contains { $0.text == "parent: 1" })
+        #expect(toolkit.makeCount == 0)
     }
 }
 
@@ -671,9 +671,9 @@ private struct KeyedFieldDemo: View {
 
 @MainActor @Suite struct KeyedDiffTests {
     @Test func testForEachReorderReusesRowWidgetsAndPreservesState() throws {
-        let backend = MockBackend()
-        runHopApp(KeyedFieldDemo(), backend: backend, title: "test")
-        let vstack = try #require(backend.widgets.first { $0.kind == .vstack })
+        let toolkit = MockToolkit()
+        runHopApp(KeyedFieldDemo(), toolkit: toolkit, title: "test")
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
         // Two text-field rows in order; the first is bound to row-1 state.
         #expect(vstack.children.filter { $0.kind == .textField }.count == 2)
@@ -681,70 +681,70 @@ private struct KeyedFieldDemo: View {
 
         // Type into row 1; its bound @State (and the widget's value) update in place.
         field1.onChange?("hello")
-        backend.drainMainThread()
+        toolkit.drainMainThread()
         #expect(field1.value == "hello")
 
-        backend.clearOps()
-        let swap = try #require(backend.widgets.first { $0.title == "swap" })
+        toolkit.clearOps()
+        let swap = try #require(toolkit.widgets.first { $0.title == "swap" })
         swap.action?()
-        backend.drainMainThread()
+        toolkit.drainMainThread()
 
         // After reordering, the SAME row-1 widget is reused (no rebuild) and keeps its typed value;
         // it has simply moved to the second position.
-        #expect(backend.makeCount == 0)
-        #expect(backend.removeCount == 0)
-        #expect(backend.moveCount > 0)
+        #expect(toolkit.makeCount == 0)
+        #expect(toolkit.removeCount == 0)
+        #expect(toolkit.moveCount > 0)
         #expect(vstack.children.contains { $0 === field1 })
         #expect(field1.value == "hello")
         #expect(vstack.children.firstIndex { $0 === field1 } == 1)
     }
 
     @Test func testForEachReorderEmitsOnlyMoves() throws {
-        let backend = MockBackend()
-        runHopApp(KeyedListDemo(), backend: backend, title: "test")
-        let vstack = try #require(backend.widgets.first { $0.kind == .vstack })
+        let toolkit = MockToolkit()
+        runHopApp(KeyedListDemo(), toolkit: toolkit, title: "test")
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
         #expect(vstack.children.compactMap { $0.text } == ["Item 1", "Item 2", "Item 3"])
         let middle = try #require(vstack.children.first { $0.text == "Item 2" })
 
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.title == "reverse" }).action?()
-        backend.drainMainThread()
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "reverse" }).action?()
+        toolkit.drainMainThread()
 
         #expect(vstack.children.compactMap { $0.text } == ["Item 3", "Item 2", "Item 1"])
-        #expect(backend.makeCount == 0)       // every row reused, none rebuilt
-        #expect(backend.removeCount == 0)
-        #expect(backend.moveCount > 0)
+        #expect(toolkit.makeCount == 0)       // every row reused, none rebuilt
+        #expect(toolkit.removeCount == 0)
+        #expect(toolkit.moveCount > 0)
         #expect(vstack.children.contains { $0 === middle })  // same widget object
     }
 
     @Test func testForEachInsertIsMinimal() throws {
-        let backend = MockBackend()
-        runHopApp(KeyedListDemo(), backend: backend, title: "test")
-        let vstack = try #require(backend.widgets.first { $0.kind == .vstack })
+        let toolkit = MockToolkit()
+        runHopApp(KeyedListDemo(), toolkit: toolkit, title: "test")
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.title == "insertFront" }).action?()
-        backend.drainMainThread()
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "insertFront" }).action?()
+        toolkit.drainMainThread()
 
         #expect(vstack.children.compactMap { $0.text } == ["Item 0", "Item 1", "Item 2", "Item 3"])
-        #expect(backend.makeCount == 1)    // only the new row is built
-        #expect(backend.removeCount == 0)
-        #expect(backend.moveCount == 0)    // existing rows shift via the insert, not moves
+        #expect(toolkit.makeCount == 1)    // only the new row is built
+        #expect(toolkit.removeCount == 0)
+        #expect(toolkit.moveCount == 0)    // existing rows shift via the insert, not moves
     }
 
     @Test func testForEachDeleteRemovesOnlyTheDroppedRow() throws {
-        let backend = MockBackend()
-        runHopApp(KeyedListDemo(), backend: backend, title: "test")
-        let vstack = try #require(backend.widgets.first { $0.kind == .vstack })
+        let toolkit = MockToolkit()
+        runHopApp(KeyedListDemo(), toolkit: toolkit, title: "test")
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.title == "dropFirst" }).action?()
-        backend.drainMainThread()
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "dropFirst" }).action?()
+        toolkit.drainMainThread()
 
         #expect(vstack.children.compactMap { $0.text } == ["Item 2", "Item 3"])
-        #expect(backend.makeCount == 0)
-        #expect(backend.removeCount == 1)
-        #expect(backend.moveCount == 0)
+        #expect(toolkit.makeCount == 0)
+        #expect(toolkit.removeCount == 1)
+        #expect(toolkit.moveCount == 0)
     }
 }
 
@@ -774,41 +774,41 @@ private struct BranchDemo: View {
 
 @MainActor @Suite struct IdentityTests {
     @Test func testExplicitIDChangeRebuildsSubtree() throws {
-        let backend = MockBackend()
-        runHopApp(IDResetDemo(), backend: backend, title: "test")
-        let vstack = try #require(backend.widgets.first { $0.kind == .vstack })
+        let toolkit = MockToolkit()
+        runHopApp(IDResetDemo(), toolkit: toolkit, title: "test")
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
         let before = try #require(vstack.children.first { $0.text == "Tagged" })
 
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.title == "bump" }).action?()
-        backend.drainMainThread()
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "bump" }).action?()
+        toolkit.drainMainThread()
 
         // Changing .id() gives the subtree a fresh identity: old widget removed, new one built.
-        #expect(backend.makeCount == 1)
-        #expect(backend.removeCount == 1)
+        #expect(toolkit.makeCount == 1)
+        #expect(toolkit.removeCount == 1)
         let after = try #require(vstack.children.first { $0.text == "Tagged" })
         #expect(!(before === after))
     }
 
     @Test func testConditionalBranchSwitchResetsIdentity() throws {
-        let backend = MockBackend()
-        runHopApp(BranchDemo(), backend: backend, title: "test")
-        let vstack = try #require(backend.widgets.first { $0.kind == .vstack })
+        let toolkit = MockToolkit()
+        runHopApp(BranchDemo(), toolkit: toolkit, title: "test")
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
         // The else arm (a Button) is shown first.
         #expect(vstack.children.first?.kind == .button)
         #expect(vstack.children.first?.title == "OFF")
 
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.title == "toggle" }).action?()
-        backend.drainMainThread()
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "toggle" }).action?()
+        toolkit.drainMainThread()
 
         // Switching arms is a distinct identity (and kind), so the button is torn down and the text
         // built fresh — not reconciled in place.
         #expect(vstack.children.first?.kind == .label)
         #expect(vstack.children.first?.text == "ON")
-        #expect(backend.makeCount >= 1)
-        #expect(backend.removeCount >= 1)
+        #expect(toolkit.makeCount >= 1)
+        #expect(toolkit.removeCount >= 1)
     }
 }
 
@@ -825,21 +825,21 @@ private struct WindowDemoApp: App {
 
 @MainActor @Suite struct WindowManagementTests {
     @Test func testRunAppMountsPrimaryAndOpenWindowPresentsSecondary() throws {
-        let backend = MockBackend()
-        runApp(WindowDemoApp(), backend: backend)
+        let toolkit = MockToolkit()
+        runApp(WindowDemoApp(), toolkit: toolkit)
 
         // The primary WindowGroup is mounted via the main loop; no secondary windows yet.
-        #expect(backend.widgets.contains { $0.text == "main content" })
-        #expect(backend.openedWindows.isEmpty)
+        #expect(toolkit.widgets.contains { $0.text == "main content" })
+        #expect(toolkit.openedWindows.isEmpty)
 
         // openWindow(id:) presents the registered "About" Window with its declared title + content.
         EnvironmentStore.current.openWindow(id: "about")
-        #expect(backend.openedWindows == ["About"])
-        #expect(backend.widgets.contains { $0.text == "about content" })
+        #expect(toolkit.openedWindows == ["About"])
+        #expect(toolkit.widgets.contains { $0.text == "about content" })
 
         // An unknown id is a no-op.
         EnvironmentStore.current.openWindow(id: "missing")
-        #expect(backend.openedWindows == ["About"])
+        #expect(toolkit.openedWindows == ["About"])
     }
 }
 
@@ -873,15 +873,15 @@ private struct ShapeDemo: View {
 
 @MainActor @Suite struct ShapeTests {
     @Test func testBuiltInShapesFillStrokeAndFrame() throws {
-        let backend = MockBackend()
-        runHopApp(ShapeDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(ShapeDemo(), toolkit: toolkit, title: "test")
 
         // Four shape widgets were created.
-        #expect(backend.widgets.filter { $0.kind == .shape }.count == 4)
+        #expect(toolkit.widgets.filter { $0.kind == .shape }.count == 4)
 
         // Rectangle: red fill, fixed 40×20 (the layout engine sized it from `.frame`), and a single
         // native rect path element.
-        let rect = try #require(backend.widgets.first { $0.shapeSpec?.fill == .red })
+        let rect = try #require(toolkit.widgets.first { $0.shapeSpec?.fill == .red })
         #expect(rect.frame?.width == 40)
         #expect(rect.frame?.height == 20)
         #expect(rect.shapeSpec?.stroke == nil)
@@ -889,7 +889,7 @@ private struct ShapeDemo: View {
         #expect(rect.shapeSpec?.path(r).elements == [.rect(r)])
 
         // Circle: stroked (no fill), with the requested line width; its path is an inscribed ellipse.
-        let circle = try #require(backend.widgets.first { $0.shapeSpec?.stroke == .blue })
+        let circle = try #require(toolkit.widgets.first { $0.shapeSpec?.stroke == .blue })
         #expect(circle.shapeSpec?.fill == nil)
         #expect(circle.shapeSpec?.lineWidth == 3)
         let square = CGRect(x: 0, y: 0, width: 30, height: 30)
@@ -897,12 +897,12 @@ private struct ShapeDemo: View {
     }
 
     @Test func testBareShapeInheritsForegroundAndCustomPath() throws {
-        let backend = MockBackend()
-        runHopApp(ShapeDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(ShapeDemo(), toolkit: toolkit, title: "test")
 
         // A bare shape with no fill/stroke fills with the inherited foreground color (.purple here);
         // it is the only such shape, and the layout engine sized it to its 50×50 `.frame`.
-        let triangle = try #require(backend.widgets.first { $0.shapeSpec?.fill == .purple })
+        let triangle = try #require(toolkit.widgets.first { $0.shapeSpec?.fill == .purple })
         #expect(triangle.frame?.width == 50)
         #expect(triangle.frame?.height == 50)
 
@@ -917,11 +917,11 @@ private struct ShapeDemo: View {
     }
 
     @Test func testTransformModifiersAccumulateOnSpec() throws {
-        let backend = MockBackend()
-        runHopApp(ShapeDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(ShapeDemo(), toolkit: toolkit, title: "test")
 
         // Capsule: fill plus a chain of transforms, all gathered onto one shape spec.
-        let capsule = try #require(backend.widgets.first { $0.shapeSpec?.fill == .green })
+        let capsule = try #require(toolkit.widgets.first { $0.shapeSpec?.fill == .green })
         #expect(capsule.shapeSpec?.rotation == .degrees(90))
         #expect(capsule.shapeSpec?.offset == CGSize(width: 5, height: -3))
         #expect(capsule.shapeSpec?.scaleX == 2)
@@ -957,10 +957,10 @@ private struct MenuDemo: View {
 
 @MainActor @Suite struct MenuTests {
     @Test func testMenuEntriesIncludeButtonsSeparatorsAndSubmenu() throws {
-        let backend = MockBackend()
-        runHopApp(MenuDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(MenuDemo(), toolkit: toolkit, title: "test")
 
-        let widget = try #require(backend.widgets.first { $0.kind == .menu })
+        let widget = try #require(toolkit.widgets.first { $0.kind == .menu })
         let menu = try #require(widget.menu)
         #expect(menu.label == "Actions")
         #expect(menu.entries.count == 4)  // New, ──, Save, Export▸
@@ -976,44 +976,44 @@ private struct MenuDemo: View {
 
         // A menu action mutates state, which re-renders the dependent label.
         action0()
-        backend.drainMainThread()
-        #expect(backend.widgets.contains { $0.text == "log:New" })
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.text == "log:New" })
     }
 
     @Test func testPickerReflectsAndUpdatesSelectionBinding() throws {
-        let backend = MockBackend()
-        runHopApp(MenuDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(MenuDemo(), toolkit: toolkit, title: "test")
 
-        let widget = try #require(backend.widgets.first { $0.kind == .picker })
+        let widget = try #require(toolkit.widgets.first { $0.kind == .picker })
         let picker = try #require(widget.picker)
         #expect(picker.options == ["One", "Two", "Three"])
         #expect(picker.selectedIndex == 1)  // choice == 2 → tag 2 is at index 1
-        #expect(backend.widgets.contains { $0.text == "choice:2" })
+        #expect(toolkit.widgets.contains { $0.text == "choice:2" })
 
         // Selecting index 2 (tag 3) writes through the binding; the dependent label updates in place.
-        backend.clearOps()
+        toolkit.clearOps()
         picker.onSelect(2)
-        backend.drainMainThread()
-        #expect(backend.widgets.contains { $0.text == "choice:3" })
-        #expect(backend.makeCount == 0)  // no widgets rebuilt for the selection change
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.text == "choice:3" })
+        #expect(toolkit.makeCount == 0)  // no widgets rebuilt for the selection change
     }
 }
 
 @MainActor @Suite struct NavigationSplitViewTests {
     @Test func testSidebarSelectionDrivesDetailPane() throws {
-        let backend = MockBackend()
-        runHopApp(SplitDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(SplitDemo(), toolkit: toolkit, title: "test")
 
         // One split widget; the List is the sidebar (rendered as a `.sidebarList`), the Text is the detail.
-        #expect(backend.widgets.filter { $0.kind == .splitView }.count == 1)
-        let list = try #require(backend.widgets.first { $0.kind == .sidebarList })
+        #expect(toolkit.widgets.filter { $0.kind == .splitView }.count == 1)
+        let list = try #require(toolkit.widgets.first { $0.kind == .sidebarList })
         #expect(list.listSpec?.count == 50)
-        #expect(backend.widgets.contains { $0.text == "None" })
+        #expect(toolkit.widgets.contains { $0.text == "None" })
 
         // Selecting in the sidebar updates state shown in the detail pane.
         list.listSpec?.onSelect(7)
-        backend.drainMainThread()
-        #expect(backend.widgets.contains { $0.text == "Selected 7" })
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.text == "Selected 7" })
     }
 }
 
@@ -1033,18 +1033,18 @@ private struct MenuDemo: View {
 
 @MainActor @Suite struct FlushCoalescingTests {
     @Test func testMultipleStateWritesInOneEventCoalesceToOneFlush() throws {
-        let backend = MockBackend()
-        runHopApp(MultiSet(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(MultiSet(), toolkit: toolkit, title: "test")
 
         let before = GraphContext.flushCount
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.title == "bump" }).action?()
-        backend.drainMainThread()
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "bump" }).action?()
+        toolkit.drainMainThread()
 
         // Three @State writes in one action produce exactly ONE coalesced flush.
         #expect(GraphContext.flushCount == before + 1)
-        #expect(backend.widgets.contains { $0.text == "sum:3" })
-        #expect(backend.makeCount == 0)  // reused widgets, no rebuild
+        #expect(toolkit.widgets.contains { $0.text == "sum:3" })
+        #expect(toolkit.makeCount == 0)  // reused widgets, no rebuild
     }
 }
 
@@ -1063,19 +1063,19 @@ private struct MenuDemo: View {
 
 @MainActor @Suite struct ProgressTests {
     @Test func testDeterminateAndIndeterminateProgress() throws {
-        let backend = MockBackend()
-        runHopApp(ProgressDemo(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(ProgressDemo(), toolkit: toolkit, title: "test")
 
-        let bars = backend.widgets.filter { $0.kind == .progress }
+        let bars = toolkit.widgets.filter { $0.kind == .progress }
         #expect(bars.count == 2)
         #expect(bars.contains { $0.progressValue == 0.3 })                 // determinate
         #expect(bars.contains { $0.hasProgress && $0.progressValue == nil }) // indeterminate
 
         // Advancing the bound state updates the determinate bar in place.
-        backend.clearOps()
-        try #require(backend.widgets.first { $0.title == "advance" }).action?()
-        backend.drainMainThread()
-        #expect(backend.widgets.contains { $0.kind == .progress && $0.progressValue == 0.8 })
-        #expect(backend.makeCount == 0)
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "advance" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.kind == .progress && $0.progressValue == 0.8 })
+        #expect(toolkit.makeCount == 0)
     }
 }

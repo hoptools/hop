@@ -15,49 +15,49 @@ import Testing
 
 @MainActor @Suite struct ContainerTests {
     @Test func testGroupBoxWrapsTitledContentInACard() {
-        let backend = MockBackend()
-        runHopApp(GroupBox("Appearance") { Text("Inside the box") }, backend: backend, title: "test")
-        #expect(backend.widgets.contains { $0.kind == .groupBox })
-        #expect(backend.liveLabels().contains("Appearance"))
-        #expect(backend.liveLabels().contains("Inside the box"))
+        let toolkit = MockToolkit()
+        runHopApp(GroupBox("Appearance") { Text("Inside the box") }, toolkit: toolkit, title: "test")
+        #expect(toolkit.widgets.contains { $0.kind == .groupBox })
+        #expect(toolkit.liveLabels().contains("Appearance"))
+        #expect(toolkit.liveLabels().contains("Inside the box"))
     }
 
     @Test func testSectionHasHeaderAboveCard() {
-        let backend = MockBackend()
-        runHopApp(Section("General") { Text("A row") }, backend: backend, title: "test")
-        #expect(backend.widgets.contains { $0.kind == .groupBox })
-        #expect(backend.liveLabels().contains("General"))
-        #expect(backend.liveLabels().contains("A row"))
+        let toolkit = MockToolkit()
+        runHopApp(Section("General") { Text("A row") }, toolkit: toolkit, title: "test")
+        #expect(toolkit.widgets.contains { $0.kind == .groupBox })
+        #expect(toolkit.liveLabels().contains("General"))
+        #expect(toolkit.liveLabels().contains("A row"))
     }
 
     @Test func testFormScrollsAndGroupsSections() {
-        let backend = MockBackend()
-        runHopApp(Form { Section("S") { Text("field") } }, backend: backend, title: "test")
-        #expect(backend.widgets.contains { $0.kind == .scroll })
-        #expect(backend.widgets.contains { $0.kind == .groupBox })
-        #expect(backend.liveLabels().contains("field"))
+        let toolkit = MockToolkit()
+        runHopApp(Form { Section("S") { Text("field") } }, toolkit: toolkit, title: "test")
+        #expect(toolkit.widgets.contains { $0.kind == .scroll })
+        #expect(toolkit.widgets.contains { $0.kind == .groupBox })
+        #expect(toolkit.liveLabels().contains("field"))
     }
 
     @Test func testTabViewBuildsNativeTabsAndSwitches() throws {
-        let backend = MockBackend()
-        runHopApp(TabHost(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(TabHost(), toolkit: toolkit, title: "test")
 
         // A native .tabView carries the tab titles (from .tabItem; a Label's text is extracted) + selection.
-        let tabView = try #require(backend.widgets.first { $0.kind == .tabView })
+        let tabView = try #require(toolkit.widgets.first { $0.kind == .tabView })
         let spec = try #require(tabView.tabSpec)
         #expect(spec.titles == ["One", "Two"])
         #expect(spec.selectedIndex == 0)
 
         // Both pages stay mounted (the native widget shows the selected one), unlike the old faked version.
-        #expect(backend.liveLabels().contains("Page One"))
-        #expect(backend.liveLabels().contains("Page Two"))
+        #expect(toolkit.liveLabels().contains("Page One"))
+        #expect(toolkit.liveLabels().contains("Page Two"))
 
         // The native widget reports a user tab switch; selection flows back and re-renders.
-        backend.clearOps()
+        toolkit.clearOps()
         spec.onSelect(1)
-        backend.drainMainThread()
-        let updated = try #require((backend.widgets.first { $0.kind == .tabView })?.tabSpec)
+        toolkit.drainMainThread()
+        let updated = try #require((toolkit.widgets.first { $0.kind == .tabView })?.tabSpec)
         #expect(updated.selectedIndex == 1)
-        #expect(backend.makeCount == 0)  // pages were not rebuilt, just re-selected
+        #expect(toolkit.makeCount == 0)  // pages were not rebuilt, just re-selected
     }
 }

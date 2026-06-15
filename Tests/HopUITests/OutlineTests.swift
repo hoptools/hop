@@ -37,28 +37,28 @@ private struct OutlineSidebarView: View {
 
 @MainActor @Suite struct OutlineTests {
     @Test func testOutlineBuildsSidebarTreeAndSelectionBinds() throws {
-        let backend = MockBackend()
-        runHopApp(OutlineSidebarView(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(OutlineSidebarView(), toolkit: toolkit, title: "test")
 
         // In a NavigationSplitView's leading column, the OutlineGroup renders as a source-list tree.
-        let outline = try #require(backend.widgets.first { $0.kind == .sidebarOutline })
+        let outline = try #require(toolkit.widgets.first { $0.kind == .sidebarOutline })
         let spec = try #require(outline.outline)
         #expect(spec.roots.count == 2)
         #expect(spec.roots[0].title == "Controls")
         #expect(spec.roots[0].children.map(\.title) == ["Slider", "Button"])
         #expect(spec.roots[1].children.map(\.title) == ["Stacks"])
         #expect(spec.selectedID == nil)
-        #expect(backend.liveLabels().contains("No selection"))
+        #expect(toolkit.liveLabels().contains("No selection"))
 
         // Selecting a leaf flows back through the binding into @State, reflected in the detail.
-        backend.clearOps()
+        toolkit.clearOps()
         outline.outline?.onSelect(AnyHashable("slider"))
-        backend.drainMainThread()
-        #expect(backend.liveLabels().contains("Selected slider"))
-        #expect(backend.makeCount == 0)  // a selection change rebuilds no widgets
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("Selected slider"))
+        #expect(toolkit.makeCount == 0)  // a selection change rebuilds no widgets
 
         // After the re-render the outline spec carries the selection back down.
-        let updated = try #require((backend.widgets.first { $0.kind == .sidebarOutline })?.outline)
+        let updated = try #require((toolkit.widgets.first { $0.kind == .sidebarOutline })?.outline)
         #expect(updated.selectedID == AnyHashable("slider"))
     }
 
@@ -94,19 +94,19 @@ private struct DisclosureBoundView: View {
 
 @MainActor @Suite struct DisclosureGroupTests {
     @Test func testDisclosureGroupTogglesContent() throws {
-        let backend = MockBackend()
-        runHopApp(DisclosureBoundView(), backend: backend, title: "test")
+        let toolkit = MockToolkit()
+        runHopApp(DisclosureBoundView(), toolkit: toolkit, title: "test")
 
-        let header = try #require(backend.widgets.first { $0.kind == .button })
+        let header = try #require(toolkit.widgets.first { $0.kind == .button })
         #expect(header.title == "▸  More")
-        #expect(!backend.liveLabels().contains("Hidden detail"))  // collapsed: content not mounted
+        #expect(!toolkit.liveLabels().contains("Hidden detail"))  // collapsed: content not mounted
 
         // Tapping the header toggles the bound expansion state and reveals the content.
-        backend.clearOps()
+        toolkit.clearOps()
         header.action?()
-        backend.drainMainThread()
-        #expect(backend.liveLabels().contains("Hidden detail"))
-        let expandedHeader = try #require(backend.liveLabels().first { $0.hasSuffix("More") })
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("Hidden detail"))
+        let expandedHeader = try #require(toolkit.liveLabels().first { $0.hasSuffix("More") })
         #expect(expandedHeader == "▾  More")
     }
 }
