@@ -10,6 +10,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Single source of truth for the Swift toolchain version across every job — bump this one value to move
+# the whole matrix at once. GitHub doesn't expose `env` to a job's `container:` field, so the `config`
+# job below republishes it as an output that the Linux container images (and every other job) read via
+# `needs.config.outputs.swift`.
+env:
+  SWIFT_VERSION: "6.2"
+
 # The reactive core (HopGraph) and the view-graph/reconciler (HopUI) have no native-toolkit dependency.
 # macOS builds & tests every toolkit (AppKit + GTK4 + Qt) in one job. Linux and Windows split into
 # per-toolkit jobs: `HOP_TOOLKIT=gtk|qt` (read by Package.swift) keeps only that toolkit's targets in
@@ -17,11 +24,27 @@ concurrency:
 # and a Qt runner never needs GTK.
 
 jobs:
+  # Republishes the workflow-level SWIFT_VERSION as a job output. Needed only because `container:`
+  # can't read the `env` context; every job depends on this so they all share the one version.
+  config:
+    name: Resolve Swift version
+    runs-on: ubuntu-latest
+    outputs:
+      swift: ${{ steps.resolve.outputs.swift }}
+    steps:
+      - id: resolve
+        run: echo "swift=${{ env.SWIFT_VERSION }}" >> "$GITHUB_OUTPUT"
+
   macos:
     name: macOS (AppKit + GTK4 + Qt)
+    needs: config
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
+      - name: Install Swift ${{ needs.config.outputs.swift }}
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: ${{ needs.config.outputs.swift }}
       - name: Install GTK4 and Qt
         run: brew install gtk4 pkg-config qt
       - name: Test (all toolkits)
@@ -31,8 +54,9 @@ jobs:
 
   linux-gtk:
     name: Linux (GTK4)
+    needs: config
     runs-on: ubuntu-latest
-    container: swift:6.2
+    container: swift:${{ needs.config.outputs.swift }}
     env:
       HOP_TOOLKIT: gtk
     steps:
@@ -48,8 +72,9 @@ jobs:
 
   linux-qt:
     name: Linux (Qt)
+    needs: config
     runs-on: ubuntu-latest
-    container: swift:6.2
+    container: swift:${{ needs.config.outputs.swift }}
     env:
       HOP_TOOLKIT: qt
     steps:
@@ -67,6 +92,7 @@ jobs:
 
   windows-gtk:
     name: Windows (GTK4)
+    needs: config
     runs-on: windows-latest
     defaults:
       run:
@@ -78,8 +104,8 @@ jobs:
       - name: Install Swift toolchain
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.2-release
-          tag: 6.2-RELEASE
+          branch: swift-${{ needs.config.outputs.swift }}-release
+          tag: ${{ needs.config.outputs.swift }}-RELEASE
       # GTK4 on Windows is provided by MSYS2/mingw-w64; pkg-config resolves the same way as on
       # macOS/Linux once PKG_CONFIG_PATH and PATH point at the mingw64 prefix.
       - name: Install GTK4 (MSYS2)
@@ -103,6 +129,7 @@ jobs:
 
   windows-qt:
     name: Windows (Qt)
+    needs: config
     runs-on: windows-latest
     defaults:
       run:
@@ -114,8 +141,8 @@ jobs:
       - name: Install Swift toolchain
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.2-release
-          tag: 6.2-RELEASE
+          branch: swift-${{ needs.config.outputs.swift }}-release
+          tag: ${{ needs.config.outputs.swift }}-RELEASE
       # The official Qt build for MSVC; install-qt-action exports QT_ROOT_DIR and puts the Qt DLLs on PATH
       # (needed at test-run time). Package.swift reads QT_ROOT for its Windows include/lib flags.
       - name: Install Qt6
