@@ -136,9 +136,17 @@ void hopqt_run_on_main(void *job, hop_job_main_fn fn) {
 }
 
 void hopqt_set_color_scheme(int dark) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    // Qt 6.8 added a public setter for the application-wide color scheme (Qt::ColorScheme itself is
+    // 6.5+). Use it when available (macOS Homebrew Qt, current installers).
     if (QStyleHints *hints = QGuiApplication::styleHints()) {
         hints->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     }
+#else
+    // Older Qt (e.g. the qt6-base-dev that Ubuntu ships, ~6.4) has no public color-scheme setter, so
+    // the app simply follows the system theme. No-op; silence the unused-parameter warning.
+    (void)dark;
+#endif
 }
 
 void hopqt_set_accessible_name(void *widget, const char *name) {

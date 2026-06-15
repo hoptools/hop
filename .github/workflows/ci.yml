@@ -30,7 +30,7 @@ jobs:
         run: swift build
 
   linux-gtk:
-    name: Linux (GTK4 only)
+    name: Linux (GTK4)
     runs-on: ubuntu-latest
     container: swift:6.2
     env:
@@ -47,7 +47,7 @@ jobs:
         run: swift build
 
   linux-qt:
-    name: Linux (Qt only)
+    name: Linux (Qt)
     runs-on: ubuntu-latest
     container: swift:6.2
     env:
@@ -66,7 +66,7 @@ jobs:
         run: swift build
 
   windows-gtk:
-    name: Windows (GTK4 only)
+    name: Windows (GTK4)
     runs-on: windows-latest
     defaults:
       run:
@@ -102,7 +102,7 @@ jobs:
         run: swift build
 
   windows-qt:
-    name: Windows (Qt only)
+    name: Windows (Qt)
     runs-on: windows-latest
     defaults:
       run:
