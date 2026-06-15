@@ -73,6 +73,14 @@ gtkCSwiftSettings = []
 gtkLinkerSettings = []
 #endif
 
+// Pre-combine the GTK targets' SwiftSettings into explicitly-typed lets. Concatenating several
+// `[SwiftSetting]` lists inline inside the big `targets` array literal pushes Swift 6.2's manifest
+// type-checker over its time budget ("unable to type-check this expression in reasonable time" on
+// Linux); giving each chain a known result type up front keeps it fast.
+let gtkLibSwiftSettings: [SwiftSetting] = uiIsolation + customExecutors + gtkCSwiftSettings
+let gtkDemoSwiftSettings: [SwiftSetting] = uiIsolation + [.define("HOPUI_TOOLKIT_GTK4")] + noPrespecialize + gtkCSwiftSettings
+let gtkExecutorCheckSwiftSettings: [SwiftSetting] = customExecutors + gtkCSwiftSettings
+
 // HopUI: a native-Swift, multi-toolkit, demand-driven SwiftUI implementation for the desktop.
 // See ARCHITECTURE.md for the full blueprint. Toolkits: GTK4 (cross-platform), Qt6 (cross-platform),
 // AppKit (macOS), plus a native-SwiftUI build of the demo (macOS) for side-by-side comparison.
@@ -113,14 +121,14 @@ if toolkitEnabled("gtk") {
             providers: [.brew(["gtk4"]), .apt(["libgtk-4-dev"])]
         ),
         .target(name: "HopGTK4", dependencies: ["HopUI", "CGTK4"],
-                swiftSettings: uiIsolation + customExecutors + gtkCSwiftSettings,
+                swiftSettings: gtkLibSwiftSettings,
                 linkerSettings: gtkLinkerSettings),
         // Offscreen Cairo pixel-rendering tests for the GTK4 shape path (headless; no display).
         .testTarget(name: "HopGTK4Tests", dependencies: ["HopGTK4", "CGTK4"], swiftSettings: gtkCSwiftSettings),
         .executableTarget(name: "HopDemoGTK4", dependencies: ["HopGTK4"], path: "Demo/HopDemoGTK4",
                           resources: [.copy("hop-logo.png")],
-                          swiftSettings: uiIsolation + [.define("HOPUI_TOOLKIT_GTK4")] + noPrespecialize + gtkCSwiftSettings),
-        .executableTarget(name: "HopExecutorCheck", dependencies: ["HopUI", "HopGTK4", "CGTK4"], swiftSettings: customExecutors + gtkCSwiftSettings),
+                          swiftSettings: gtkDemoSwiftSettings),
+        .executableTarget(name: "HopExecutorCheck", dependencies: ["HopUI", "HopGTK4", "CGTK4"], swiftSettings: gtkExecutorCheckSwiftSettings),
     ]
 }
 
