@@ -71,7 +71,10 @@ jobs:
 
   windows-gtk:
     name: Windows (GTK4)
-    runs-on: windows-latest
+    # Pinned to windows-2022 (VS 2022 / MSVC 14.4x). `windows-latest` has moved to a VS 18 / MSVC 14.51
+    # toolset whose STL requires Clang 20+, but the Swift 6.2 toolchain ships Clang 19 — compiling Qt's
+    # C++ headers there fails with "STL1000: Unexpected compiler version, expected Clang 20 or newer".
+    runs-on: windows-2022
     defaults:
       run:
         shell: cmd
@@ -97,7 +100,10 @@ jobs:
       # Generate the GTK4 .lib import libraries + captured pkg-config flags that Package.swift reads on
       # Windows (works around SwiftPM's pkg-config cycle bug + the MSVC linker's lack of .dll.a support).
       - name: Prepare GTK4 import libraries (.winlibs)
-        run: .\scripts\setup-windows.ps1 -Prefix D:\a\_temp\msys64\mingw64
+        # shell: pwsh so the .ps1 actually executes — the job default (cmd) would hand the .ps1 to the
+        # Windows file association instead of running it, which hangs headlessly with no output.
+        shell: pwsh
+        run: ./scripts/setup-windows.ps1 -Prefix D:\a\_temp\msys64\mingw64
       - name: Test (GTK4)
         env:
           PKG_CONFIG_PATH: D:\a\_temp\msys64\mingw64\lib\pkgconfig
@@ -111,7 +117,10 @@ jobs:
 
   windows-qt:
     name: Windows (Qt)
-    runs-on: windows-latest
+    # Pinned to windows-2022 (VS 2022 / MSVC 14.4x). `windows-latest` has moved to a VS 18 / MSVC 14.51
+    # toolset whose STL requires Clang 20+, but the Swift 6.2 toolchain ships Clang 19 — compiling Qt's
+    # C++ headers there fails with "STL1000: Unexpected compiler version, expected Clang 20 or newer".
+    runs-on: windows-2022
     defaults:
       run:
         shell: cmd
