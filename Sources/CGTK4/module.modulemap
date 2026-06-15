@@ -1,0 +1,4 @@
+module CGTK4 [system] {
+    umbrella header "shim.h"
+    export *
+}

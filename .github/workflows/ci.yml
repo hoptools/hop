@@ -1,0 +1,135 @@
+name: HopUI CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The reactive core (HopGraph) and the view-graph/reconciler (HopUI) have no native-toolkit dependency.
+# macOS builds & tests every backend (AppKit + GTK4 + Qt) in one job. Linux and Windows split into
+# per-backend jobs: `HOP_BACKEND=gtk|qt` (read by Package.swift) keeps only that backend's targets in
+# the build graph, so each runner installs and exercises ONLY its toolkit — a GTK runner never needs Qt,
+# and a Qt runner never needs GTK.
+
+jobs:
+  macos:
+    name: macOS (AppKit + GTK4 + Qt)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install GTK4 and Qt
+        run: brew install gtk4 pkg-config qt
+      - name: Test (all backends)
+        run: swift test
+      - name: Build (all backends)
+        run: swift build
+
+  linux-gtk:
+    name: Linux (GTK4 only)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    env:
+      HOP_BACKEND: gtk
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install GTK4
+        run: |
+          apt-get update
+          apt-get install -y libgtk-4-dev pkg-config
+      - name: Test (GTK4 backend only)
+        run: swift test
+      - name: Build (GTK4 backend only)
+        run: swift build
+
+  linux-qt:
+    name: Linux (Qt only)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    env:
+      HOP_BACKEND: qt
+    steps:
+      - uses: actions/checkout@v6
+      # Qt6 dev headers/libs land in the Debian multiarch paths Package.swift defaults to on Linux
+      # (/usr/include/x86_64-linux-gnu/qt6, /usr/lib/x86_64-linux-gnu); override QT_ROOT for other layouts.
+      - name: Install Qt6
+        run: |
+          apt-get update
+          apt-get install -y qt6-base-dev
+      - name: Test (Qt backend only)
+        run: swift test
+      - name: Build (Qt backend only)
+        run: swift build
+
+  windows-gtk:
+    name: Windows (GTK4 only)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: cmd
+    env:
+      HOP_BACKEND: gtk
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Swift toolchain
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.1-release
+          tag: 6.1-RELEASE
+      # GTK4 on Windows is provided by MSYS2/mingw-w64; pkg-config resolves the same way as on
+      # macOS/Linux once PKG_CONFIG_PATH and PATH point at the mingw64 prefix.
+      - name: Install GTK4 (MSYS2)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gtk4
+            mingw-w64-x86_64-pkgconf
+      - name: Test (GTK4 backend only)
+        env:
+          PKG_CONFIG_PATH: D:\a\_temp\msys64\mingw64\lib\pkgconfig
+          PATH: D:\a\_temp\msys64\mingw64\bin;${{ env.PATH }}
+        run: swift test
+      - name: Build (GTK4 backend only)
+        env:
+          PKG_CONFIG_PATH: D:\a\_temp\msys64\mingw64\lib\pkgconfig
+          PATH: D:\a\_temp\msys64\mingw64\bin;${{ env.PATH }}
+        run: swift build
+
+  windows-qt:
+    name: Windows (Qt only)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: cmd
+    env:
+      HOP_BACKEND: qt
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Swift toolchain
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.1-release
+          tag: 6.1-RELEASE
+      # The official Qt build for MSVC; install-qt-action exports QT_ROOT_DIR and puts the Qt DLLs on PATH
+      # (needed at test-run time). Package.swift reads QT_ROOT for its Windows include/lib flags.
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+      - name: Test (Qt backend only)
+        env:
+          QT_ROOT: ${{ env.QT_ROOT_DIR }}
+        run: swift test
+      - name: Build (Qt backend only)
+        env:
+          QT_ROOT: ${{ env.QT_ROOT_DIR }}
+        run: swift build
