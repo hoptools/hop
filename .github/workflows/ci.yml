@@ -132,6 +132,10 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2022_64
+      # Generate the GTK4 .lib import libraries + captured pkg-config flags that Package.swift reads on
+      # Windows (works around SwiftPM's pkg-config cycle bug + the MSVC linker's lack of .dll.a support).
+      - name: Prepare GTK4 import libraries (.winlibs)
+        run: .\scripts\setup-windows.ps1 -Prefix D:\a\_temp\msys64\mingw64
       - name: Test (Qt)
         env:
           QT_ROOT: ${{ env.QT_ROOT_DIR }}
