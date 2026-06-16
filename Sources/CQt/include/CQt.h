@@ -108,6 +108,17 @@ double hopqt_datetime_get(void *edit);
 void hopqt_datetime_set_range(void *edit, int has_min, double min_unix, int has_max, double max_unix);
 void hopqt_datetime_connect(void *edit, hopqt_double_cb cb, void *user_data);
 
+// Color well: a swatch QPushButton that opens a QColorDialog. Components are four 0..1 doubles.
+typedef void (*hopqt_color_cb)(double r, double g, double b, double a, void *user_data);
+void *hopqt_colorwell_new(void);
+void hopqt_colorwell_set(void *btn, double r, double g, double b, double a);
+void hopqt_colorwell_set_alpha(void *btn, int support_alpha);
+double hopqt_colorwell_red(void *btn);
+double hopqt_colorwell_green(void *btn);
+double hopqt_colorwell_blue(void *btn);
+double hopqt_colorwell_alpha(void *btn);
+void hopqt_colorwell_connect(void *btn, hopqt_color_cb cb, void *user_data);
+
 // Menu bar (QMenuBar on the QMainWindow). `command` codes: 0 cut, 1 copy, 2 paste, 3 undo,
 // 4 redo, 5 select-all.
 void *hopqt_menu_bar(void *window);

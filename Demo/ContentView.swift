@@ -71,7 +71,7 @@ nonisolated final class DemoModel: @unchecked Sendable {
 /// of the components HopUI implements so far. They are grouped into desktop UI categories by
 /// ``sidebarTree`` and presented through an ``OutlineGroup`` tree selector.
 enum Playground: String, CaseIterable, Hashable {
-    case slider, button, toggle, stepper, datePicker, textField, secureField, progress
+    case slider, button, toggle, stepper, datePicker, colorPicker, textField, secureField, progress
     case text, accessibility, label, link
     case shapes, images
     case layout, disclosure, groupBox, form, tabs
@@ -84,6 +84,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .toggle: return "Toggle"
         case .stepper: return "Stepper"
         case .datePicker: return "Date Picker"
+        case .colorPicker: return "Color Picker"
         case .textField: return "Text Field"
         case .secureField: return "Secure Field"
         case .progress: return "Progress"
@@ -141,7 +142,8 @@ struct SidebarItem: Identifiable, Hashable {
 let sidebarTree: [SidebarItem] = [
     SidebarItem(category: "controls", "Controls", [
         SidebarItem(.slider), SidebarItem(.button), SidebarItem(.toggle), SidebarItem(.stepper),
-        SidebarItem(.datePicker), SidebarItem(.textField), SidebarItem(.secureField), SidebarItem(.progress),
+        SidebarItem(.datePicker), SidebarItem(.colorPicker), SidebarItem(.textField),
+        SidebarItem(.secureField), SidebarItem(.progress),
     ]),
     SidebarItem(category: "text", "Text & Accessibility", [
         SidebarItem(.text), SidebarItem(.accessibility), SidebarItem(.label), SidebarItem(.link),
@@ -196,6 +198,7 @@ public struct ContentView: View {
     @State private var stepperQuantity = 3
     @State private var password = ""
     @State private var appointment = Date()
+    @State private var tint = Color.blue
 
     public init() {}
 
@@ -241,6 +244,8 @@ public struct ContentView: View {
                 StepperPlayground(quantity: $stepperQuantity)
             } else if selection == .datePicker {
                 DatePickerPlayground(date: $appointment)
+            } else if selection == .colorPicker {
+                ColorPickerPlayground(color: $tint)
             } else if selection == .textField {
                 TextFieldPlayground(text: $name)
             } else if selection == .secureField {
@@ -359,6 +364,20 @@ struct DatePickerPlayground: View {
                     .datePickerStyle(.graphical)
                 Text("Selected: \(date)")
             }
+        }
+    }
+}
+
+struct ColorPickerPlayground: View {
+    @Binding var color: Color
+    var body: some View {
+        VStack(spacing: 18) {
+            Text("Pick a color — bound to @State and previewed below")
+            ColorPicker("Tint (with opacity)", selection: $color)
+            ColorPicker("Solid (no opacity)", selection: $color, supportsOpacity: false)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(color)
+                .frame(width: 220, height: 80)
         }
     }
 }

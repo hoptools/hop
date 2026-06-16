@@ -40,6 +40,7 @@ public final class WinUIWidget {
     var onSelectIndex: (@MainActor (Int?) -> Void)?
     var pickerOnSelect: (@MainActor (Int) -> Void)?
     var onChangeDate: (@MainActor (Date) -> Void)?
+    var onChangeColor: (@MainActor (HopUI.Color) -> Void)?
     var outlineOnSelect: (@MainActor (AnyHashable?) -> Void)?
     var tabOnSelect: (@MainActor (Int) -> Void)?
     var scrollHandler: (@MainActor (CGSize) -> Void)?
@@ -236,6 +237,21 @@ public final class WinUIToolkit: AppToolkit {
             widget.cleanups.append(cleanup)
             return widget
 
+        case .colorPicker:
+            // WinUI's inline ColorPicker (a full picker surface, not a compact swatch).
+            let picker = WinUI.ColorPicker()
+            let widget = WinUIWidget(picker, kind: kind)
+            let cleanup = picker.colorChanged.addHandler { [weak widget, weak picker] _, _ in
+                guard let widget, let picker, !widget.suppress else { return }
+                MainActor.assumeIsolated {
+                    let c = picker.color
+                    widget.onChangeColor?(HopUI.Color(red: Double(c.r) / 255, green: Double(c.g) / 255,
+                                                      blue: Double(c.b) / 255, opacity: Double(c.a) / 255))
+                }
+            }
+            widget.cleanups.append(cleanup)
+            return widget
+
         case .separator:
             let line = WinUI.Border()
             line.background = Self.brush(HopUI.Color(red: 0.5, green: 0.5, blue: 0.5, opacity: 0.4))
@@ -420,6 +436,15 @@ public final class WinUIToolkit: AppToolkit {
         // CalendarDatePicker edits the date only; the time component, bounds, and style aren't reflected here.
         handle.suppress = true
         picker.date = Self.dateTime(from: spec.date)
+        handle.suppress = false
+    }
+
+    public func configureColorPicker(_ handle: WinUIWidget, _ spec: ColorPickerSpec) {
+        guard let picker = handle.element as? WinUI.ColorPicker else { return }
+        handle.onChangeColor = spec.onChange
+        picker.isAlphaEnabled = spec.supportsOpacity
+        handle.suppress = true
+        picker.color = Self.uwpColor(spec.color)
         handle.suppress = false
     }
 

@@ -15,6 +15,8 @@
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QDateTimeEdit>
 #include <QtCore/QDateTime>
+#include <QtWidgets/QColorDialog>
+#include <QtGui/QColor>
 #include <QtWidgets/QListView>
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QTreeWidgetItemIterator>
@@ -450,6 +452,61 @@ void hopqt_datetime_connect(void *edit, hopqt_double_cb cb, void *user_data) {
     QObject::connect(e, &QDateTimeEdit::dateTimeChanged, e, [cb, user_data](const QDateTime &v) {
         if (cb) cb((double)v.toSecsSinceEpoch(), user_data);
     });
+}
+
+// A swatch button that opens a QColorDialog on click. The chosen color is painted on the button and
+// reported via the registered callback; programmatic set never opens the dialog or fires the callback.
+class HopColorWell : public QPushButton {
+public:
+    QColor color = QColor(0, 0, 0);
+    bool supportsAlpha = true;
+    hopqt_color_cb cb = nullptr;
+    void *userData = nullptr;
+    HopColorWell() {
+        setMinimumWidth(60);
+        QObject::connect(this, &QPushButton::clicked, this, [this]() {
+            QColorDialog::ColorDialogOptions opts;
+            if (supportsAlpha) opts |= QColorDialog::ShowAlphaChannel;
+            QColor picked = QColorDialog::getColor(color, this, QString(), opts);
+            if (picked.isValid()) {
+                color = picked;
+                applyColor();
+                if (cb) cb(color.redF(), color.greenF(), color.blueF(), color.alphaF(), userData);
+            }
+        });
+    }
+    void applyColor() {
+        setStyleSheet(QString("background-color: rgba(%1,%2,%3,%4); border: 1px solid gray; min-height: 18px;")
+                          .arg(color.red()).arg(color.green()).arg(color.blue()).arg(color.alphaF()));
+    }
+};
+
+void *hopqt_colorwell_new(void) {
+    HopColorWell *w = new HopColorWell();
+    w->applyColor();
+    return w;
+}
+
+void hopqt_colorwell_set(void *btn, double r, double g, double b, double a) {
+    HopColorWell *w = static_cast<HopColorWell *>(btn);
+    QColor c;
+    c.setRgbF((float)r, (float)g, (float)b, (float)a);
+    if (w->color != c) { w->color = c; w->applyColor(); }
+}
+
+void hopqt_colorwell_set_alpha(void *btn, int support_alpha) {
+    static_cast<HopColorWell *>(btn)->supportsAlpha = support_alpha != 0;
+}
+
+double hopqt_colorwell_red(void *btn)   { return static_cast<HopColorWell *>(btn)->color.redF(); }
+double hopqt_colorwell_green(void *btn) { return static_cast<HopColorWell *>(btn)->color.greenF(); }
+double hopqt_colorwell_blue(void *btn)  { return static_cast<HopColorWell *>(btn)->color.blueF(); }
+double hopqt_colorwell_alpha(void *btn) { return static_cast<HopColorWell *>(btn)->color.alphaF(); }
+
+void hopqt_colorwell_connect(void *btn, hopqt_color_cb cb, void *user_data) {
+    HopColorWell *w = static_cast<HopColorWell *>(btn);
+    w->cb = cb;
+    w->userData = user_data;
 }
 
 void *hopqt_splitter_new(void) {

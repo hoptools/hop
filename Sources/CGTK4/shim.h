@@ -372,6 +372,33 @@ static inline void hop_datepicker_connect(void *box, hop_clicked_fn cb, void *da
     if (minute) g_signal_connect_data(minute, "value-changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
 }
 
+// --- Color button (GtkColorButton: a swatch that opens the system color chooser) -------------------
+// Components are exchanged as four 0..1 doubles. GtkColorButton/GtkColorChooser are deprecated in
+// GTK 4.10 but remain available across the GTK4 versions we target (the modern replacement,
+// GtkColorDialogButton, needs 4.10+, which our oldest CI runner may not have).
+static inline void *hop_colorbutton_new(void) {
+    return gtk_color_button_new();
+}
+
+static inline void hop_colorbutton_set(void *btn, double r, double g, double b, double a) {
+    GdkRGBA rgba = { (float)r, (float)g, (float)b, (float)a };
+    gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(btn), &rgba);
+}
+
+static inline void hop_colorbutton_set_alpha(void *btn, int use_alpha) {
+    gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(btn), use_alpha ? TRUE : FALSE);
+}
+
+static inline double hop_colorbutton_red(void *btn)   { GdkRGBA c; gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &c); return c.red; }
+static inline double hop_colorbutton_green(void *btn) { GdkRGBA c; gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &c); return c.green; }
+static inline double hop_colorbutton_blue(void *btn)  { GdkRGBA c; gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &c); return c.blue; }
+static inline double hop_colorbutton_alpha(void *btn) { GdkRGBA c; gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(btn), &c); return c.alpha; }
+
+// "color-set" fires on a user pick (not on programmatic set_rgba); the handler reads the emitting button.
+static inline unsigned long hop_colorbutton_connect(void *btn, hop_clicked_fn cb, void *data) {
+    return g_signal_connect_data(btn, "color-set", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+}
+
 // --- Lazy list (GtkListView + GtkStringList + GtkSingleSelection) -----------
 //
 // `rowText` returns a malloc'd C string the shim frees. GtkListView only realizes widgets for

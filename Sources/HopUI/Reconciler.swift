@@ -61,6 +61,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
         if let menu = node.menu { toolkit.configureMenu(handle, menu) }
         if let picker = node.picker { toolkit.configurePicker(handle, picker) }
         if let datePicker = node.datePicker { toolkit.configureDatePicker(handle, datePicker) }
+        if let colorPicker = node.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
         if let outline = node.outline { toolkit.configureOutline(handle, outline) }
         if let image = node.image { toolkit.configureImage(handle, image) }
         toolkit.setScrollHandler(handle, node.onScroll)
@@ -87,6 +88,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
         if let menu = new.menu { toolkit.configureMenu(handle, menu) }
         if let picker = new.picker { toolkit.configurePicker(handle, picker) }
         if let datePicker = new.datePicker { toolkit.configureDatePicker(handle, datePicker) }
+        if let colorPicker = new.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
         if let outline = new.outline { toolkit.configureOutline(handle, outline) }
         if let image = new.image { toolkit.configureImage(handle, image) }
         toolkit.setScrollHandler(handle, new.onScroll)

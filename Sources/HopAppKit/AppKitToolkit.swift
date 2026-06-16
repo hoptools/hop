@@ -29,6 +29,7 @@ public final class AppKitWidget {
     var menuTrampolines: [ActionTrampoline] = []
     var pickerTarget: PickerTarget?
     var datePickerTarget: DatePickerTarget?
+    var colorWellTarget: ColorWellTarget?
     // For a `.scroll` widget: the clip-view bounds-change observer driving the scroll handler.
     var scrollObserver: NSObjectProtocol?
     // For a `.list` widget: the (low-priority) preferred-width constraint, so a sidebar list can be narrower.
@@ -110,6 +111,17 @@ public final class SliderTarget: NSObject {
 public final class DatePickerTarget: NSObject {
     var onChange: (@MainActor (Date) -> Void)?
     @objc func changed(_ sender: NSDatePicker) { onChange?(sender.dateValue) }
+}
+
+/// Bridges `NSColorWell`'s target/action to a stored Swift `Color` closure (for `ColorPicker`).
+/// Programmatic `color` set does not fire the action, so no feedback-loop guard is needed.
+public final class ColorWellTarget: NSObject {
+    var onChange: (@MainActor (Color) -> Void)?
+    @objc func changed(_ sender: NSColorWell) {
+        let c = sender.color.usingColorSpace(.sRGB) ?? sender.color
+        onChange?(Color(red: Double(c.redComponent), green: Double(c.greenComponent),
+                        blue: Double(c.blueComponent), opacity: Double(c.alphaComponent)))
+    }
 }
 
 /// Bridges `NSSwitch`'s target/action to a stored Swift bool closure (for `Toggle`).
@@ -367,6 +379,14 @@ public final class AppKitToolkit: AppToolkit {
             picker.target = target
             picker.action = #selector(DatePickerTarget.changed(_:))
             widget.datePickerTarget = target
+            return widget
+        case .colorPicker:
+            let well = NSColorWell()
+            let widget = AppKitWidget(well)
+            let target = ColorWellTarget()
+            well.target = target
+            well.action = #selector(ColorWellTarget.changed(_:))
+            widget.colorWellTarget = target
             return widget
         case .separator:
             let box = NSBox()
@@ -852,6 +872,15 @@ public final class AppKitToolkit: AppToolkit {
         picker.minDate = spec.minDate
         picker.maxDate = spec.maxDate
         if picker.dateValue != spec.date { picker.dateValue = spec.date }
+    }
+
+    public func configureColorPicker(_ handle: AppKitWidget, _ spec: ColorPickerSpec) {
+        guard let well = handle.view as? NSColorWell else { return }
+        handle.colorWellTarget?.onChange = spec.onChange
+        // Opacity editing is a property of the shared color panel the well opens.
+        NSColorPanel.shared.showsAlpha = spec.supportsOpacity
+        let target = Self.nsColor(spec.color)
+        if well.color != target { well.color = target }   // programmatic set doesn't fire the action
     }
 
     public func configureOutline(_ handle: AppKitWidget, _ spec: OutlineSpec) {

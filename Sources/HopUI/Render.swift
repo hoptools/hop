@@ -28,6 +28,9 @@ public enum WidgetKind: Equatable {
     /// A date/time chooser (``DatePicker``), backed by the toolkit's native control (NSDatePicker /
     /// GtkCalendar+spin / QDateTimeEdit). Carries a ``DatePickerSpec``.
     case datePicker
+    /// A color chooser (``ColorPicker``), backed by the toolkit's native control (NSColorWell /
+    /// GtkColorButton / a QColorDialog button). Carries a ``ColorPickerSpec``.
+    case colorPicker
     /// A separator line (``Divider``), or a separator entry within a menu.
     case separator
     /// A progress bar (``ProgressView``): determinate (a fraction) or indeterminate (animated).
@@ -242,6 +245,8 @@ public struct RenderNode {
     public var picker: PickerSpec?
     /// Date/time configuration for `.datePicker` nodes. Not part of equality.
     public var datePicker: DatePickerSpec?
+    /// Color configuration for `.colorPicker` nodes. Not part of equality.
+    public var colorPicker: ColorPickerSpec?
     /// Tree configuration for `.outline`/`.sidebarOutline` nodes. Not part of equality.
     public var outline: OutlineSpec?
     /// Image configuration for `.image` nodes. Not part of equality.
@@ -276,7 +281,7 @@ public struct RenderNode {
                 onChangeBool: (@MainActor (Bool) -> Void)? = nil,
                 list: ListSpec? = nil, shape: ShapeSpec? = nil,
                 menu: MenuContent? = nil, picker: PickerSpec? = nil, datePicker: DatePickerSpec? = nil,
-                tag: AnyHashable? = nil,
+                colorPicker: ColorPickerSpec? = nil, tag: AnyHashable? = nil,
                 outline: OutlineSpec? = nil, image: ImageSpec? = nil, tabs: TabSpec? = nil,
                 layout: LayoutInfo = LayoutInfo(), onGeometry: (@MainActor (CGSize) -> Void)? = nil,
                 onScroll: (@MainActor (CGSize) -> Void)? = nil,
@@ -295,6 +300,7 @@ public struct RenderNode {
         self.menu = menu
         self.picker = picker
         self.datePicker = datePicker
+        self.colorPicker = colorPicker
         self.outline = outline
         self.image = image
         self.tabs = tabs

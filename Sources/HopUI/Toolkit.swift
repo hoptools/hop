@@ -42,6 +42,10 @@ public protocol RenderToolkit: AnyObject {
     /// and style, and wire the change callback, using the toolkit's native date control (NSDatePicker /
     /// GtkCalendar+spinners / QDateTimeEdit). Reapplied each reconcile (the spec is not `Equatable`).
     func configureDatePicker(_ handle: Handle, _ spec: DatePickerSpec)
+    /// Configure a color chooser (``ColorPicker``): reflect the current color and opacity-editing flag, and
+    /// wire the change callback, using the toolkit's native color control (NSColorWell / GtkColorButton /
+    /// a QColorDialog swatch button). Reapplied each reconcile (the spec is not `Equatable`).
+    func configureColorPicker(_ handle: Handle, _ spec: ColorPickerSpec)
     /// Configure a hierarchical tree (``OutlineGroup`` / `List(_:children:)`): (re)build the native tree from
     /// `spec.roots`, reflect the selection, and wire the selection callback, using the toolkit's native tree
     /// widget (NSOutlineView / GtkTreeListModel / QTreeWidget).

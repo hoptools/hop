@@ -63,6 +63,8 @@ final class GTK4ActionBox {
     var dateWidget: UnsafeMutableRawPointer?
     var dateConnected = false
     var suppressDate = false
+    /// Color-picker change callback (RGBA, each 0..1). "color-set" only fires on a user pick, so no guard.
+    var onChangeColor: (@MainActor (Double, Double, Double, Double) -> Void)?
     /// Outline (tree) state: the pre-order flattened rows the C row callbacks read, a structure signature
     /// for rebuild detection, the last reflected selection key, and the key→selection callback.
     var treeFlat: [(key: String, title: String, depth: Int)] = []
@@ -138,6 +140,15 @@ private let gtk4DateChangedCallback: @convention(c) (UnsafeMutableRawPointer?, U
         guard !box.suppressDate, let widget = box.dateWidget else { return }
         box.onChangeDate?(hop_datepicker_get(widget))
     }
+}
+
+// Fired on a GtkColorButton user pick; reads RGBA off the emitting button.
+private let gtk4ColorSetCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { button, userData in
+    guard let button, let userData else { return }
+    let r = hop_colorbutton_red(button), g = hop_colorbutton_green(button)
+    let b = hop_colorbutton_blue(button), a = hop_colorbutton_alpha(button)
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onChangeColor?(r, g, b, a) }
 }
 
 // GSimpleAction "activate" signature is (action, parameter, user_data).
@@ -361,6 +372,7 @@ public final class GTK4Toolkit: AppToolkit {
         case .menu: widget = hop_menu_button_new()!
         case .picker: widget = hop_dropdown_new()!
         case .datePicker: widget = hop_datepicker_new()!
+        case .colorPicker: widget = hop_colorbutton_new()!
         case .progress: widget = hop_progress_bar_new()!
         case .separator:
             widget = hop_separator_new(1)!  // a divider between stacked rows is a horizontal line
@@ -406,6 +418,10 @@ public final class GTK4Toolkit: AppToolkit {
         } else if kind == .datePicker {
             // Sub-widget signals are connected in configureDatePicker (once components are known).
             handle.actionBox = GTK4ActionBox()
+        } else if kind == .colorPicker {
+            let box = GTK4ActionBox()
+            handle.actionBox = box
+            _ = hop_colorbutton_connect(widget, gtk4ColorSetCallback, Unmanaged.passUnretained(box).toOpaque())
         } else if kind == .progress {
             handle.isProgress = true
         } else if kind == .splitView {
@@ -697,6 +713,14 @@ public final class GTK4Toolkit: AppToolkit {
             hop_datepicker_set(handle.widget, target)
             box.suppressDate = false
         }
+    }
+
+    public func configureColorPicker(_ handle: GTK4Widget, _ spec: ColorPickerSpec) {
+        guard let box = handle.actionBox else { return }
+        box.onChangeColor = { r, g, b, a in spec.onChange(Color(red: r, green: g, blue: b, opacity: a)) }
+        hop_colorbutton_set_alpha(handle.widget, spec.supportsOpacity ? 1 : 0)
+        // Programmatic set_rgba doesn't emit "color-set", so this won't re-fire the handler.
+        hop_colorbutton_set(handle.widget, spec.color.red, spec.color.green, spec.color.blue, spec.color.opacity)
     }
 
     public func configureShape(_ handle: GTK4Widget, _ spec: ShapeSpec) {

@@ -57,6 +57,8 @@ final class QtActionBox {
     /// Date-picker change callback (called with Unix seconds). The shim blocks the signal during
     /// programmatic sets, so no feedback-loop guard is needed here.
     var onChangeDate: (@MainActor (Double) -> Void)?
+    /// Color-picker change callback (RGBA, each 0..1). Only fires on a user pick (programmatic set is silent).
+    var onChangeColor: (@MainActor (Double, Double, Double, Double) -> Void)?
     /// Outline (tree) state: the flattened rows the C row callbacks read, a structure signature for
     /// rebuild detection, the last reflected selection key, whether the selection signal is wired, and the
     /// key→selection callback.
@@ -109,6 +111,13 @@ private let qtDateCallback: @convention(c) (Double, UnsafeMutableRawPointer?) ->
     guard let userData else { return }
     let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.onChangeDate?(value) }
+}
+
+// Fired when the user picks a color in the QColorDialog opened by the swatch button (RGBA, each 0..1).
+private let qtColorCallback: @convention(c) (Double, Double, Double, Double, UnsafeMutableRawPointer?) -> Void = { r, g, b, a, userData in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onChangeColor?(r, g, b, a) }
 }
 
 // QCheckBox toggled(bool), passed as 0/1, for a Toggle.
@@ -325,6 +334,12 @@ public final class QtToolkit: AppToolkit {
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_datetime_connect(widget.ptr, qtDateCallback, Unmanaged.passUnretained(box).toOpaque())
+            return widget
+        case .colorPicker:
+            let widget = QtWidget(hopqt_colorwell_new()!)
+            let box = QtActionBox()
+            widget.actionBox = box
+            hopqt_colorwell_connect(widget.ptr, qtColorCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
         case .list, .sidebarList:
             let widget = QtWidget(hopqt_list_new()!)
@@ -622,6 +637,14 @@ public final class QtToolkit: AppToolkit {
                                  spec.maxDate != nil ? 1 : 0, spec.maxDate?.timeIntervalSince1970 ?? 0)
         // Programmatic set is signal-blocked in the shim, so this won't re-fire the change handler.
         hopqt_datetime_set(handle.ptr, spec.date.timeIntervalSince1970)
+    }
+
+    public func configureColorPicker(_ handle: QtWidget, _ spec: ColorPickerSpec) {
+        guard let box = handle.actionBox else { return }
+        box.onChangeColor = { r, g, b, a in spec.onChange(Color(red: r, green: g, blue: b, opacity: a)) }
+        hopqt_colorwell_set_alpha(handle.ptr, spec.supportsOpacity ? 1 : 0)
+        // Programmatic set never opens the dialog / fires the callback, so no loop.
+        hopqt_colorwell_set(handle.ptr, spec.color.red, spec.color.green, spec.color.blue, spec.color.opacity)
     }
 
     public func configureShape(_ handle: QtWidget, _ spec: ShapeSpec) {
