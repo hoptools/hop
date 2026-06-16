@@ -99,6 +99,15 @@ void hopqt_slider_set_value(void *slider, double value);
 double hopqt_slider_value(void *slider);
 void hopqt_slider_connect(void *slider, hopqt_double_cb cb, void *user_data);
 
+// Date/time picker (QDateTimeEdit with a calendar popup). The value is exchanged as a Unix timestamp
+// (seconds since the epoch) so the Swift side converts to/from a Foundation Date.
+void *hopqt_datetime_new(void);
+void hopqt_datetime_set_components(void *edit, int want_date, int want_time);
+void hopqt_datetime_set(void *edit, double unix_seconds);
+double hopqt_datetime_get(void *edit);
+void hopqt_datetime_set_range(void *edit, int has_min, double min_unix, int has_max, double max_unix);
+void hopqt_datetime_connect(void *edit, hopqt_double_cb cb, void *user_data);
+
 // Menu bar (QMenuBar on the QMainWindow). `command` codes: 0 cut, 1 copy, 2 paste, 3 undo,
 // 4 redo, 5 select-all.
 void *hopqt_menu_bar(void *window);

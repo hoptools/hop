@@ -33,6 +33,7 @@ final class MockWidget {
     var shapeSpec: ShapeSpec?
     var menu: MenuContent?
     var picker: PickerSpec?
+    var datePicker: DatePickerSpec?
     var outline: OutlineSpec?
     var imageSpec: ImageSpec?
     var tabSpec: TabSpec?
@@ -106,6 +107,7 @@ final class MockToolkit: AppToolkit {
     func configureShape(_ handle: MockWidget, _ spec: ShapeSpec) { ops.append("shape"); handle.shapeSpec = spec }
     func configureMenu(_ handle: MockWidget, _ menu: MenuContent) { ops.append("menu:\(menu.label)"); handle.menu = menu }
     func configurePicker(_ handle: MockWidget, _ spec: PickerSpec) { ops.append("picker:\(spec.options.count)"); handle.picker = spec }
+    func configureDatePicker(_ handle: MockWidget, _ spec: DatePickerSpec) { ops.append("datePicker:\(spec.components.rawValue)"); handle.datePicker = spec }
     func configureOutline(_ handle: MockWidget, _ spec: OutlineSpec) { ops.append("outline:\(spec.roots.count)"); handle.outline = spec }
     func configureImage(_ handle: MockWidget, _ spec: ImageSpec) {
         let kind: String

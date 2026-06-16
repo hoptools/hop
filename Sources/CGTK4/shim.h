@@ -291,6 +291,87 @@ static inline unsigned long hop_connect_value_changed(void *scale, hop_clicked_f
     return g_signal_connect_data(scale, "value-changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
 }
 
+// --- Date picker (composite: GtkCalendar + an hour:minute GtkSpinButton row) -----------------------
+//
+// GTK4 has no single date/time control, so we compose one: a GtkCalendar (date) plus two GtkSpinButtons
+// (time) in a vertical box. The value is exchanged as a Unix timestamp (seconds, local time) so the Swift
+// side converts to/from a Foundation Date. Sub-widgets are stashed on the box via g_object_set_data so
+// set/get/visibility can find them; `hop_datepicker_set_components` shows only the requested parts.
+static inline void *hop_datepicker_new(void) {
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    GtkWidget *cal = gtk_calendar_new();
+    g_object_set_data(G_OBJECT(box), "hop-cal", cal);
+    gtk_box_append(GTK_BOX(box), cal);
+
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    GtkWidget *hour = gtk_spin_button_new_with_range(0, 23, 1);
+    GtkWidget *minute = gtk_spin_button_new_with_range(0, 59, 1);
+    gtk_spin_button_set_digits(GTK_SPIN_BUTTON(hour), 0);
+    gtk_spin_button_set_digits(GTK_SPIN_BUTTON(minute), 0);
+    g_object_set_data(G_OBJECT(box), "hop-hour", hour);
+    g_object_set_data(G_OBJECT(box), "hop-min", minute);
+    g_object_set_data(G_OBJECT(box), "hop-timerow", row);
+    gtk_box_append(GTK_BOX(row), gtk_label_new("Time"));
+    gtk_box_append(GTK_BOX(row), hour);
+    gtk_box_append(GTK_BOX(row), gtk_label_new(":"));
+    gtk_box_append(GTK_BOX(row), minute);
+    gtk_box_append(GTK_BOX(box), row);
+    return box;
+}
+
+static inline void hop_datepicker_set_components(void *box, int want_date, int want_time) {
+    GtkWidget *cal = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-cal");
+    GtkWidget *row = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-timerow");
+    if (cal) gtk_widget_set_visible(cal, want_date ? TRUE : FALSE);
+    if (row) gtk_widget_set_visible(row, want_time ? TRUE : FALSE);
+}
+
+static inline void hop_datepicker_set(void *box, double unix_seconds) {
+    GtkWidget *cal = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-cal");
+    GtkWidget *hour = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-hour");
+    GtkWidget *minute = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-min");
+    GDateTime *dt = g_date_time_new_from_unix_local((gint64)unix_seconds);
+    if (!dt) return;
+    if (cal) gtk_calendar_select_day(GTK_CALENDAR(cal), dt);
+    if (hour) gtk_spin_button_set_value(GTK_SPIN_BUTTON(hour), g_date_time_get_hour(dt));
+    if (minute) gtk_spin_button_set_value(GTK_SPIN_BUTTON(minute), g_date_time_get_minute(dt));
+    g_date_time_unref(dt);
+}
+
+static inline double hop_datepicker_get(void *box) {
+    GtkWidget *cal = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-cal");
+    GtkWidget *hour = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-hour");
+    GtkWidget *minute = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-min");
+    int y = 2000, mo = 1, d = 1;
+    if (cal) {
+        GDateTime *cd = gtk_calendar_get_date(GTK_CALENDAR(cal));
+        if (cd) {
+            y = g_date_time_get_year(cd);
+            mo = g_date_time_get_month(cd);
+            d = g_date_time_get_day_of_month(cd);
+            g_date_time_unref(cd);
+        }
+    }
+    int h = hour ? gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(hour)) : 0;
+    int mi = minute ? gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(minute)) : 0;
+    GDateTime *dt = g_date_time_new_local(y, mo, d, h, mi, 0);
+    double secs = dt ? (double)g_date_time_to_unix(dt) : 0;
+    if (dt) g_date_time_unref(dt);
+    return secs;
+}
+
+// Connect the calendar's "day-selected" and both spin buttons' "value-changed" to one callback. The
+// callback receives the emitting sub-widget (ignored) and user_data; recover the value via the stored
+// box pointer + hop_datepicker_get.
+static inline void hop_datepicker_connect(void *box, hop_clicked_fn cb, void *data) {
+    GtkWidget *cal = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-cal");
+    GtkWidget *hour = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-hour");
+    GtkWidget *minute = (GtkWidget *)g_object_get_data(G_OBJECT(box), "hop-min");
+    if (cal) g_signal_connect_data(cal, "day-selected", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+    if (hour) g_signal_connect_data(hour, "value-changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+    if (minute) g_signal_connect_data(minute, "value-changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+}
+
 // --- Lazy list (GtkListView + GtkStringList + GtkSingleSelection) -----------
 //
 // `rowText` returns a malloc'd C string the shim frees. GtkListView only realizes widgets for

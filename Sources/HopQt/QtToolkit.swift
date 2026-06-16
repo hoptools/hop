@@ -3,6 +3,7 @@
 
 import CQt
 import HopUI
+import Foundation  // Date (for DatePicker value conversion)
 #if canImport(Darwin)
 import Darwin  // strdup
 #elseif canImport(Glibc)
@@ -53,6 +54,9 @@ final class QtActionBox {
     var pickerOnSelect: (@MainActor (Int) -> Void)?
     var pickerOptions: [String] = []
     var comboConnected = false
+    /// Date-picker change callback (called with Unix seconds). The shim blocks the signal during
+    /// programmatic sets, so no feedback-loop guard is needed here.
+    var onChangeDate: (@MainActor (Double) -> Void)?
     /// Outline (tree) state: the flattened rows the C row callbacks read, a structure signature for
     /// rebuild detection, the last reflected selection key, whether the selection signal is wired, and the
     /// key→selection callback.
@@ -97,6 +101,14 @@ private let qtSliderCallback: @convention(c) (Double, UnsafeMutableRawPointer?) 
     guard let userData else { return }
     let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.onChangeDouble?(value) }
+}
+
+// Fired by QDateTimeEdit with the new value as Unix seconds (only on user edits — programmatic sets are
+// signal-blocked in the shim).
+private let qtDateCallback: @convention(c) (Double, UnsafeMutableRawPointer?) -> Void = { value, userData in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onChangeDate?(value) }
 }
 
 // QCheckBox toggled(bool), passed as 0/1, for a Toggle.
@@ -307,6 +319,12 @@ public final class QtToolkit: AppToolkit {
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_slider_connect(widget.ptr, qtSliderCallback, Unmanaged.passUnretained(box).toOpaque())
+            return widget
+        case .datePicker:
+            let widget = QtWidget(hopqt_datetime_new()!)
+            let box = QtActionBox()
+            widget.actionBox = box
+            hopqt_datetime_connect(widget.ptr, qtDateCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
         case .list, .sidebarList:
             let widget = QtWidget(hopqt_list_new()!)
@@ -590,6 +608,20 @@ public final class QtToolkit: AppToolkit {
             box.lastSelected = target
             hopqt_combo_set_selected(handle.ptr, Int32(target ?? -1))
         }
+    }
+
+    public func configureDatePicker(_ handle: QtWidget, _ spec: DatePickerSpec) {
+        guard let box = handle.actionBox else { return }
+        box.onChangeDate = { spec.onChange(Date(timeIntervalSince1970: $0)) }
+        let wantDate = spec.components.contains(.date)
+        let wantTime = spec.components.contains(.hourAndMinute)
+        // QDateTimeEdit is inherently compact; the calendar popup covers the "graphical" intent too.
+        hopqt_datetime_set_components(handle.ptr, wantDate ? 1 : 0, wantTime ? 1 : 0)
+        hopqt_datetime_set_range(handle.ptr,
+                                 spec.minDate != nil ? 1 : 0, spec.minDate?.timeIntervalSince1970 ?? 0,
+                                 spec.maxDate != nil ? 1 : 0, spec.maxDate?.timeIntervalSince1970 ?? 0)
+        // Programmatic set is signal-blocked in the shim, so this won't re-fire the change handler.
+        hopqt_datetime_set(handle.ptr, spec.date.timeIntervalSince1970)
     }
 
     public func configureShape(_ handle: QtWidget, _ spec: ShapeSpec) {

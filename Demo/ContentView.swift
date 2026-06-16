@@ -71,7 +71,7 @@ nonisolated final class DemoModel: @unchecked Sendable {
 /// of the components HopUI implements so far. They are grouped into desktop UI categories by
 /// ``sidebarTree`` and presented through an ``OutlineGroup`` tree selector.
 enum Playground: String, CaseIterable, Hashable {
-    case slider, button, toggle, stepper, textField, secureField, progress
+    case slider, button, toggle, stepper, datePicker, textField, secureField, progress
     case text, accessibility, label, link
     case shapes, images
     case layout, disclosure, groupBox, form, tabs
@@ -83,6 +83,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .button: return "Buttons"
         case .toggle: return "Toggle"
         case .stepper: return "Stepper"
+        case .datePicker: return "Date Picker"
         case .textField: return "Text Field"
         case .secureField: return "Secure Field"
         case .progress: return "Progress"
@@ -140,7 +141,7 @@ struct SidebarItem: Identifiable, Hashable {
 let sidebarTree: [SidebarItem] = [
     SidebarItem(category: "controls", "Controls", [
         SidebarItem(.slider), SidebarItem(.button), SidebarItem(.toggle), SidebarItem(.stepper),
-        SidebarItem(.textField), SidebarItem(.secureField), SidebarItem(.progress),
+        SidebarItem(.datePicker), SidebarItem(.textField), SidebarItem(.secureField), SidebarItem(.progress),
     ]),
     SidebarItem(category: "text", "Text & Accessibility", [
         SidebarItem(.text), SidebarItem(.accessibility), SidebarItem(.label), SidebarItem(.link),
@@ -194,6 +195,7 @@ public struct ContentView: View {
     @State private var notificationsOn = false
     @State private var stepperQuantity = 3
     @State private var password = ""
+    @State private var appointment = Date()
 
     public init() {}
 
@@ -237,6 +239,8 @@ public struct ContentView: View {
                 TogglePlayground(wifi: $wifiOn, notifications: $notificationsOn)
             } else if selection == .stepper {
                 StepperPlayground(quantity: $stepperQuantity)
+            } else if selection == .datePicker {
+                DatePickerPlayground(date: $appointment)
             } else if selection == .textField {
                 TextFieldPlayground(text: $name)
             } else if selection == .secureField {
@@ -336,6 +340,26 @@ struct StepperPlayground: View {
             Stepper("Quantity: \(quantity)", value: $quantity, in: 0 ... 10)
                 .frame(width: 260)
             Text("You picked \(quantity)")
+        }
+    }
+}
+
+struct DatePickerPlayground: View {
+    @Binding var date: Date
+    var body: some View {
+        // Scrolls because the graphical/calendar variations are tall on some toolkits (GTK4 renders
+        // every date picker as an inline calendar). Every variation binds to the same @State Date.
+        ScrollView {
+            VStack(spacing: 18) {
+                Text("Pick a date/time — each variation is bound to the same @State Date")
+                DatePicker("Appointment (date & time)", selection: $date)
+                DatePicker("Date only", selection: $date, displayedComponents: .date)
+                DatePicker("Time only", selection: $date, displayedComponents: .hourAndMinute)
+                DatePicker("Graphical calendar", selection: $date, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                Text("Selected: \(date)")
+            }
+            .frame(width: 360)
         }
     }
 }

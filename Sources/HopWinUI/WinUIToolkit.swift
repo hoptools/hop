@@ -39,6 +39,7 @@ public final class WinUIWidget {
     var onChangeBool: (@MainActor (Bool) -> Void)?
     var onSelectIndex: (@MainActor (Int?) -> Void)?
     var pickerOnSelect: (@MainActor (Int) -> Void)?
+    var onChangeDate: (@MainActor (Date) -> Void)?
     var outlineOnSelect: (@MainActor (AnyHashable?) -> Void)?
     var tabOnSelect: (@MainActor (Int) -> Void)?
     var scrollHandler: (@MainActor (CGSize) -> Void)?
@@ -221,6 +222,20 @@ public final class WinUIToolkit: AppToolkit {
             widget.cleanups.append(cleanup)
             return widget
 
+        case .datePicker:
+            // WinUI's CalendarDatePicker covers the date portion (it has no time editing — the time
+            // component is not yet reflected here; see configureDatePicker).
+            let picker = WinUI.CalendarDatePicker()
+            let widget = WinUIWidget(picker, kind: kind)
+            let cleanup = picker.dateChanged.addHandler { [weak widget, weak picker] _, _ in
+                guard let widget, let picker, !widget.suppress else { return }
+                MainActor.assumeIsolated {
+                    if let dt = picker.date { widget.onChangeDate?(Self.date(from: dt)) }
+                }
+            }
+            widget.cleanups.append(cleanup)
+            return widget
+
         case .separator:
             let line = WinUI.Border()
             line.background = Self.brush(HopUI.Color(red: 0.5, green: 0.5, blue: 0.5, opacity: 0.4))
@@ -397,6 +412,15 @@ public final class WinUIToolkit: AppToolkit {
         if combo.selectedIndex != target {
             handle.suppress = true; combo.selectedIndex = target; handle.suppress = false
         }
+    }
+
+    public func configureDatePicker(_ handle: WinUIWidget, _ spec: DatePickerSpec) {
+        guard let picker = handle.element as? WinUI.CalendarDatePicker else { return }
+        handle.onChangeDate = spec.onChange
+        // CalendarDatePicker edits the date only; the time component, bounds, and style aren't reflected here.
+        handle.suppress = true
+        picker.date = Self.dateTime(from: spec.date)
+        handle.suppress = false
     }
 
     public func configureMenu(_ handle: WinUIWidget, _ menu: MenuContent) {
@@ -700,6 +724,16 @@ public final class WinUIToolkit: AppToolkit {
 
     static func brush(_ color: HopUI.Color) -> WinUI.SolidColorBrush {
         WinUI.SolidColorBrush(uwpColor(color))
+    }
+
+    // WinRT DateTime is 100-ns ticks since 1601-01-01 (UTC); Foundation Date is seconds since 1970.
+    private static let winrtEpochOffsetSeconds: Double = 11_644_473_600
+    static func date(from dt: WindowsFoundation.DateTime) -> Date {
+        Date(timeIntervalSince1970: Double(dt.universalTime) / 10_000_000 - winrtEpochOffsetSeconds)
+    }
+    static func dateTime(from date: Date) -> WindowsFoundation.DateTime {
+        WindowsFoundation.DateTime(
+            universalTime: Int64((date.timeIntervalSince1970 + winrtEpochOffsetSeconds) * 10_000_000))
     }
 
     static func fontWeight(_ weight: HopUI.Font.Weight) -> UWP.FontWeight {

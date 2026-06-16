@@ -13,6 +13,8 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QSlider>
+#include <QtWidgets/QDateTimeEdit>
+#include <QtCore/QDateTime>
 #include <QtWidgets/QListView>
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QTreeWidgetItemIterator>
@@ -403,6 +405,50 @@ void hopqt_slider_connect(void *slider, hopqt_double_cb cb, void *user_data) {
     QSlider *s = static_cast<QSlider *>(slider);
     QObject::connect(s, &QSlider::valueChanged, s, [cb, user_data](int v) {
         if (cb) cb((double)v, user_data);
+    });
+}
+
+void *hopqt_datetime_new(void) {
+    QDateTimeEdit *e = new QDateTimeEdit();
+    e->setCalendarPopup(true);   // a compact field with a drop-down calendar
+    return e;
+}
+
+void hopqt_datetime_set_components(void *edit, int want_date, int want_time) {
+    QDateTimeEdit *e = static_cast<QDateTimeEdit *>(edit);
+    QString fmt;
+    if (want_date) fmt += "yyyy-MM-dd";
+    if (want_date && want_time) fmt += " ";
+    if (want_time) fmt += "HH:mm";
+    if (fmt.isEmpty()) fmt = "yyyy-MM-dd";
+    e->setDisplayFormat(fmt);
+}
+
+void hopqt_datetime_set(void *edit, double unix_seconds) {
+    QDateTimeEdit *e = static_cast<QDateTimeEdit *>(edit);
+    QDateTime target = QDateTime::fromSecsSinceEpoch((qint64)unix_seconds);
+    if (e->dateTime() != target) {
+        QSignalBlocker block(e);   // programmatic set must not re-fire dateTimeChanged
+        e->setDateTime(target);
+    }
+}
+
+double hopqt_datetime_get(void *edit) {
+    return (double)static_cast<QDateTimeEdit *>(edit)->dateTime().toSecsSinceEpoch();
+}
+
+void hopqt_datetime_set_range(void *edit, int has_min, double min_unix, int has_max, double max_unix) {
+    QDateTimeEdit *e = static_cast<QDateTimeEdit *>(edit);
+    if (has_min) e->setMinimumDateTime(QDateTime::fromSecsSinceEpoch((qint64)min_unix));
+    else e->clearMinimumDateTime();
+    if (has_max) e->setMaximumDateTime(QDateTime::fromSecsSinceEpoch((qint64)max_unix));
+    else e->clearMaximumDateTime();
+}
+
+void hopqt_datetime_connect(void *edit, hopqt_double_cb cb, void *user_data) {
+    QDateTimeEdit *e = static_cast<QDateTimeEdit *>(edit);
+    QObject::connect(e, &QDateTimeEdit::dateTimeChanged, e, [cb, user_data](const QDateTime &v) {
+        if (cb) cb((double)v.toSecsSinceEpoch(), user_data);
     });
 }
 

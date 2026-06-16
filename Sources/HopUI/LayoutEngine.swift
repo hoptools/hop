@@ -38,7 +38,7 @@ struct LayoutEngine {
         case .list, .sidebarList, .outline, .sidebarOutline, .splitView, .tabView:
             return .native
         case .label, .button, .textField, .secureField, .slider, .toggle, .shape, .image, .menu, .picker,
-             .progress, .separator, .window:
+             .datePicker, .progress, .separator, .window:
             return .leaf
         }
     }

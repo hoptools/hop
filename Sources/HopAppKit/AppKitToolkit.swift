@@ -28,6 +28,7 @@ public final class AppKitWidget {
     // Retained action trampolines for a drop-down menu's items, and the selection target for a picker.
     var menuTrampolines: [ActionTrampoline] = []
     var pickerTarget: PickerTarget?
+    var datePickerTarget: DatePickerTarget?
     // For a `.scroll` widget: the clip-view bounds-change observer driving the scroll handler.
     var scrollObserver: NSObjectProtocol?
     // For a `.list` widget: the (low-priority) preferred-width constraint, so a sidebar list can be narrower.
@@ -102,6 +103,13 @@ public final class TextFieldDelegate: NSObject, NSTextFieldDelegate {
 public final class SliderTarget: NSObject {
     var onChange: (@MainActor (Double) -> Void)?
     @objc func changed(_ sender: NSSlider) { onChange?(sender.doubleValue) }
+}
+
+/// Bridges `NSDatePicker`'s target/action to a stored Swift `Date` closure (for `DatePicker`).
+/// Setting `dateValue` programmatically does not fire the action, so no feedback-loop guard is needed.
+public final class DatePickerTarget: NSObject {
+    var onChange: (@MainActor (Date) -> Void)?
+    @objc func changed(_ sender: NSDatePicker) { onChange?(sender.dateValue) }
 }
 
 /// Bridges `NSSwitch`'s target/action to a stored Swift bool closure (for `Toggle`).
@@ -346,6 +354,19 @@ public final class AppKitToolkit: AppToolkit {
             popup.target = target
             popup.action = #selector(PickerTarget.changed(_:))
             widget.pickerTarget = target
+            return widget
+        case .datePicker:
+            // Style/elements/value are set in configureDatePicker; this is just a sensible default.
+            let picker = NSDatePicker()
+            picker.datePickerMode = .single
+            picker.datePickerStyle = .textFieldAndStepper
+            picker.datePickerElements = [.yearMonthDay]
+            picker.isBezeled = true
+            let widget = AppKitWidget(picker)
+            let target = DatePickerTarget()
+            picker.target = target
+            picker.action = #selector(DatePickerTarget.changed(_:))
+            widget.datePickerTarget = target
             return widget
         case .separator:
             let box = NSBox()
@@ -813,6 +834,24 @@ public final class AppKitToolkit: AppToolkit {
            popup.indexOfSelectedItem != index {
             popup.selectItem(at: index)
         }
+    }
+
+    public func configureDatePicker(_ handle: AppKitWidget, _ spec: DatePickerSpec) {
+        guard let picker = handle.view as? NSDatePicker else { return }
+        handle.datePickerTarget?.onChange = spec.onChange
+        // Edited components → which fields are shown/editable.
+        var elements: NSDatePicker.ElementFlags = []
+        if spec.components.contains(.date) { elements.insert(.yearMonthDay) }
+        if spec.components.contains(.hourAndMinute) { elements.insert(.hourMinute) }
+        if elements.isEmpty { elements = [.yearMonthDay] }
+        if picker.datePickerElements != elements { picker.datePickerElements = elements }
+        // Style: graphical → an inline clock/calendar; everything else → a compact field + stepper.
+        let style: NSDatePicker.Style = (spec.style == .graphical) ? .clockAndCalendar : .textFieldAndStepper
+        if picker.datePickerStyle != style { picker.datePickerStyle = style }
+        // Bounds first, then value (programmatic `dateValue` set does not fire the action → no loop).
+        picker.minDate = spec.minDate
+        picker.maxDate = spec.maxDate
+        if picker.dateValue != spec.date { picker.dateValue = spec.date }
     }
 
     public func configureOutline(_ handle: AppKitWidget, _ spec: OutlineSpec) {

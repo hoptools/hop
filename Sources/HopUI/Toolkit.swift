@@ -38,6 +38,10 @@ public protocol RenderToolkit: AnyObject {
     /// Configure a selection drop-down (``Picker``): set the options and selected index, and wire the
     /// selection callback, using the toolkit's native popup/combo control.
     func configurePicker(_ handle: Handle, _ spec: PickerSpec)
+    /// Configure a date/time chooser (``DatePicker``): set the value, optional bounds, edited components,
+    /// and style, and wire the change callback, using the toolkit's native date control (NSDatePicker /
+    /// GtkCalendar+spinners / QDateTimeEdit). Reapplied each reconcile (the spec is not `Equatable`).
+    func configureDatePicker(_ handle: Handle, _ spec: DatePickerSpec)
     /// Configure a hierarchical tree (``OutlineGroup`` / `List(_:children:)`): (re)build the native tree from
     /// `spec.roots`, reflect the selection, and wire the selection callback, using the toolkit's native tree
     /// widget (NSOutlineView / GtkTreeListModel / QTreeWidget).

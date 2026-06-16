@@ -3,6 +3,7 @@
 
 import CGTK4
 import HopUI
+import Foundation  // Date (for DatePicker value conversion)
 
 /// Opaque handle wrapping a `GtkWidget *` (and, for buttons, its click action box).
 public final class GTK4Widget {
@@ -55,6 +56,13 @@ final class GTK4ActionBox {
     /// Picker option labels (for change detection) and whether the drop-down's selection signal is wired.
     var pickerOptions: [String] = []
     var dropdownConnected = false
+    /// Date-picker state: the change callback (called with Unix seconds), the GTK composite-box pointer so
+    /// the change callback can read the combined value, whether the sub-widget signals are wired, and a
+    /// guard suppressing the callback while we reflect the bound value programmatically.
+    var onChangeDate: (@MainActor (Double) -> Void)?
+    var dateWidget: UnsafeMutableRawPointer?
+    var dateConnected = false
+    var suppressDate = false
     /// Outline (tree) state: the pre-order flattened rows the C row callbacks read, a structure signature
     /// for rebuild detection, the last reflected selection key, and the key→selection callback.
     var treeFlat: [(key: String, title: String, depth: Int)] = []
@@ -119,6 +127,17 @@ private let gtk4ValueChangedCallback: @convention(c) (UnsafeMutableRawPointer?, 
     let value = hop_scale_get_value(scale)
     let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.onChangeDouble?(value) }
+}
+
+// Fired by the composite date picker's calendar / hour / minute sub-widgets. The emitting sub-widget is
+// ignored; the combined value is read from the stored box widget pointer.
+private let gtk4DateChangedCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated {
+        guard !box.suppressDate, let widget = box.dateWidget else { return }
+        box.onChangeDate?(hop_datepicker_get(widget))
+    }
 }
 
 // GSimpleAction "activate" signature is (action, parameter, user_data).
@@ -341,6 +360,7 @@ public final class GTK4Toolkit: AppToolkit {
         case .shape: widget = hop_drawing_area_new()!
         case .menu: widget = hop_menu_button_new()!
         case .picker: widget = hop_dropdown_new()!
+        case .datePicker: widget = hop_datepicker_new()!
         case .progress: widget = hop_progress_bar_new()!
         case .separator:
             widget = hop_separator_new(1)!  // a divider between stacked rows is a horizontal line
@@ -382,6 +402,9 @@ public final class GTK4Toolkit: AppToolkit {
             handle.isImage = true
         } else if kind == .picker {
             // Selection signal is connected in configurePicker after the model is set.
+            handle.actionBox = GTK4ActionBox()
+        } else if kind == .datePicker {
+            // Sub-widget signals are connected in configureDatePicker (once components are known).
             handle.actionBox = GTK4ActionBox()
         } else if kind == .progress {
             handle.isProgress = true
@@ -652,6 +675,27 @@ public final class GTK4Toolkit: AppToolkit {
         if current != target {
             box.lastSelected = target
             hop_dropdown_set_selected(handle.widget, target.map { UInt32($0) } ?? hop_list_invalid())
+        }
+    }
+
+    public func configureDatePicker(_ handle: GTK4Widget, _ spec: DatePickerSpec) {
+        guard let box = handle.actionBox else { return }
+        box.onChangeDate = { spec.onChange(Date(timeIntervalSince1970: $0)) }
+        box.dateWidget = handle.widget
+        let wantDate = spec.components.contains(.date)
+        let wantTime = spec.components.contains(.hourAndMinute)
+        // GTK has no compact date field, so style is moot: always the inline calendar + spin composite.
+        hop_datepicker_set_components(handle.widget, wantDate ? 1 : 0, wantTime ? 1 : 0)
+        if !box.dateConnected {
+            hop_datepicker_connect(handle.widget, gtk4DateChangedCallback, Unmanaged.passUnretained(box).toOpaque())
+            box.dateConnected = true
+        }
+        // Reflect the bound value without re-firing the handler (the calendar/spin emit on programmatic set).
+        let target = spec.date.timeIntervalSince1970
+        if abs(hop_datepicker_get(handle.widget) - target) > 0.5 {
+            box.suppressDate = true
+            hop_datepicker_set(handle.widget, target)
+            box.suppressDate = false
         }
     }
 

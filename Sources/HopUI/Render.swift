@@ -25,6 +25,9 @@ public enum WidgetKind: Equatable {
     case menu
     /// A drop-down for choosing one value from a set (``Picker``). Carries a ``PickerSpec``.
     case picker
+    /// A date/time chooser (``DatePicker``), backed by the toolkit's native control (NSDatePicker /
+    /// GtkCalendar+spin / QDateTimeEdit). Carries a ``DatePickerSpec``.
+    case datePicker
     /// A separator line (``Divider``), or a separator entry within a menu.
     case separator
     /// A progress bar (``ProgressView``): determinate (a fraction) or indeterminate (animated).
@@ -237,6 +240,8 @@ public struct RenderNode {
     public var menu: MenuContent?
     /// Selection-popup configuration for `.picker` nodes. Not part of equality.
     public var picker: PickerSpec?
+    /// Date/time configuration for `.datePicker` nodes. Not part of equality.
+    public var datePicker: DatePickerSpec?
     /// Tree configuration for `.outline`/`.sidebarOutline` nodes. Not part of equality.
     public var outline: OutlineSpec?
     /// Image configuration for `.image` nodes. Not part of equality.
@@ -270,7 +275,8 @@ public struct RenderNode {
                 onChangeDouble: (@MainActor (Double) -> Void)? = nil,
                 onChangeBool: (@MainActor (Bool) -> Void)? = nil,
                 list: ListSpec? = nil, shape: ShapeSpec? = nil,
-                menu: MenuContent? = nil, picker: PickerSpec? = nil, tag: AnyHashable? = nil,
+                menu: MenuContent? = nil, picker: PickerSpec? = nil, datePicker: DatePickerSpec? = nil,
+                tag: AnyHashable? = nil,
                 outline: OutlineSpec? = nil, image: ImageSpec? = nil, tabs: TabSpec? = nil,
                 layout: LayoutInfo = LayoutInfo(), onGeometry: (@MainActor (CGSize) -> Void)? = nil,
                 onScroll: (@MainActor (CGSize) -> Void)? = nil,
@@ -288,6 +294,7 @@ public struct RenderNode {
         self.shape = shape
         self.menu = menu
         self.picker = picker
+        self.datePicker = datePicker
         self.outline = outline
         self.image = image
         self.tabs = tabs
