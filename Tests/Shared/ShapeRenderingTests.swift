@@ -11,6 +11,7 @@
 // `ShapeToolkit.name`. This file stays entirely toolkit-agnostic.
 
 import Testing
+import Foundation
 import HopUI
 
 @MainActor @Suite struct ShapeRenderingTests {
@@ -90,6 +91,10 @@ import HopUI
             }
         }
         canvas.finish()
-        #expect(canvas.savePNG("/tmp/hop-shapes-montage-\(ShapeToolkit.name).png"))
+        // Use the platform temp dir (FileManager) rather than a hardcoded "/tmp", which doesn't exist
+        // on Windows — there "/tmp/..." resolves to C:\tmp\... and savePNG fails when it's absent.
+        let montageURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hop-shapes-montage-\(ShapeToolkit.name).png")
+        #expect(canvas.savePNG(montageURL.path))
     }
 }
