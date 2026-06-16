@@ -399,6 +399,77 @@ static inline unsigned long hop_colorbutton_connect(void *btn, hop_clicked_fn cb
     return g_signal_connect_data(btn, "color-set", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
 }
 
+// --- Native file chooser (GtkFileChooserNative) ----------------------------------------------------
+// Async: shows the OS file dialog, then invokes `cb` with newline-joined absolute paths (open; possibly
+// several) or the single chosen path (save), or NULL on cancel. `patterns` is a ';'-separated glob list
+// ("*.txt;*.json"); empty/NULL means "all files". GtkFileChooserNative/GtkFileChooser are deprecated in
+// GTK 4.10 but work across the GTK4 versions we target (the modern GtkFileDialog needs 4.10+).
+typedef void (*hop_files_cb)(const char *paths, void *user_data);
+
+typedef struct { hop_files_cb cb; void *data; } HopFileCtx;
+
+static inline GtkWindow *hop_widget_window(void *widget) {
+    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(widget));
+    return GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : NULL;
+}
+
+static inline void hop_file_apply_filter(GtkFileChooser *chooser, const char *name, const char *patterns) {
+    if (!patterns || !patterns[0]) return;
+    GtkFileFilter *filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(filter, (name && name[0]) ? name : "Files");
+    char *copy = g_strdup(patterns);
+    for (char *tok = strtok(copy, ";"); tok; tok = strtok(NULL, ";")) gtk_file_filter_add_pattern(filter, tok);
+    g_free(copy);
+    gtk_file_chooser_add_filter(chooser, filter);
+}
+
+// Shared "response" handler for both open and save (save returns a single file).
+static inline void hop_file_response(GtkNativeDialog *native, int response, gpointer user_data) {
+    HopFileCtx *ctx = (HopFileCtx *)user_data;
+    if (response == GTK_RESPONSE_ACCEPT) {
+        GListModel *files = gtk_file_chooser_get_files(GTK_FILE_CHOOSER(native));
+        GString *s = g_string_new(NULL);
+        guint n = files ? g_list_model_get_n_items(files) : 0;
+        for (guint i = 0; i < n; i++) {
+            GFile *f = (GFile *)g_list_model_get_item(files, i);
+            char *p = f ? g_file_get_path(f) : NULL;
+            if (p) { if (s->len) g_string_append_c(s, '\n'); g_string_append(s, p); g_free(p); }
+            if (f) g_object_unref(f);
+        }
+        if (files) g_object_unref(files);
+        if (ctx->cb) ctx->cb(s->str, ctx->data);
+        g_string_free(s, TRUE);
+    } else if (ctx->cb) {
+        ctx->cb(NULL, ctx->data);
+    }
+    g_free(ctx);
+    g_object_unref(native);
+}
+
+static inline void hop_file_open(void *widget, int multiple, const char *filter_name, const char *patterns,
+                                 hop_files_cb cb, void *data) {
+    GtkFileChooserNative *native = gtk_file_chooser_native_new("Open", hop_widget_window(widget),
+                                                               GTK_FILE_CHOOSER_ACTION_OPEN, "_Open", "_Cancel");
+    gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(native), multiple ? TRUE : FALSE);
+    hop_file_apply_filter(GTK_FILE_CHOOSER(native), filter_name, patterns);
+    HopFileCtx *ctx = (HopFileCtx *)malloc(sizeof(HopFileCtx));
+    ctx->cb = cb; ctx->data = data;
+    g_signal_connect(native, "response", G_CALLBACK(hop_file_response), ctx);
+    gtk_native_dialog_show(GTK_NATIVE_DIALOG(native));
+}
+
+static inline void hop_file_save(void *widget, const char *default_name, const char *filter_name,
+                                 const char *patterns, hop_files_cb cb, void *data) {
+    GtkFileChooserNative *native = gtk_file_chooser_native_new("Save", hop_widget_window(widget),
+                                                               GTK_FILE_CHOOSER_ACTION_SAVE, "_Save", "_Cancel");
+    if (default_name && default_name[0]) gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(native), default_name);
+    hop_file_apply_filter(GTK_FILE_CHOOSER(native), filter_name, patterns);
+    HopFileCtx *ctx = (HopFileCtx *)malloc(sizeof(HopFileCtx));
+    ctx->cb = cb; ctx->data = data;
+    g_signal_connect(native, "response", G_CALLBACK(hop_file_response), ctx);
+    gtk_native_dialog_show(GTK_NATIVE_DIALOG(native));
+}
+
 // --- Lazy list (GtkListView + GtkStringList + GtkSingleSelection) -----------
 //
 // `rowText` returns a malloc'd C string the shim frees. GtkListView only realizes widgets for

@@ -4,6 +4,7 @@
 #if canImport(AppKit)
 import AppKit
 import HopUI
+import UniformTypeIdentifiers  // map HopUI.UTType → the system UTType for file panels
 
 /// A label that lets HopUI override its accessibility value and visibility. A plain `NSTextField`
 /// exposes its string as the AX value and always stays an AX element, so `.accessibilityValue` and
@@ -30,6 +31,9 @@ public final class AppKitWidget {
     var pickerTarget: PickerTarget?
     var datePickerTarget: DatePickerTarget?
     var colorWellTarget: ColorWellTarget?
+    // Guards against re-presenting a file panel while one is already showing (isPresented stays true).
+    var importerPresenting = false
+    var exporterPresenting = false
     // For a `.scroll` widget: the clip-view bounds-change observer driving the scroll handler.
     var scrollObserver: NSObjectProtocol?
     // For a `.list` widget: the (low-priority) preferred-width constraint, so a sidebar list can be narrower.
@@ -881,6 +885,58 @@ public final class AppKitToolkit: AppToolkit {
         NSColorPanel.shared.showsAlpha = spec.supportsOpacity
         let target = Self.nsColor(spec.color)
         if well.color != target { well.color = target }   // programmatic set doesn't fire the action
+    }
+
+    private func appKitTypes(_ types: [HopUI.UTType]) -> [UniformTypeIdentifiers.UTType] {
+        types.compactMap { t in
+            if !t.identifier.isEmpty, let u = UniformTypeIdentifiers.UTType(t.identifier) { return u }
+            if let ext = t.preferredFilenameExtension, let u = UniformTypeIdentifiers.UTType(filenameExtension: ext) { return u }
+            return nil
+        }
+    }
+
+    public func configureFileImporter(_ handle: AppKitWidget, _ spec: FileImporterSpec) {
+        guard spec.isPresented else { handle.importerPresenting = false; return }
+        guard !handle.importerPresenting else { return }
+        handle.importerPresenting = true
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = spec.allowsMultipleSelection
+        let types = appKitTypes(spec.allowedContentTypes)
+        if !types.isEmpty { panel.allowedContentTypes = types }
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            handle.importerPresenting = false
+            spec.setPresented(false)
+            if response == .OK { spec.onCompletion(.success(panel.urls)) }   // cancel: no completion (like SwiftUI)
+        }
+        if let window = handle.view.window {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            finish(panel.runModal())
+        }
+    }
+
+    public func configureFileExporter(_ handle: AppKitWidget, _ spec: FileExporterSpec) {
+        guard spec.isPresented else { handle.exporterPresenting = false; return }
+        guard !handle.exporterPresenting else { return }
+        handle.exporterPresenting = true
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = spec.defaultFilename
+        if let u = appKitTypes([spec.contentType]).first { panel.allowedContentTypes = [u] }
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            handle.exporterPresenting = false
+            spec.setPresented(false)
+            if response == .OK, let url = panel.url {
+                do { try spec.data.write(to: url); spec.onCompletion(.success(url)) }
+                catch { spec.onCompletion(.failure(error)) }
+            }
+        }
+        if let window = handle.view.window {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            finish(panel.runModal())
+        }
     }
 
     public func configureOutline(_ handle: AppKitWidget, _ spec: OutlineSpec) {

@@ -35,6 +35,8 @@ final class MockWidget {
     var picker: PickerSpec?
     var datePicker: DatePickerSpec?
     var colorPicker: ColorPickerSpec?
+    var fileImporter: FileImporterSpec?
+    var fileExporter: FileExporterSpec?
     var outline: OutlineSpec?
     var imageSpec: ImageSpec?
     var tabSpec: TabSpec?
@@ -110,6 +112,8 @@ final class MockToolkit: AppToolkit {
     func configurePicker(_ handle: MockWidget, _ spec: PickerSpec) { ops.append("picker:\(spec.options.count)"); handle.picker = spec }
     func configureDatePicker(_ handle: MockWidget, _ spec: DatePickerSpec) { ops.append("datePicker:\(spec.components.rawValue)"); handle.datePicker = spec }
     func configureColorPicker(_ handle: MockWidget, _ spec: ColorPickerSpec) { ops.append("colorPicker:\(spec.supportsOpacity)"); handle.colorPicker = spec }
+    func configureFileImporter(_ handle: MockWidget, _ spec: FileImporterSpec) { handle.fileImporter = spec; if spec.isPresented { ops.append("fileImporter") } }
+    func configureFileExporter(_ handle: MockWidget, _ spec: FileExporterSpec) { handle.fileExporter = spec; if spec.isPresented { ops.append("fileExporter") } }
     func configureOutline(_ handle: MockWidget, _ spec: OutlineSpec) { ops.append("outline:\(spec.roots.count)"); handle.outline = spec }
     func configureImage(_ handle: MockWidget, _ spec: ImageSpec) {
         let kind: String

@@ -21,9 +21,19 @@ public final class GTK4Widget {
     var scrollHandler: (@MainActor (CGSize) -> Void)?
     var scrollConnected = false
     var pulseTimerId: UInt32 = 0  // GLib source id of the indeterminate-progress pulse timer (0 = none)
+    // Guards against re-presenting a file dialog while one is already open (isPresented stays true).
+    var importerPresenting = false
+    var exporterPresenting = false
     // Action boxes for a drop-down menu's items, retained so their C callbacks stay valid.
     var retainedBoxes: [GTK4ActionBox] = []
     init(_ widget: UnsafeMutableRawPointer) { self.widget = widget }
+}
+
+/// Holds a file-dialog completion closure, passed (retained) as the C `user_data` so it survives the
+/// async dialog even if the originating widget goes away. The callback releases it.
+final class GTK4FileBox {
+    let onComplete: (@MainActor ([URL]?) -> Void)
+    init(_ onComplete: @escaping @MainActor ([URL]?) -> Void) { self.onComplete = onComplete }
 }
 
 /// Carries a raw GTK pointer across the isolation boundary of a main-thread C callback. GTK
@@ -149,6 +159,14 @@ private let gtk4ColorSetCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
     let b = hop_colorbutton_blue(button), a = hop_colorbutton_alpha(button)
     let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.onChangeColor?(r, g, b, a) }
+}
+
+// Fired when a GtkFileChooserNative finishes: `paths` is newline-joined absolute paths, or nil on cancel.
+private let gtk4FileCallback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { paths, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4FileBox>.fromOpaque(userData).takeRetainedValue()
+    let urls: [URL]? = paths.map { String(cString: $0).split(separator: "\n").map { URL(fileURLWithPath: String($0)) } }
+    MainActor.assumeIsolated { box.onComplete(urls) }
 }
 
 // GSimpleAction "activate" signature is (action, parameter, user_data).
@@ -721,6 +739,42 @@ public final class GTK4Toolkit: AppToolkit {
         hop_colorbutton_set_alpha(handle.widget, spec.supportsOpacity ? 1 : 0)
         // Programmatic set_rgba doesn't emit "color-set", so this won't re-fire the handler.
         hop_colorbutton_set(handle.widget, spec.color.red, spec.color.green, spec.color.blue, spec.color.opacity)
+    }
+
+    /// (filterName, ";"-joined glob patterns) for a set of content types; empty patterns ⇒ all files.
+    private func gtkFilter(_ types: [UTType]) -> (String, String) {
+        let patterns = types.flatMap { $0.filenameExtensions }.map { "*.\($0)" }.joined(separator: ";")
+        return (types.first?.displayName ?? "Files", patterns)
+    }
+
+    public func configureFileImporter(_ handle: GTK4Widget, _ spec: FileImporterSpec) {
+        guard spec.isPresented else { handle.importerPresenting = false; return }
+        guard !handle.importerPresenting else { return }
+        handle.importerPresenting = true
+        let box = GTK4FileBox { [weak handle] urls in
+            handle?.importerPresenting = false
+            spec.setPresented(false)
+            if let urls { spec.onCompletion(.success(urls)) }   // nil ⇒ cancel, no completion
+        }
+        let (name, patterns) = gtkFilter(spec.allowedContentTypes)
+        hop_file_open(handle.widget, spec.allowsMultipleSelection ? 1 : 0, name, patterns,
+                      gtk4FileCallback, Unmanaged.passRetained(box).toOpaque())
+    }
+
+    public func configureFileExporter(_ handle: GTK4Widget, _ spec: FileExporterSpec) {
+        guard spec.isPresented else { handle.exporterPresenting = false; return }
+        guard !handle.exporterPresenting else { return }
+        handle.exporterPresenting = true
+        let box = GTK4FileBox { [weak handle] urls in
+            handle?.exporterPresenting = false
+            spec.setPresented(false)
+            guard let url = urls?.first else { return }   // nil ⇒ cancel
+            do { try spec.data.write(to: url); spec.onCompletion(.success(url)) }
+            catch { spec.onCompletion(.failure(error)) }
+        }
+        let (name, patterns) = gtkFilter([spec.contentType])
+        hop_file_save(handle.widget, spec.defaultFilename, name, patterns,
+                      gtk4FileCallback, Unmanaged.passRetained(box).toOpaque())
     }
 
     public func configureShape(_ handle: GTK4Widget, _ spec: ShapeSpec) {

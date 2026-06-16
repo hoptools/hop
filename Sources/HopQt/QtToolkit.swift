@@ -26,6 +26,9 @@ public final class QtWidget {
     var imageResizable = false
     var isProgress = false
     var flexibleWidth = false  // text fields / sliders / progress bars fill the offered width (SwiftUI-like)
+    // Guards re-entrant file-dialog presentation (a nested modal event loop can re-run a flush).
+    var importerPresenting = false
+    var exporterPresenting = false
     var scrollHandler: (@MainActor (CGSize) -> Void)?
     var scrollConnected = false
     var lastFrame: CGRect?  // last frame applied by setFrame; skip redundant geometry calls (keeps scroll momentum)
@@ -645,6 +648,46 @@ public final class QtToolkit: AppToolkit {
         hopqt_colorwell_set_alpha(handle.ptr, spec.supportsOpacity ? 1 : 0)
         // Programmatic set never opens the dialog / fires the callback, so no loop.
         hopqt_colorwell_set(handle.ptr, spec.color.red, spec.color.green, spec.color.blue, spec.color.opacity)
+    }
+
+    /// A Qt filter string ("Name (*.ext);;All Files (*)") for a set of content types.
+    private func qtFilter(_ types: [UTType]) -> String {
+        var parts: [String] = []
+        for t in types where !t.filenameExtensions.isEmpty {
+            let globs = t.filenameExtensions.map { "*.\($0)" }.joined(separator: " ")
+            parts.append("\(t.displayName) (\(globs))")
+        }
+        parts.append("All Files (*)")
+        return parts.joined(separator: ";;")
+    }
+
+    public func configureFileImporter(_ handle: QtWidget, _ spec: FileImporterSpec) {
+        guard spec.isPresented else { handle.importerPresenting = false; return }
+        guard !handle.importerPresenting else { return }
+        handle.importerPresenting = true
+        let result = hopqt_file_open(handle.ptr, spec.allowsMultipleSelection ? 1 : 0, qtFilter(spec.allowedContentTypes))
+        handle.importerPresenting = false
+        spec.setPresented(false)
+        if let result {
+            let urls = String(cString: result).split(separator: "\n").map { URL(fileURLWithPath: String($0)) }
+            free(result)
+            if !urls.isEmpty { spec.onCompletion(.success(urls)) }
+        }
+    }
+
+    public func configureFileExporter(_ handle: QtWidget, _ spec: FileExporterSpec) {
+        guard spec.isPresented else { handle.exporterPresenting = false; return }
+        guard !handle.exporterPresenting else { return }
+        handle.exporterPresenting = true
+        let result = hopqt_file_save(handle.ptr, spec.defaultFilename, qtFilter([spec.contentType]))
+        handle.exporterPresenting = false
+        spec.setPresented(false)
+        if let result {
+            let url = URL(fileURLWithPath: String(cString: result))
+            free(result)
+            do { try spec.data.write(to: url); spec.onCompletion(.success(url)) }
+            catch { spec.onCompletion(.failure(error)) }
+        }
     }
 
     public func configureShape(_ handle: QtWidget, _ spec: ShapeSpec) {

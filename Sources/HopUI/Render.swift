@@ -247,6 +247,10 @@ public struct RenderNode {
     public var datePicker: DatePickerSpec?
     /// Color configuration for `.colorPicker` nodes. Not part of equality.
     public var colorPicker: ColorPickerSpec?
+    /// File-open-panel presentation attached via `.fileImporter`. Not part of equality.
+    public var fileImporter: FileImporterSpec?
+    /// File-save-panel presentation attached via `.fileExporter`. Not part of equality.
+    public var fileExporter: FileExporterSpec?
     /// Tree configuration for `.outline`/`.sidebarOutline` nodes. Not part of equality.
     public var outline: OutlineSpec?
     /// Image configuration for `.image` nodes. Not part of equality.
@@ -281,7 +285,9 @@ public struct RenderNode {
                 onChangeBool: (@MainActor (Bool) -> Void)? = nil,
                 list: ListSpec? = nil, shape: ShapeSpec? = nil,
                 menu: MenuContent? = nil, picker: PickerSpec? = nil, datePicker: DatePickerSpec? = nil,
-                colorPicker: ColorPickerSpec? = nil, tag: AnyHashable? = nil,
+                colorPicker: ColorPickerSpec? = nil,
+                fileImporter: FileImporterSpec? = nil, fileExporter: FileExporterSpec? = nil,
+                tag: AnyHashable? = nil,
                 outline: OutlineSpec? = nil, image: ImageSpec? = nil, tabs: TabSpec? = nil,
                 layout: LayoutInfo = LayoutInfo(), onGeometry: (@MainActor (CGSize) -> Void)? = nil,
                 onScroll: (@MainActor (CGSize) -> Void)? = nil,
@@ -301,6 +307,8 @@ public struct RenderNode {
         self.picker = picker
         self.datePicker = datePicker
         self.colorPicker = colorPicker
+        self.fileImporter = fileImporter
+        self.fileExporter = fileExporter
         self.outline = outline
         self.image = image
         self.tabs = tabs

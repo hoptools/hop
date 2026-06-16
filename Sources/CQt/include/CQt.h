@@ -119,6 +119,12 @@ double hopqt_colorwell_blue(void *btn);
 double hopqt_colorwell_alpha(void *btn);
 void hopqt_colorwell_connect(void *btn, hopqt_color_cb cb, void *user_data);
 
+// Modal file dialogs. Return newline-joined absolute paths (open; possibly several) / the single chosen
+// path (save), malloc'd (free with free()), or NULL on cancel. `filter` is a Qt filter string, e.g.
+// "JSON (*.json);;All Files (*)".
+char *hopqt_file_open(void *widget, int multiple, const char *filter);
+char *hopqt_file_save(void *widget, const char *default_name, const char *filter);
+
 // Menu bar (QMenuBar on the QMainWindow). `command` codes: 0 cut, 1 copy, 2 paste, 3 undo,
 // 4 redo, 5 select-all.
 void *hopqt_menu_bar(void *window);

@@ -46,6 +46,14 @@ public protocol RenderToolkit: AnyObject {
     /// wire the change callback, using the toolkit's native color control (NSColorWell / GtkColorButton /
     /// a QColorDialog swatch button). Reapplied each reconcile (the spec is not `Equatable`).
     func configureColorPicker(_ handle: Handle, _ spec: ColorPickerSpec)
+    /// Drive a `.fileImporter` presentation attached to `handle`: when `spec.isPresented` transitions true,
+    /// show the toolkit's native open panel (NSOpenPanel / GtkFileChooserNative / QFileDialog) parented to
+    /// the handle's window; on finish call `spec.onCompletion` and `spec.setPresented(false)`. Reapplied
+    /// each reconcile; the toolkit guards against re-presenting while already showing.
+    func configureFileImporter(_ handle: Handle, _ spec: FileImporterSpec)
+    /// Drive a `.fileExporter` presentation: show the native save panel, write `spec.data` to the chosen
+    /// URL, then call `spec.onCompletion` and `spec.setPresented(false)`.
+    func configureFileExporter(_ handle: Handle, _ spec: FileExporterSpec)
     /// Configure a hierarchical tree (``OutlineGroup`` / `List(_:children:)`): (re)build the native tree from
     /// `spec.roots`, reflect the selection, and wire the selection callback, using the toolkit's native tree
     /// widget (NSOutlineView / GtkTreeListModel / QTreeWidget).

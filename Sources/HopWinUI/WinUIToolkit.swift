@@ -492,6 +492,17 @@ public final class WinUIToolkit: AppToolkit {
         handle.suppress = false
     }
 
+    // TODO(windows): present a WinRT FileOpenPicker / FileSavePicker. They require HWND interop
+    // (IInitializeWithWindow.Initialize with the window handle), which can't be verified from macOS — so
+    // for now these dismiss the request without showing a dialog. Implement against a Windows runner.
+    public func configureFileImporter(_ handle: WinUIWidget, _ spec: FileImporterSpec) {
+        if spec.isPresented { spec.setPresented(false) }
+    }
+
+    public func configureFileExporter(_ handle: WinUIWidget, _ spec: FileExporterSpec) {
+        if spec.isPresented { spec.setPresented(false) }
+    }
+
     public func configureMenu(_ handle: WinUIWidget, _ menu: MenuContent) {
         guard let button = handle.element as? WinUI.Button else { return }
         button.content = menu.label

@@ -16,6 +16,7 @@
 #include <QtWidgets/QDateTimeEdit>
 #include <QtCore/QDateTime>
 #include <QtWidgets/QColorDialog>
+#include <QtWidgets/QFileDialog>
 #include <QtGui/QColor>
 #include <QtWidgets/QListView>
 #include <QtWidgets/QTreeWidget>
@@ -507,6 +508,28 @@ void hopqt_colorwell_connect(void *btn, hopqt_color_cb cb, void *user_data) {
     HopColorWell *w = static_cast<HopColorWell *>(btn);
     w->cb = cb;
     w->userData = user_data;
+}
+
+char *hopqt_file_open(void *widget, int multiple, const char *filter) {
+    QWidget *parent = widget ? static_cast<QWidget *>(widget)->window() : nullptr;
+    QString f = filter ? QString::fromUtf8(filter) : QString();
+    if (multiple) {
+        QStringList files = QFileDialog::getOpenFileNames(parent, QStringLiteral("Open"), QString(), f);
+        if (files.isEmpty()) return nullptr;
+        return strdup(files.join(QChar('\n')).toUtf8().constData());
+    }
+    QString file = QFileDialog::getOpenFileName(parent, QStringLiteral("Open"), QString(), f);
+    if (file.isEmpty()) return nullptr;
+    return strdup(file.toUtf8().constData());
+}
+
+char *hopqt_file_save(void *widget, const char *default_name, const char *filter) {
+    QWidget *parent = widget ? static_cast<QWidget *>(widget)->window() : nullptr;
+    QString f = filter ? QString::fromUtf8(filter) : QString();
+    QString dir = (default_name && default_name[0]) ? QString::fromUtf8(default_name) : QString();
+    QString file = QFileDialog::getSaveFileName(parent, QStringLiteral("Save"), dir, f);
+    if (file.isEmpty()) return nullptr;
+    return strdup(file.toUtf8().constData());
 }
 
 void *hopqt_splitter_new(void) {

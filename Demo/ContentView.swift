@@ -7,6 +7,7 @@
 #if HOPUI_TOOLKIT_SWIFTUI
 import SwiftUI
 import AppKit  // NSImage, to load the bundled demo image (SwiftUI has no plain-file Image init)
+import UniformTypeIdentifiers  // UTType + FileDocument for the native build's .fileExporter
 #else
 import HopUI
 #endif
@@ -75,7 +76,7 @@ enum Playground: String, CaseIterable, Hashable {
     case text, accessibility, label, link
     case shapes, images
     case layout, disclosure, groupBox, form, tabs
-    case observable, menus
+    case observable, menus, files
 
     var title: String {
         switch self {
@@ -101,6 +102,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .tabs: return "Tabs"
         case .observable: return "Observable"
         case .menus: return "Menus"
+        case .files: return "Files"
         }
     }
 
@@ -156,7 +158,7 @@ let sidebarTree: [SidebarItem] = [
         SidebarItem(.groupBox), SidebarItem(.form), SidebarItem(.tabs),
     ]),
     SidebarItem(category: "data", "Data & Menus", [
-        SidebarItem(.observable), SidebarItem(.menus),
+        SidebarItem(.observable), SidebarItem(.menus), SidebarItem(.files),
     ]),
 ]
 
@@ -199,6 +201,12 @@ public struct ContentView: View {
     @State private var password = ""
     @State private var appointment = Date()
     @State private var tint = Color.blue
+    // Files playground state (lifted here so it persists across re-renders, like the other playgrounds —
+    // a nested view's local @State resets each render, so the importer/exporter would never stay presented).
+    @State private var fileImporting = false
+    @State private var fileExporting = false
+    @State private var fileText = "Hello from HopUI!\nEdit this, then export it."
+    @State private var fileStatus = "No file chosen yet."
 
     public init() {}
 
@@ -276,6 +284,9 @@ public struct ContentView: View {
                 FormPlayground(name: $name, password: $password, wifi: $wifiOn, volume: $sliderValue)
             } else if selection == .tabs {
                 TabsPlayground()
+            } else if selection == .files {
+                FilePlayground(importing: $fileImporting, exporting: $fileExporting,
+                               text: $fileText, status: $fileStatus)
             } else {
                 LayoutPlayground()
             }
@@ -286,6 +297,83 @@ public struct ContentView: View {
 }
 
 // MARK: - Playgrounds
+
+// A tiny FileDocument for the native-SwiftUI build's `.fileExporter` (SwiftUI requires a FileDocument;
+// HopUI's exporter takes the bytes directly). Only compiled in the SwiftUI build.
+#if HOPUI_TOOLKIT_SWIFTUI
+struct TextFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.plainText] }
+    var text: String
+    init(text: String) { self.text = text }
+    init(configuration: ReadConfiguration) throws {
+        text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+#endif
+
+// Builds against HopUI AND Apple's SwiftUI. State is bound from the root so it survives re-renders. The
+// importer is identical on both; only `.fileExporter` differs (SwiftUI needs a FileDocument, HopUI takes
+// Data), so that one modifier is `#if`-selected.
+struct FilePlayground: View {
+    @Binding var importing: Bool
+    @Binding var exporting: Bool
+    @Binding var text: String
+    @Binding var status: String
+
+    var body: some View {
+        #if HOPUI_TOOLKIT_SWIFTUI
+        return importerView.fileExporter(isPresented: $exporting, document: TextFileDocument(text: text),
+                                         contentType: .plainText, defaultFilename: "hopui.txt") { result in
+            switch result {
+            case .success(let url): status = "Exported to \(url.lastPathComponent)"
+            case .failure(let error): status = "Export failed: \(error.localizedDescription)"
+            }
+        }
+        #else
+        return importerView.fileExporter(isPresented: $exporting, document: Data(text.utf8),
+                                         contentType: .plainText, defaultFilename: "hopui.txt") { result in
+            switch result {
+            case .success(let url): status = "Exported to \(url.lastPathComponent)"
+            case .failure(let error): status = "Export failed: \(error.localizedDescription)"
+            }
+        }
+        #endif
+    }
+
+    private var importerView: some View {
+        content.fileImporter(isPresented: $importing, allowedContentTypes: [.plainText, .json],
+                             allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                if let loaded = try? String(contentsOf: url, encoding: .utf8) {
+                    text = loaded
+                    status = "Imported \(url.lastPathComponent) — \(loaded.count) characters"
+                } else {
+                    status = "Imported \(url.lastPathComponent)"
+                }
+            case .failure(let error):
+                status = "Import failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private var content: some View {
+        VStack(spacing: 16) {
+            Text("Import a .txt / .json file into the field, or export the field's text")
+            TextField("Contents", text: $text)
+                .frame(width: 320)
+            HStack(spacing: 12) {
+                Button("Import…") { importing = true }
+                Button("Export…") { exporting = true }
+            }
+            Text(status)
+        }
+    }
+}
 
 struct SliderPlayground: View {
     @Binding var value: Double
