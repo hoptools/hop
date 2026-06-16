@@ -130,7 +130,10 @@ public struct Image: View, PrimitiveView {
         if resolved.isTemplate, resolved.tint == nil {
             resolved.tint = currentEnvironment().foregroundColor
         }
-        return RenderNode(id: context.id, kind: .image, image: resolved)
+        // Migrated to the open component system: the node carries an `ImageComponent`; each backend's
+        // registered image renderer realizes it. (`kind: .image` is kept only as a harmless layout fallback
+        // during the strangler migration; the component path drives realize/update/measure.)
+        return RenderNode(id: context.id, kind: .image, component: ImageComponent(spec: resolved))
     }
 
     // MARK: - Image modifiers (return Image, so chains stay Image-typed like SwiftUI)
@@ -158,4 +161,14 @@ public struct Image: View, PrimitiveView {
     public func renderingMode(_ mode: TemplateRenderingMode) -> Image {
         var copy = self; copy.spec.isTemplate = (mode == .template); return copy
     }
+}
+
+/// The open ``WidgetComponent`` for ``Image``. All images share one native widget type, so the key is
+/// simply "image"; resizable-ness is payload (handled by the renderer's measure), not a different widget.
+/// Public so each backend's image renderer (a separate module) can read its `spec`.
+public struct ImageComponent: WidgetComponent {
+    public let spec: ImageSpec
+    public init(spec: ImageSpec) { self.spec = spec }
+    public var widgetKey: WidgetKey { WidgetKey("image") }
+    public var role: WidgetRole { .leaf }
 }

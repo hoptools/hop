@@ -298,7 +298,23 @@ public final class AppKitToolkit: AppToolkit {
 
     /// Register built-in component renderers. Populated as widgets migrate off the legacy `makeWidget` path.
     private func registerBuiltinComponents() {
-        // Pilots (Image, Picker) registered here as they migrate.
+        registerImageComponent()
+    }
+
+    /// `Image` renderer — delegates to the existing image widget creation / configuration / measurement,
+    /// so the migration onto the component path is behavior-preserving (the native code moves later).
+    private func registerImageComponent() {
+        components.register(.init(
+            make: { [unowned self] component in
+                let handle = makeWidget(.image)
+                if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+        ), for: WidgetKey("image"))
     }
 
     public func makeWidget(_ kind: WidgetKind) -> AppKitWidget {

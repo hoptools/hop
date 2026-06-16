@@ -382,7 +382,21 @@ public final class GTK4Toolkit: AppToolkit {
     }
 
     private func registerBuiltinComponents() {
-        // Pilots (Image, Picker) registered here as they migrate.
+        registerImageComponent()
+    }
+
+    private func registerImageComponent() {
+        components.register(.init(
+            make: { [unowned self] component in
+                let handle = makeWidget(.image)
+                if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+        ), for: WidgetKey("image"))
     }
 
     public func makeWidget(_ kind: WidgetKind) -> GTK4Widget {
