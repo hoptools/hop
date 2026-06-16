@@ -30,63 +30,23 @@ public protocol RenderToolkit: AnyObject {
     /// build itself from them — e.g. a TabView's tab bar). No-op for components without that need.
     func didInsertChildren(_ handle: Handle, _ component: any WidgetComponent)
 
-    // MARK: - Legacy per-kind path (being migrated onto the component system above)
+    // MARK: - Tree, cross-cutting attachments, layout
 
-    func makeWidget(_ kind: WidgetKind) -> Handle
-    func configure(_ handle: Handle, _ patch: WidgetPatch)
     func insert(_ child: Handle, into parent: Handle, at index: Int)
     /// Move an already-inserted `child` to position `index` among `parent`'s children, preserving the
-    /// widget (and its native state). Used by the reconciler to reorder keyed children without
-    /// rebuilding them.
+    /// widget (and its native state). Used by the reconciler to reorder keyed children without rebuilding.
     func move(_ child: Handle, in parent: Handle, to index: Int)
     func remove(_ child: Handle, from parent: Handle)
-    func setAction(_ handle: Handle, _ action: (@MainActor () -> Void)?)
-    func setTextHandler(_ handle: Handle, _ handler: (@MainActor (String) -> Void)?)
-    func setValueHandler(_ handle: Handle, _ handler: (@MainActor (Double) -> Void)?)
-    /// Install the on/off-change handler for a `.toggle` widget (called with the new state). Called with
-    /// `nil` for non-toggle widgets (a no-op).
-    func setBoolHandler(_ handle: Handle, _ handler: (@MainActor (Bool) -> Void)?)
-    /// Configure a lazily-virtualized list widget. Called once on creation and again whenever the
-    /// row count or selection changes; the toolkit owns row recycling and on-demand row fetching.
-    func configureList(_ handle: Handle, _ spec: ListSpec)
-    /// Configure a custom-drawn shape widget. Called once on creation and again on every reconcile
-    /// (the spec is not `Equatable`), so the toolkit stores the spec and triggers a redraw using its
-    /// native 2D drawing API (CoreGraphics / Cairo / QPainter).
-    func configureShape(_ handle: Handle, _ spec: ShapeSpec)
-    /// Configure a drop-down action menu (``Menu``): set the button label and (re)build the popup of
-    /// entries (buttons / separators / submenus) using the toolkit's native menu API.
-    func configureMenu(_ handle: Handle, _ menu: MenuContent)
-    /// Configure a selection drop-down (``Picker``): set the options and selected index, and wire the
-    /// selection callback, using the toolkit's native popup/combo control.
-    func configurePicker(_ handle: Handle, _ spec: PickerSpec)
-    /// Configure a date/time chooser (``DatePicker``): set the value, optional bounds, edited components,
-    /// and style, and wire the change callback, using the toolkit's native date control (NSDatePicker /
-    /// GtkCalendar+spinners / QDateTimeEdit). Reapplied each reconcile (the spec is not `Equatable`).
-    func configureDatePicker(_ handle: Handle, _ spec: DatePickerSpec)
-    /// Configure a color chooser (``ColorPicker``): reflect the current color and opacity-editing flag, and
-    /// wire the change callback, using the toolkit's native color control (NSColorWell / GtkColorButton /
-    /// a QColorDialog swatch button). Reapplied each reconcile (the spec is not `Equatable`).
-    func configureColorPicker(_ handle: Handle, _ spec: ColorPickerSpec)
-    /// Drive a `.fileImporter` presentation attached to `handle`: when `spec.isPresented` transitions true,
-    /// show the toolkit's native open panel (NSOpenPanel / GtkFileChooserNative / QFileDialog) parented to
-    /// the handle's window; on finish call `spec.onCompletion` and `spec.setPresented(false)`. Reapplied
-    /// each reconcile; the toolkit guards against re-presenting while already showing.
+    /// Apply the cross-cutting node patch (accessibility set by a modifier on any widget). Widget content is
+    /// configured by the component's renderer, not here.
+    func configure(_ handle: Handle, _ patch: WidgetPatch)
+    /// Install the scroll handler on a `.scroll` widget (nil for non-scroll widgets — a no-op). Cross-cutting.
+    func setScrollHandler(_ handle: Handle, _ handler: (@MainActor (CGSize) -> Void)?)
+    /// Drive a `.fileImporter` presentation attached to `handle` (cross-cutting; can wrap any widget): when
+    /// `spec.isPresented` transitions true, show the native open panel, then call `onCompletion` + reset.
     func configureFileImporter(_ handle: Handle, _ spec: FileImporterSpec)
-    /// Drive a `.fileExporter` presentation: show the native save panel, write `spec.data` to the chosen
-    /// URL, then call `spec.onCompletion` and `spec.setPresented(false)`.
+    /// Drive a `.fileExporter` presentation: show the native save panel, write `spec.data`, then finish.
     func configureFileExporter(_ handle: Handle, _ spec: FileExporterSpec)
-    /// Configure a hierarchical tree (``OutlineGroup`` / `List(_:children:)`): (re)build the native tree from
-    /// `spec.roots`, reflect the selection, and wire the selection callback, using the toolkit's native tree
-    /// widget (NSOutlineView / GtkTreeListModel / QTreeWidget).
-    func configureOutline(_ handle: Handle, _ spec: OutlineSpec)
-    /// Configure an image leaf (``Image``): resolve `spec.source` to a native image, apply
-    /// resizable/content-mode/template-tint, and reflect accessibility, using the toolkit's native image
-    /// widget (NSImageView / GtkPicture / QLabel+QPixmap). Reapplied each reconcile (not `Equatable`).
-    func configureImage(_ handle: Handle, _ spec: ImageSpec)
-    /// Configure a tabbed container (``TabView``): set the native tab widget's tab titles (from
-    /// `spec.titles`, one per page child in order), reflect `spec.selectedIndex`, and wire `spec.onSelect`
-    /// for user tab switches. Called *after* the page children are inserted (so the native tabs exist).
-    func configureTabs(_ handle: Handle, _ spec: TabSpec)
 
     // MARK: - Framework-owned layout
 
@@ -98,10 +58,6 @@ public protocol RenderToolkit: AnyObject {
     func measure(_ handle: Handle, _ proposal: ProposedViewSize) -> CGSize
     /// The widget's current actual size (used to lay out content inside a native composite's panes).
     func sizeOf(_ handle: Handle) -> CGSize
-    /// Install a scroll handler on a `.scroll` widget: the toolkit calls it with the current content
-    /// offset whenever the user scrolls, so virtualized content can re-materialize its visible window.
-    /// Called with `nil` for non-scroll widgets (a no-op).
-    func setScrollHandler(_ handle: Handle, _ handler: (@MainActor (CGSize) -> Void)?)
 }
 
 /// A toolkit that can also host a window and run the platform main loop.
