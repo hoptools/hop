@@ -52,6 +52,10 @@ public struct EnvironmentValues {
     /// `@Environment(\.colorScheme)`. Mirrors SwiftUI's `\.colorScheme`.
     public var colorScheme: ColorScheme = .light
 
+    /// The presentation style for `Picker`s in this subtree, set via `.pickerStyle(_:)`. Read when a
+    /// `Picker` builds its component, so it selects the native implementation (and is part of its widget key).
+    public var pickerStyle: PickerStyle = .automatic
+
     /// Objects injected via `.environment(_:)`, keyed by their dynamic type's identifier.
     private var objects: [ObjectIdentifier: Any] = [:]
 
@@ -73,6 +77,7 @@ public struct EnvironmentValues {
               fontWeightOverride == other.fontWeightOverride,
               foregroundColor == other.foregroundColor,
               colorScheme == other.colorScheme,
+              pickerStyle == other.pickerStyle,
               (navigationPush == nil) == (other.navigationPush == nil),
               objects.count == other.objects.count else { return false }
         for (key, value) in objects {

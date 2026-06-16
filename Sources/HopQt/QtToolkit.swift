@@ -303,6 +303,24 @@ public final class QtToolkit: AppToolkit {
 
     private func registerBuiltinComponents() {
         registerImageComponent()
+        registerPickerComponents()
+    }
+
+    /// `Picker` renderers. All styles currently render as the native combo box (QComboBox); segmented /
+    /// radioGroup keep their distinct keys (exercising the architecture + reconcile-recreate) and get their
+    /// own native widgets in the full migration. Functionally correct on every style today.
+    private func registerPickerComponents() {
+        let renderer = ComponentRegistry<QtWidget>.Renderer(
+            make: { [unowned self] component in
+                let handle = makeWidget(.picker)
+                if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) })
+        for style in PickerStyle.allCases { components.register(renderer, for: WidgetKey("picker.\(style.rawValue)")) }
     }
 
     private func registerImageComponent() {

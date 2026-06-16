@@ -124,10 +124,38 @@ public struct Picker<SelectionValue: Hashable, Content: View>: View, PrimitiveVi
             guard index >= 0, index < tags.count, let value = tags[index].base as? SelectionValue else { return }
             binding.wrappedValue = value
         }
-        var patch = WidgetPatch()
-        patch.accessibilityLabel = title  // popups show the selection, not the title; expose it to AX
-        return RenderNode(id: context.id, kind: .picker, patch: patch, picker: spec)
+        // The style — read from the (graph-tracked) environment — selects the native implementation. It is
+        // part of the component's `widgetKey`, so changing the style recreates the widget (a `.menu` popup
+        // and a `.segmented` control are different native widgets, not reconfigurations of each other).
+        let style = currentEnvironment().pickerStyle
+        return RenderNode(id: context.id, kind: .picker, component: PickerComponent(style: style, spec: spec))
     }
+}
+
+/// How a ``Picker`` is presented. Each case maps to a different native widget (and possibly a different
+/// layout role), so it is part of the component's ``WidgetKey``. Mirrors SwiftUI's `PickerStyle`.
+public enum PickerStyle: String, Hashable, Sendable, CaseIterable {
+    case automatic, menu, segmented, radioGroup
+}
+
+/// The open ``WidgetComponent`` for ``Picker``. The canonical example of style-driven implementation
+/// variance: `widgetKey` encodes the style, so each style dispatches to its own backend renderer and a
+/// style change tears down + recreates the native widget. `radioGroup` is a `.native` composite (a
+/// renderer-built group); the rest are `.leaf` controls. Selection lives in `@State`, so it survives the
+/// recreate. Public so backend picker renderers (separate modules) can read it.
+public struct PickerComponent: WidgetComponent {
+    public let style: PickerStyle
+    public let spec: PickerSpec
+    public init(style: PickerStyle, spec: PickerSpec) { self.style = style; self.spec = spec }
+    public var widgetKey: WidgetKey { WidgetKey("picker.\(style.rawValue)") }
+    public var role: WidgetRole { style == .radioGroup ? .native : .leaf }
+}
+
+extension View {
+    /// Sets the presentation style of `Picker`s within this view. Mirrors SwiftUI's `.pickerStyle(_:)`.
+    /// Flows through the (graph-tracked) environment, so a style change re-evaluates only the pickers that
+    /// read it.
+    public func pickerStyle(_ style: PickerStyle) -> some View { environment(\.pickerStyle, style) }
 }
 
 // MARK: - .tag

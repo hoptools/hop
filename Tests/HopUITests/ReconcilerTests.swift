@@ -33,6 +33,7 @@ final class MockWidget {
     var shapeSpec: ShapeSpec?
     var menu: MenuContent?
     var picker: PickerSpec?
+    var pickerStyleName: String?   // which Picker style renderer created this widget (component-system tests)
     var datePicker: DatePickerSpec?
     var colorPicker: ColorPickerSpec?
     var fileImporter: FileImporterSpec?
@@ -67,7 +68,9 @@ final class MockToolkit: AppToolkit {
 
     func realize(_ component: any WidgetComponent) -> MockWidget {
         if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
-        if let widget = component.makeNative(Self.toolkitID) as? MockWidget { return widget }
+        if let widget = component.makeNative(Self.toolkitID) as? MockWidget {
+            widgets.append(widget); ops.append("make:selfhosted"); return widget   // decoupled, no registered renderer
+        }
         let widget = MockWidget(kind: .vstack); widgets.append(widget); ops.append("make:placeholder"); return widget
     }
     func updateComponent(_ handle: MockWidget, _ component: any WidgetComponent) {
@@ -93,6 +96,25 @@ final class MockToolkit: AppToolkit {
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
         ), for: WidgetKey("image"))
+
+        // Picker: one renderer per style, each producing a distinguishable mock widget so tests can assert
+        // recreate-on-style-change (makeCount) and which native path was taken (pickerStyleName).
+        for style in ["menu", "automatic", "segmented", "radioGroup"] {
+            components.register(.init(
+                make: { [unowned self] component in
+                    let widget = MockWidget(kind: .picker)
+                    widgets.append(widget)
+                    ops.append("make:picker.\(style)")
+                    widget.pickerStyleName = style
+                    if let spec = (component as? PickerComponent)?.spec { configurePicker(widget, spec) }
+                    return widget
+                },
+                update: { [unowned self] handle, component in
+                    if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
+                },
+                measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+            ), for: WidgetKey("picker.\(style)"))
+        }
     }
 
     func makeWidget(_ kind: WidgetKind) -> MockWidget {

@@ -45,6 +45,8 @@ public final class AppKitWidget {
 public final class PickerTarget: NSObject {
     var onSelect: (@MainActor (Int) -> Void)?
     @objc func changed(_ sender: NSPopUpButton) { onSelect?(sender.indexOfSelectedItem) }
+    @objc func changedSegment(_ sender: NSSegmentedControl) { onSelect?(sender.selectedSegment) }
+    @objc func changedRadio(_ sender: NSButton) { onSelect?(sender.tag) }
 }
 
 /// A plain top-left-origin container for the layout engine's absolute positioning (no auto-layout).
@@ -299,6 +301,92 @@ public final class AppKitToolkit: AppToolkit {
     /// Register built-in component renderers. Populated as widgets migrate off the legacy `makeWidget` path.
     private func registerBuiltinComponents() {
         registerImageComponent()
+        registerPickerComponents()
+    }
+
+    /// `Picker` renderers — the style-variance pilot. Each style is a *different native widget*, registered
+    /// under a distinct key ("picker.menu" / ".segmented" / ".radioGroup"); the reconciler recreates the
+    /// widget when the key changes. Selection lives in `@State`, so it survives the recreate.
+    private func registerPickerComponents() {
+        // .menu / .automatic → NSPopUpButton (delegates to the existing picker path).
+        let menu = ComponentRegistry<AppKitWidget>.Renderer(
+            make: { [unowned self] component in
+                let handle = makeWidget(.picker)
+                if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) })
+        components.register(menu, for: WidgetKey("picker.menu"))
+        components.register(menu, for: WidgetKey("picker.automatic"))
+
+        // .segmented → NSSegmentedControl (a genuinely different native widget).
+        components.register(.init(
+            make: { [unowned self] component in
+                let seg = NSSegmentedControl()
+                seg.segmentStyle = .texturedRounded
+                seg.trackingMode = .selectOne
+                let target = PickerTarget()
+                seg.target = target
+                seg.action = #selector(PickerTarget.changedSegment(_:))
+                let handle = AppKitWidget(seg)
+                handle.pickerTarget = target
+                if let spec = (component as? PickerComponent)?.spec { applySegmented(seg, target, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let seg = handle.view as? NSSegmentedControl, let target = handle.pickerTarget,
+                   let spec = (component as? PickerComponent)?.spec { applySegmented(seg, target, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+        ), for: WidgetKey("picker.segmented"))
+
+        // .radioGroup → an NSStackView of radio buttons (a `.native` composite the renderer manages).
+        components.register(.init(
+            make: { [unowned self] component in
+                let stack = NSStackView()
+                stack.orientation = .vertical
+                stack.alignment = .leading
+                stack.spacing = 4
+                let target = PickerTarget()
+                let handle = AppKitWidget(stack)
+                handle.pickerTarget = target
+                if let spec = (component as? PickerComponent)?.spec { applyRadioGroup(stack, target, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let stack = handle.view as? NSStackView, let target = handle.pickerTarget,
+                   let spec = (component as? PickerComponent)?.spec { applyRadioGroup(stack, target, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+        ), for: WidgetKey("picker.radioGroup"))
+    }
+
+    private func applySegmented(_ seg: NSSegmentedControl, _ target: PickerTarget, _ spec: PickerSpec) {
+        target.onSelect = spec.onSelect
+        if seg.segmentCount != spec.options.count { seg.segmentCount = spec.options.count }
+        for (i, title) in spec.options.enumerated() { seg.setLabel(title, forSegment: i) }
+        if let index = spec.selectedIndex, index >= 0, index < spec.options.count { seg.selectedSegment = index }
+    }
+
+    private func applyRadioGroup(_ stack: NSStackView, _ target: PickerTarget, _ spec: PickerSpec) {
+        target.onSelect = spec.onSelect
+        if stack.arrangedSubviews.count != spec.options.count {
+            for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
+            for (i, title) in spec.options.enumerated() {
+                let radio = NSButton(radioButtonWithTitle: title, target: target,
+                                     action: #selector(PickerTarget.changedRadio(_:)))
+                radio.tag = i
+                stack.addArrangedSubview(radio)
+            }
+        } else {
+            for (i, view) in stack.arrangedSubviews.enumerated() { (view as? NSButton)?.title = spec.options[i] }
+        }
+        for (i, view) in stack.arrangedSubviews.enumerated() {
+            (view as? NSButton)?.state = (i == spec.selectedIndex) ? .on : .off
+        }
     }
 
     /// `Image` renderer — delegates to the existing image widget creation / configuration / measurement,
