@@ -84,6 +84,9 @@ final class MockToolkit: AppToolkit {
         default: return measure(handle, proposal)
         }
     }
+    func didInsertChildren(_ handle: MockWidget, _ component: any WidgetComponent) {
+        components.renderer(for: component.widgetKey)?.afterChildren?(handle, component)
+    }
     private func registerBuiltinComponents() {
         // Leaf widgets: delegate to the legacy makeWidget/configure so existing op-log assertions hold.
         let leaves: [(String, WidgetKind)] = [
@@ -105,6 +108,32 @@ final class MockToolkit: AppToolkit {
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: WidgetKey(key))
         }
+        // Native composites (List/OutlineGroup/SplitView/TabView).
+        for (key, kind) in [("list", WidgetKind.list), ("sidebarList", .sidebarList)] {
+            components.register(.init(
+                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
+                update: { [unowned self] h, c in if let s = (c as? ListComponent)?.spec { configureList(h, s) } },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: WidgetKey(key))
+        }
+        for (key, kind) in [("outline", WidgetKind.outline), ("sidebarOutline", .sidebarOutline)] {
+            components.register(.init(
+                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
+                update: { [unowned self] h, c in if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) } },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: WidgetKey(key))
+        }
+        components.register(.init(
+            make: { [unowned self] _ in makeWidget(.splitView) },
+            update: { _, _ in },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: WidgetKey("splitView"))
+        components.register(.init(
+            make: { [unowned self] _ in makeWidget(.tabView) },
+            update: { _, _ in },
+            measure: { [unowned self] h, _, p in measure(h, p) },
+            afterChildren: { [unowned self] h, c in if let s = (c as? TabViewComponent)?.spec { configureTabs(h, s) } }
+        ), for: WidgetKey("tabView"))
         // Spec-carrying leaves (DatePicker/ColorPicker/Menu) — delegate to the legacy configure path.
         components.register(.init(
             make: { [unowned self] c in let h = makeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },

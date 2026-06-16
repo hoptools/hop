@@ -40,10 +40,11 @@ public struct OutlineGroup<Data, ID, Content>: View, PrimitiveView
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        // In a NavigationSplitView's leading column, render as a source-list sidebar tree; the kind —
+        // In a NavigationSplitView's leading column, render as a source-list sidebar tree; the widgetKey —
         // not a runtime flag — selects the styling so the toolkit bakes it in at creation.
-        let kind: WidgetKind = SidebarColumnContext.active ? .sidebarOutline : .outline
-        return RenderNode(id: context.id, kind: kind, outline: OutlineSpec(roots: buildRoots()))
+        let sidebar = SidebarColumnContext.active
+        return RenderNode(id: context.id, kind: sidebar ? .sidebarOutline : .outline,
+                          component: OutlineComponent(spec: OutlineSpec(roots: buildRoots()), sidebar: sidebar))
     }
 }
 

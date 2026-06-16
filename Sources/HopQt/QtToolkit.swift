@@ -301,12 +301,45 @@ public final class QtToolkit: AppToolkit {
         }
     }
 
+    public func didInsertChildren(_ handle: QtWidget, _ component: any WidgetComponent) {
+        components.renderer(for: component.widgetKey)?.afterChildren?(handle, component)
+    }
+
     private func registerBuiltinComponents() {
         registerLeafComponents()
         registerSpecLeafComponents()
         registerContainerComponents()
+        registerNativeCompositeComponents()
         registerImageComponent()
         registerPickerComponents()
+    }
+
+    private func registerNativeCompositeComponents() {
+        for (key, kind) in [("list", WidgetKind.list), ("sidebarList", .sidebarList)] {
+            components.register(.init(
+                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
+                update: { [unowned self] h, c in if let s = (c as? ListComponent)?.spec { configureList(h, s) } },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: WidgetKey(key))
+        }
+        for (key, kind) in [("outline", WidgetKind.outline), ("sidebarOutline", .sidebarOutline)] {
+            components.register(.init(
+                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
+                update: { [unowned self] h, c in if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) } },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: WidgetKey(key))
+        }
+        components.register(.init(
+            make: { [unowned self] _ in makeWidget(.splitView) },
+            update: { _, _ in },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: WidgetKey("splitView"))
+        components.register(.init(
+            make: { [unowned self] _ in makeWidget(.tabView) },
+            update: { _, _ in },
+            measure: { [unowned self] h, _, p in measure(h, p) },
+            afterChildren: { [unowned self] h, c in if let s = (c as? TabViewComponent)?.spec { configureTabs(h, s) } }
+        ), for: WidgetKey("tabView"))
     }
 
     private func registerContainerComponents() {

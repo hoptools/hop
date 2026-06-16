@@ -94,7 +94,8 @@ public struct NavigationSplitView<Sidebar: View, Detail: View>: View, PrimitiveV
         let sidebarChild = singleChild(evaluateResolved(sidebar, context.appending(0)), id: context.id + "·sidebar")
         SidebarColumnContext.active = savedSidebar
         let detailChild = singleChild(evaluate(detail, context.appending(1)), id: context.id + "·detail")
-        return RenderNode(id: context.id, kind: .splitView, children: [sidebarChild, detailChild])
+        return RenderNode(id: context.id, kind: .splitView, children: [sidebarChild, detailChild],
+                          component: SplitViewComponent())
     }
 
     /// A split pane must be exactly one widget; collapse multiple nodes into a vstack wrapper.
@@ -162,17 +163,22 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
     func makeNode(_ context: RenderContext) -> RenderNode {
         switch source {
         case let .flat(count, rowText, selectedIndex, select):
-            // In a NavigationSplitView's leading column, render as a source-list sidebar (the kind — not a
-            // runtime flag — selects the styling so the toolkit bakes it in at creation).
-            let kind: WidgetKind = SidebarColumnContext.active ? .sidebarList : .list
-            return RenderNode(id: context.id, kind: kind, list: ListSpec(
-                count: count, rowText: rowText, selectedIndex: selectedIndex(), onSelect: select))
+            // In a NavigationSplitView's leading column, render as a source-list sidebar (the widgetKey, not
+            // a runtime flag, selects the styling so the toolkit bakes it in at creation).
+            let sidebar = SidebarColumnContext.active
+            let spec = ListSpec(count: count, rowText: rowText, selectedIndex: selectedIndex(), onSelect: select)
+            return RenderNode(id: context.id, kind: sidebar ? .sidebarList : .list,
+                              component: ListComponent(spec: spec, sidebar: sidebar))
         case let .hierarchical(content, selectedID, select):
-            // The content is an OutlineGroup producing an `.outline`/`.sidebarOutline` node; inject selection.
+            // The content is an OutlineGroup producing an outline component; inject selection into it.
             var node = evaluateResolved(content(), context.appending(0)).first
-                ?? RenderNode(id: context.id + "·outline", kind: .outline, outline: OutlineSpec(roots: []))
-            node.outline?.selectedID = selectedID().map { AnyHashable($0) }
-            node.outline?.onSelect = { anyID in select(anyID?.base as? SelectionValue) }
+                ?? RenderNode(id: context.id + "·outline", kind: .outline,
+                              component: OutlineComponent(spec: OutlineSpec(roots: []), sidebar: SidebarColumnContext.active))
+            if var outline = node.component as? OutlineComponent {
+                outline.spec.selectedID = selectedID().map { AnyHashable($0) }
+                outline.spec.onSelect = { anyID in select(anyID?.base as? SelectionValue) }
+                node.component = outline
+            }
             return node
         }
     }

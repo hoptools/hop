@@ -26,6 +26,9 @@ public protocol RenderToolkit: AnyObject {
     func updateComponent(_ handle: Handle, _ component: any WidgetComponent)
     /// The size the component's native widget chooses for a proposal (its intrinsic/greedy size).
     func measureComponent(_ handle: Handle, _ component: any WidgetComponent, _ proposal: ProposedViewSize) -> CGSize
+    /// Notify a native-composite component that its children have been inserted/reconciled (so it can
+    /// build itself from them — e.g. a TabView's tab bar). No-op for components without that need.
+    func didInsertChildren(_ handle: Handle, _ component: any WidgetComponent)
 
     // MARK: - Legacy per-kind path (being migrated onto the component system above)
 

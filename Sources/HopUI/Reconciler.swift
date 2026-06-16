@@ -99,8 +99,9 @@ final class Reconciler<Toolkit: RenderToolkit> {
         for (index, child) in node.children.enumerated() {
             toolkit.insert(realize(child), into: handle, at: index)
         }
-        // A native tab widget builds its tabs from the now-inserted page children, so configure last.
-        if node.component == nil, let tabs = node.tabs { toolkit.configureTabs(handle, tabs) }
+        // A native composite (tab widget) builds itself from the now-inserted children, so notify last.
+        if let component = node.component { toolkit.didInsertChildren(handle, component) }
+        else if let tabs = node.tabs { toolkit.configureTabs(handle, tabs) }
         return handle
     }
 
@@ -135,8 +136,9 @@ final class Reconciler<Toolkit: RenderToolkit> {
         if let fileImporter = new.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
         if let fileExporter = new.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
         reconcileChildren(parent: handle, old: old.children, new: new.children)
-        // Configure tabs after the page children are reconciled (titles/selection track the live pages).
-        if new.component == nil, let tabs = new.tabs { toolkit.configureTabs(handle, tabs) }
+        // Notify a native composite after its children are reconciled (tab titles/selection track them).
+        if let component = new.component { toolkit.didInsertChildren(handle, component) }
+        else if let tabs = new.tabs { toolkit.configureTabs(handle, tabs) }
     }
 
     /// Keyed child diff: match by ``RenderNode/id``, reuse matched handles (preserving native state)

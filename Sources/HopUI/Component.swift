@@ -118,6 +118,45 @@ public struct ContainerComponent: WidgetComponent {
     public init(_ key: WidgetKey, role: WidgetRole) { self.widgetKey = key; self.role = role }
 }
 
+// MARK: - Native composite components (role `.native`: the widget arranges its own internals)
+
+/// The open component for a flat ``List`` (data-driven, virtualized). `sidebar` selects the source-list
+/// styling (in a NavigationSplitView's leading column).
+public struct ListComponent: WidgetComponent {
+    public let spec: ListSpec
+    public let sidebar: Bool
+    public init(spec: ListSpec, sidebar: Bool) { self.spec = spec; self.sidebar = sidebar }
+    public var widgetKey: WidgetKey { WidgetKey(sidebar ? "sidebarList" : "list") }
+    public var role: WidgetRole { .native }
+}
+
+/// The open component for a hierarchical ``OutlineGroup`` tree. `spec` is `var` so an enclosing
+/// `List(selection:)` can inject selection into it.
+public struct OutlineComponent: WidgetComponent {
+    public var spec: OutlineSpec
+    public let sidebar: Bool
+    public init(spec: OutlineSpec, sidebar: Bool) { self.spec = spec; self.sidebar = sidebar }
+    public var widgetKey: WidgetKey { WidgetKey(sidebar ? "sidebarOutline" : "outline") }
+    public var role: WidgetRole { .native }
+}
+
+/// The open component for ``TabView``. Its pages are the node's children; `afterChildren` builds the
+/// native tab bar from them + the spec (titles/selection).
+public struct TabViewComponent: WidgetComponent {
+    public let spec: TabSpec
+    public init(spec: TabSpec) { self.spec = spec }
+    public var widgetKey: WidgetKey { WidgetKey("tabView") }
+    public var role: WidgetRole { .native }
+}
+
+/// The open component for ``NavigationSplitView`` — a native split whose two children (sidebar, detail)
+/// it positions itself.
+public struct SplitViewComponent: WidgetComponent {
+    public init() {}
+    public var widgetKey: WidgetKey { WidgetKey("splitView") }
+    public var role: WidgetRole { .native }
+}
+
 /// A backend's open registry of component renderers, keyed by ``WidgetKey``. A backend registers its
 /// built-in renderers here; **third-party packages can register their own** (e.g. `appKit.components`
 /// `.register(...)`) — the open replacement for the closed `makeWidget`/`configureX` switch. Generic over
@@ -129,10 +168,14 @@ public final class ComponentRegistry<Handle: AnyObject> {
         public let make: (any WidgetComponent) -> Handle
         public let update: (Handle, any WidgetComponent) -> Void
         public let measure: (Handle, any WidgetComponent, ProposedViewSize) -> CGSize
+        /// Called after the reconciler has inserted/reconciled this widget's children — for native
+        /// composites (e.g. TabView) that build themselves from their now-present children. nil = no-op.
+        public let afterChildren: ((Handle, any WidgetComponent) -> Void)?
         public init(make: @escaping (any WidgetComponent) -> Handle,
                     update: @escaping (Handle, any WidgetComponent) -> Void,
-                    measure: @escaping (Handle, any WidgetComponent, ProposedViewSize) -> CGSize) {
-            self.make = make; self.update = update; self.measure = measure
+                    measure: @escaping (Handle, any WidgetComponent, ProposedViewSize) -> CGSize,
+                    afterChildren: ((Handle, any WidgetComponent) -> Void)? = nil) {
+            self.make = make; self.update = update; self.measure = measure; self.afterChildren = afterChildren
         }
     }
 

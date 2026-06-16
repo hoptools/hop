@@ -130,10 +130,10 @@ public struct TabView<Content: View>: View, PrimitiveView {
                        layout: LayoutInfo(alignment: .center))
         }
         return RenderNode(id: context.id, kind: .tabView, children: wrapped,
-                          tabs: TabSpec(titles: titles, selectedIndex: current, onSelect: { index in
+                          component: TabViewComponent(spec: TabSpec(titles: titles, selectedIndex: current, onSelect: { index in
                               graph.setValue(index, for: selSource)
                               GraphContext.scheduleFlush()
-                          }))
+                          })))
     }
 }
 
