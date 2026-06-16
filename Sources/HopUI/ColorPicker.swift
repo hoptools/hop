@@ -68,7 +68,16 @@ struct _ColorPickerControl: View, PrimitiveView {
         let spec = ColorPickerSpec(title: title, color: selection.wrappedValue,
                              supportsOpacity: supportsOpacity) { binding.wrappedValue = $0 }
         var patch = WidgetPatch()
-        patch.accessibilityLabel = title
-        return RenderNode(id: context.id, kind: .colorPicker, patch: patch, colorPicker: spec)
+        patch.accessibilityLabel = title   // cross-cutting; applied alongside the component
+        return RenderNode(id: context.id, kind: .colorPicker, patch: patch,
+                          component: ColorPickerComponent(spec: spec))
     }
+}
+
+/// The open component for ``ColorPicker``. Public so backend color-picker renderers can read its spec.
+public struct ColorPickerComponent: WidgetComponent {
+    public let spec: ColorPickerSpec
+    public init(spec: ColorPickerSpec) { self.spec = spec }
+    public var widgetKey: WidgetKey { WidgetKey("colorPicker") }
+    public var role: WidgetRole { .leaf }
 }

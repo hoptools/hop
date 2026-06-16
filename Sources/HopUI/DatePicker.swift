@@ -144,7 +144,16 @@ struct _DatePickerControl: View, PrimitiveView {
                                   minDate: minDate, maxDate: maxDate,
                                   components: components, style: style) { binding.wrappedValue = $0 }
         var patch = WidgetPatch()
-        patch.accessibilityLabel = title
-        return RenderNode(id: context.id, kind: .datePicker, patch: patch, datePicker: spec)
+        patch.accessibilityLabel = title   // cross-cutting; applied alongside the component
+        return RenderNode(id: context.id, kind: .datePicker, patch: patch,
+                          component: DatePickerComponent(spec: spec))
     }
+}
+
+/// The open component for ``DatePicker``. Public so backend date-picker renderers can read its spec.
+public struct DatePickerComponent: WidgetComponent {
+    public let spec: DatePickerSpec
+    public init(spec: DatePickerSpec) { self.spec = spec }
+    public var widgetKey: WidgetKey { WidgetKey("datePicker") }
+    public var role: WidgetRole { .leaf }
 }

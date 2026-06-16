@@ -368,6 +368,8 @@ public struct RenderNode {
     var effectivePatch: WidgetPatch { (component as? PrimitiveLeafComponent)?.patch ?? patch }
     /// The node's primary action, reading through a migrated leaf component (Button's action lives there).
     var effectiveAction: (@MainActor () -> Void)? { (component as? PrimitiveLeafComponent)?.action ?? action }
+    /// The node's drop-down menu content, reading through a migrated ``MenuComponent`` (for nested submenus).
+    var effectiveMenu: MenuContent? { (component as? MenuComponent)?.content ?? menu }
     /// Set during resolve: a token identifying this subtree's content. Two nodes with the same nonzero
     /// `subtreeRevision` across successive flushes are byte-identical (the resolve pass preserves it only by
     /// reusing the exact cached nodes), so the reconciler and layout engine can safely skip them. `0` means

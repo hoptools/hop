@@ -42,8 +42,17 @@ public struct Menu<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let entries = menuEntries(from: evaluateResolved(content, context.appending(0)))
-        return RenderNode(id: context.id, kind: .menu, menu: MenuContent(label: label, entries: entries))
+        return RenderNode(id: context.id, kind: .menu,
+                          component: MenuComponent(content: MenuContent(label: label, entries: entries)))
     }
+}
+
+/// The open component for ``Menu``. Public so backend menu renderers can read its content.
+public struct MenuComponent: WidgetComponent {
+    public let content: MenuContent
+    public init(content: MenuContent) { self.content = content }
+    public var widgetKey: WidgetKey { WidgetKey("menu") }
+    public var role: WidgetRole { .leaf }
 }
 
 /// Extract drop-down entries from already-evaluated content nodes: buttons become actions, separators
@@ -57,7 +66,7 @@ func menuEntries(from nodes: [RenderNode]) -> [MenuEntry] {
         case .separator:
             entries.append(.separator)
         case .menu:
-            entries.append(.submenu(title: node.menu?.label ?? "", entries: node.menu?.entries ?? []))
+            entries.append(.submenu(title: node.effectiveMenu?.label ?? "", entries: node.effectiveMenu?.entries ?? []))
         default:
             break
         }

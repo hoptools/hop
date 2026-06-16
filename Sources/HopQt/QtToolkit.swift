@@ -303,8 +303,27 @@ public final class QtToolkit: AppToolkit {
 
     private func registerBuiltinComponents() {
         registerLeafComponents()
+        registerSpecLeafComponents()
         registerImageComponent()
         registerPickerComponents()
+    }
+
+    private func registerSpecLeafComponents() {
+        components.register(.init(
+            make: { [unowned self] c in let h = makeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: WidgetKey("datePicker"))
+        components.register(.init(
+            make: { [unowned self] c in let h = makeWidget(.colorPicker); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: WidgetKey("colorPicker"))
+        components.register(.init(
+            make: { [unowned self] c in let h = makeWidget(.menu); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
+            update: { [unowned self] h, c in if let m = (c as? MenuComponent)?.content { configureMenu(h, m) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: WidgetKey("menu"))
     }
 
     private func registerLeafComponents() {
