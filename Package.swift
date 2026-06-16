@@ -149,41 +149,34 @@ if toolkitEnabled("appkit") {
 }
 
 // WinUI 3 (Windows App SDK) toolkit — Windows-only, gated behind `#if os(Windows)` like AppKit is behind
-// `canImport(AppKit)`. It binds the real WinUI 3 XAML controls through the swift-winui WinRT projections
-// (https://github.com/hoptools/swift-winui), mapping HopUI widgets onto Canvas/TextBlock/Button/TextBox/
-// ToggleSwitch/Slider/ComboBox/ListView/etc. and running the Windows App SDK's XAML `Application` loop.
-// The package is consumed as a sibling path dependency so the WinUI CI job checks both repos out together
-// (and so any local fixes to the projections take effect without a round-trip through the remote).
+// `canImport(AppKit)`. WinUI/WinRT has no C ABI, so — exactly like CQt wraps Qt's C++ behind a pure-C
+// surface — `CWinUI` is a hand-written C++/WinRT shim that HopWinUI calls; there is no heavyweight WinRT
+// projection dependency. Run `scripts/setup-winui.ps1` once to stage the WinUI C++/WinRT headers + import
+// libs + Windows App Runtime bootstrap into `.winui/`; it writes `.winui/cflags` and `.winui/libs` (one
+// flag per line, read below). C++/WinRT requires C++20.
 #if os(Windows)
 if toolkitEnabled("winui") {
-    packageDependencies.append(.package(path: "../swift-winui"))
-    // The XAML `Application` run-loop executor uses Swift Concurrency custom executors (like GTK4/Qt).
-    let winuiLibSwiftSettings: [SwiftSetting] = uiIsolation + customExecutors
+    let winuiDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent(".winui").path
+    // Read a `.winui/<file>` flag list (one flag per line, so include/lib paths with spaces stay intact).
+    // Split on `isNewline` — a Windows CRLF is a single Swift grapheme, so comparing to "\n"/"\r" misses it.
+    func winuiFlags(_ file: String) -> [String] {
+        guard let text = try? String(contentsOfFile: "\(winuiDir)/\(file)", encoding: .utf8) else { return [] }
+        return text.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
+    }
     let winuiDemoSwiftSettings: [SwiftSetting] = uiIsolation + [.define("HOPUI_TOOLKIT_WINUI")] + customExecutors + noPrespecialize
     products += [
         .library(name: "HopWinUI", targets: ["HopWinUI"]),
         .executable(name: "hop-demo-winui", targets: ["HopDemoWinUI"]),
     ]
     targets += [
-        .target(name: "HopWinUI",
-                dependencies: [
-                    "HopUI",
-                    .product(name: "WinUI", package: "swift-winui"),
-                    .product(name: "WinAppSDK", package: "swift-winui"),
-                    .product(name: "UWP", package: "swift-winui"),
-                    .product(name: "WindowsFoundation", package: "swift-winui"),
-                ],
-                swiftSettings: winuiLibSwiftSettings),
-        // Runtime-free unit tests for the WinUI toolkit's pure helpers (color/font/geometry conversion):
-        // these never activate a WinRT class, so they run without the Windows App Runtime bootstrap.
-        .testTarget(name: "HopWinUITests", dependencies: ["HopWinUI"], swiftSettings: uiIsolation),
-        .executableTarget(name: "HopDemoWinUI",
-                          dependencies: [
-                              "HopWinUI",
-                              .product(name: "WinUI", package: "swift-winui"),
-                              .product(name: "WinAppSDK", package: "swift-winui"),
-                          ],
-                          path: "Demo/HopDemoWinUI",
+        // The C++/WinRT shim exposing a pure-C surface over WinUI 3 (Microsoft.UI.Xaml). Include/link flags
+        // and the cppwinrt-generated headers come from `.winui/` (produced by scripts/setup-winui.ps1);
+        // flags use forward slashes (clang rejects backslash include paths).
+        .target(name: "CWinUI",
+                cxxSettings: [.unsafeFlags(winuiFlags("cflags"))],  // C++20 comes from cxxLanguageStandard below
+                linkerSettings: [.unsafeFlags(winuiFlags("libs"))]),
+        .target(name: "HopWinUI", dependencies: ["HopUI", "CWinUI"], swiftSettings: uiIsolation + customExecutors),
+        .executableTarget(name: "HopDemoWinUI", dependencies: ["HopWinUI"], path: "Demo/HopDemoWinUI",
                           resources: [.copy("hop-logo.png")],
                           swiftSettings: winuiDemoSwiftSettings),
     ]
@@ -197,7 +190,7 @@ let package = Package(
     dependencies: packageDependencies,
     targets: targets,
     swiftLanguageModes: [.v6],
-    cxxLanguageStandard: .cxx17
+    cxxLanguageStandard: .cxx20  // C++/WinRT (CWinUI shim) needs C++20's <coroutine>; CQt's C++ is forward-compatible
 )
 
 #if os(macOS)

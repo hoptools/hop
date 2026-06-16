@@ -17,7 +17,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 | `HopGTK4` | GTK4 toolkit + `GtkApplication` runtime. |
 | `HopAppKit` | AppKit toolkit (macOS only). |
 | `CQt` / `HopQt` | C++ shim over Qt6 (pure-C surface) + Qt toolkit (macOS, via Homebrew Qt). |
-| `HopWinUI` | WinUI 3 toolkit (Windows) — binds real XAML controls via the [`swift-winui`](https://github.com/hoptools/swift-winui) WinRT projections. |
+| `CWinUI` / `HopWinUI` | C++/WinRT shim over WinUI 3 (pure-C surface) + WinUI toolkit (Windows). |
 | `HopDemo` | Shared `ContentView` used by every toolkit demo. |
 
 ## Prerequisites
@@ -28,11 +28,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
   - Linux: `apt install libgtk-4-dev pkg-config`
   - Windows: MSYS2 `mingw-w64-x86_64-gtk4 mingw-w64-x86_64-pkgconf` (set `PKG_CONFIG_PATH`/`PATH` to the mingw64 prefix)
 - Qt6 (only for the Qt toolkit/demo, macOS): `brew install qt`
-- WinUI 3 (only for the WinUI toolkit/demo, Windows):
-  - the [`swift-winui`](https://github.com/hoptools/swift-winui) projections checked out next to this
-    repo (`../swift-winui` — `Package.swift` references it as a path dependency)
-  - a Windows SDK (any version ≥ 10.0.17763) — present on standard Windows dev installs
-  - the matching Windows App Runtime installed to *run* the demo, e.g.
+- WinUI 3 (only for the WinUI toolkit/demo, Windows): WinUI has no C ABI, so the toolkit binds it through
+  the `CWinUI` C++/WinRT shim — there is no projection dependency. Before building, run the setup script
+  once to stage the WinUI C++/WinRT headers + import libs + Windows App Runtime bootstrap into `.winui/`:
+  - `pwsh ./scripts/setup-winui.ps1` (it NuGet-restores the Windows App SDK + WebView2 and runs the Windows
+    SDK's `cppwinrt`; needs a Windows SDK with `cppwinrt.exe`, present on standard dev installs, and internet)
+  - to *run* the demo, install the matching Windows App Runtime, e.g.
     `winget install --id Microsoft.WindowsAppRuntime.1.6 --force`
 
 ## Build, test, run
@@ -44,6 +45,10 @@ swift run hop-demo-appkit                # the AppKit demo window (macOS)
 swift run hop-demo-qt                    # the Qt demo window (macOS, Homebrew Qt)
 HOP_TOOLKIT=winui swift run hop-demo-winui   # the WinUI 3 demo window (Windows)
 ```
+
+To *run* the WinUI demo, the Windows App Runtime bootstrap DLL must be next to the executable (or on
+`PATH`): copy `.winui/Microsoft.WindowsAppRuntime.Bootstrap.dll` into the build's debug folder beside
+`hop-demo-winui.exe` (and have the Swift runtime DLLs on `PATH`, as `swift run` arranges).
 
 Equivalent helper scripts live in `scripts/` (`run-gtk4.sh`, `run-appkit.sh`, `run-qt.sh`,
 `build.sh`). Every demo renders the identical `CounterView` through the same HopGraph/HopUI core —

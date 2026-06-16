@@ -15,7 +15,7 @@ concurrency:
 # per-toolkit jobs: `HOP_TOOLKIT=gtk|qt|winui` (read by Package.swift) keeps only that toolkit's targets
 # in the build graph, so each runner installs and exercises ONLY its toolkit — a GTK runner never needs
 # Qt, and a Qt runner never needs GTK. Windows additionally has a WinUI 3 job (the real Windows-native
-# toolkit), which binds XAML controls through the swift-winui WinRT projections.
+# toolkit), which binds XAML controls through the CWinUI C++/WinRT shim (no projection dependency).
 
 jobs:
   macos:
@@ -72,7 +72,10 @@ jobs:
 
   windows-winui:
     name: Windows (WinUI)
-    runs-on: windows-latest
+    # Pinned to windows-2022 (VS 2022 / MSVC 14.4x), like the GTK4/Qt Windows jobs: windows-latest's newer
+    # MSVC STL requires Clang 20+, but the Swift 6.3 toolchain ships Clang 19, so compiling the C++/WinRT
+    # shim there would fail with "STL1000: Unexpected compiler version".
+    runs-on: windows-2022
     defaults:
       run:
         shell: cmd
@@ -88,20 +91,18 @@ jobs:
         with:
           branch: swift-6.3.2-release
           tag: 6.3.2-RELEASE
-      # The WinUI 3 toolkit binds real XAML controls through the swift-winui WinRT projections
-      # (https://github.com/hoptools/swift-winui). Package.swift references it as a sibling path dependency
-      # (`../swift-winui`), so check it out next to the hop repo. Pinned to a known-good commit for
-      # reproducibility; bump as the projections advance.
-      - name: Check out swift-winui (sibling path dependency)
-        run: git clone --depth 1 https://github.com/hoptools/swift-winui.git ..\swift-winui
-      # Building the projections needs a Windows SDK whose version is >= the one the bindings were generated
-      # against (10.0.17763); windows-latest ships a newer SDK that is compatible. `swift test` runs the
-      # core suite (HopGraph + HopUI) plus the toolkit's runtime-free conversion tests (HopWinUITests),
-      # none of which activate WinRT, so no Windows App Runtime is required at test time. `swift build` then
-      # compiles the HopWinUI library and the hop-demo-winui executable.
-      - name: Test (core + WinUI helpers)
+      # WinUI 3 has no C ABI, so HopWinUI talks to it through the CWinUI C++/WinRT shim (no projection
+      # dependency). setup-winui.ps1 NuGet-restores the Windows App SDK + WebView2, runs the Windows SDK's
+      # cppwinrt to generate the WinUI projection headers, and stages headers/import-libs/bootstrap into
+      # `.winui/` (read by Package.swift). shell: pwsh so the .ps1 actually runs (the job default is cmd).
+      - name: Stage WinUI (.winui) via cppwinrt
+        shell: pwsh
+        run: ./scripts/setup-winui.ps1 -Arch x64
+      # `swift test` runs the core suite (HopGraph + HopUI), which doesn't link the shim, so no Windows App
+      # Runtime is needed at test time. `swift build` then compiles the CWinUI shim + HopWinUI + the demo.
+      - name: Test (core)
         run: swift test
-      - name: Build (WinUI toolkit + demo)
+      - name: Build (CWinUI shim + WinUI toolkit + demo)
         run: swift build
 
   windows-qt:
