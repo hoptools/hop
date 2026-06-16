@@ -14,8 +14,17 @@ struct LayoutEngine {
     /// The current native size of a node's widget (for laying out content inside native composites).
     var sizeOf: (RenderNode) -> CGSize = { _ in .zero }
 
-    /// The layout behavior of a node, derived from its `WidgetKind` plus its `LayoutInfo` extras.
+    /// The layout behavior of a node: from its open ``WidgetComponent`` if migrated, else its `WidgetKind`.
     private func role(of node: RenderNode) -> LayoutRole {
+        if let component = node.component {
+            switch component.role {
+            case .leaf, .fill: return .leaf
+            case .native: return .native
+            case .spacer(let m): return .spacer(minLength: m)
+            case .stack(let a, let s, let al): return .stack(axis: a, spacing: s, alignment: al)
+            case .zstack(let al): return .zstack(alignment: al)
+            }
+        }
         switch node.kind {
         case .vstack, .groupBox:
             // A group box is a vertical stack of its content; the toolkit draws the card chrome behind it.
@@ -300,6 +309,9 @@ struct LayoutEngine {
                 if fixed != nil { return false }       // a fixed size is rigid
                 return maxValue == .infinity            // fills only with an explicit max-infinity
             }
+        }
+        if let component = node.component {
+            switch component.role { case .fill, .spacer: return true; default: return false }
         }
         switch node.kind {
         case .spacer, .scroll, .geometry: return true

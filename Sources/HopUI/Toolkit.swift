@@ -11,6 +11,24 @@
 public protocol RenderToolkit: AnyObject {
     associatedtype Handle: AnyObject
 
+    // MARK: - Open component system (the extensibility seam)
+
+    /// This toolkit's runtime identity (used to dispatch a self-hosted component's `makeNative`).
+    static var toolkitID: ToolkitID { get }
+
+    /// Create the native widget for a ``WidgetComponent``: via the backend's registered renderer for
+    /// `component.widgetKey`, else the component's self-hosted `makeNative`, else a placeholder. This —
+    /// plus ``updateComponent(_:_:)`` and ``measureComponent(_:_:_:)`` — is the *entire* per-widget seam;
+    /// new widgets (built-in or third-party) plug in here without changing the protocol.
+    func realize(_ component: any WidgetComponent) -> Handle
+    /// Re-apply a component's current state to its native widget (reconfigure in place). Called when the
+    /// component changed but its `widgetKey` did not (same native widget type).
+    func updateComponent(_ handle: Handle, _ component: any WidgetComponent)
+    /// The size the component's native widget chooses for a proposal (its intrinsic/greedy size).
+    func measureComponent(_ handle: Handle, _ component: any WidgetComponent, _ proposal: ProposedViewSize) -> CGSize
+
+    // MARK: - Legacy per-kind path (being migrated onto the component system above)
+
     func makeWidget(_ kind: WidgetKind) -> Handle
     func configure(_ handle: Handle, _ patch: WidgetPatch)
     func insert(_ child: Handle, into parent: Handle, at index: Int)

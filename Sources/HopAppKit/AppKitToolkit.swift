@@ -268,7 +268,38 @@ public final class AppKitToolkit: AppToolkit {
     // Called by the runtime to re-run the layout engine when the window content size changes.
     private var relayoutHandler: (@MainActor () -> Void)?
 
-    public init() {}
+    // MARK: - Open component system
+    public static let toolkitID = ToolkitID.appKit
+    /// Open registry of component renderers (built-ins registered below; third-party packages may add more).
+    public let components = ComponentRegistry<AppKitWidget>()
+
+    public init() { registerBuiltinComponents() }
+
+    /// Create a component's native widget: registered renderer, else self-hosted `makeNative`, else a
+    /// placeholder empty layer.
+    public func realize(_ component: any WidgetComponent) -> AppKitWidget {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
+        if let view = component.makeNative(Self.toolkitID) as? NSView { return AppKitWidget(view) }
+        return AppKitWidget(FlippedView())
+    }
+
+    public func updateComponent(_ handle: AppKitWidget, _ component: any WidgetComponent) {
+        if let renderer = components.renderer(for: component.widgetKey) { renderer.update(handle, component); return }
+        component.updateNative(handle.view, Self.toolkitID)
+    }
+
+    public func measureComponent(_ handle: AppKitWidget, _ component: any WidgetComponent, _ proposal: ProposedViewSize) -> CGSize {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.measure(handle, component, proposal) }
+        switch component.role {
+        case .fill, .native: return proposal.resolved(.zero)
+        default: return measure(handle, proposal)
+        }
+    }
+
+    /// Register built-in component renderers. Populated as widgets migrate off the legacy `makeWidget` path.
+    private func registerBuiltinComponents() {
+        // Pilots (Image, Picker) registered here as they migrate.
+    }
 
     public func makeWidget(_ kind: WidgetKind) -> AppKitWidget {
         switch kind {

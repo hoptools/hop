@@ -276,7 +276,34 @@ public final class QtToolkit: AppToolkit {
     // Called by the runtime to re-run the layout engine when the window content size changes.
     var relayoutHandler: (@MainActor () -> Void)?
 
-    public init() {}
+    // MARK: - Open component system
+    public static let toolkitID = ToolkitID.qt
+    public let components = ComponentRegistry<QtWidget>()
+
+    public init() { registerBuiltinComponents() }
+
+    public func realize(_ component: any WidgetComponent) -> QtWidget {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
+        if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return QtWidget(ptr) }
+        return makeWidget(.vstack)
+    }
+
+    public func updateComponent(_ handle: QtWidget, _ component: any WidgetComponent) {
+        if let renderer = components.renderer(for: component.widgetKey) { renderer.update(handle, component); return }
+        component.updateNative(handle.ptr, Self.toolkitID)
+    }
+
+    public func measureComponent(_ handle: QtWidget, _ component: any WidgetComponent, _ proposal: ProposedViewSize) -> CGSize {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.measure(handle, component, proposal) }
+        switch component.role {
+        case .fill, .native: return proposal.resolved(.zero)
+        default: return measure(handle, proposal)
+        }
+    }
+
+    private func registerBuiltinComponents() {
+        // Pilots (Image, Picker) registered here as they migrate.
+    }
 
     public func makeWidget(_ kind: WidgetKind) -> QtWidget {
         switch kind {

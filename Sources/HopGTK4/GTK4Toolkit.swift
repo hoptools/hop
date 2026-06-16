@@ -356,7 +356,34 @@ public final class GTK4Toolkit: AppToolkit {
     // Called by the runtime to re-run the layout engine when the window content size changes.
     var relayoutHandler: (@MainActor () -> Void)?
 
-    public init() {}
+    // MARK: - Open component system
+    public static let toolkitID = ToolkitID.gtk4
+    public let components = ComponentRegistry<GTK4Widget>()
+
+    public init() { registerBuiltinComponents() }
+
+    public func realize(_ component: any WidgetComponent) -> GTK4Widget {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
+        if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return GTK4Widget(ptr) }
+        return makeWidget(.vstack)
+    }
+
+    public func updateComponent(_ handle: GTK4Widget, _ component: any WidgetComponent) {
+        if let renderer = components.renderer(for: component.widgetKey) { renderer.update(handle, component); return }
+        component.updateNative(handle.widget, Self.toolkitID)
+    }
+
+    public func measureComponent(_ handle: GTK4Widget, _ component: any WidgetComponent, _ proposal: ProposedViewSize) -> CGSize {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.measure(handle, component, proposal) }
+        switch component.role {
+        case .fill, .native: return proposal.resolved(.zero)
+        default: return measure(handle, proposal)
+        }
+    }
+
+    private func registerBuiltinComponents() {
+        // Pilots (Image, Picker) registered here as they migrate.
+    }
 
     public func makeWidget(_ kind: WidgetKind) -> GTK4Widget {
         let widget: UnsafeMutableRawPointer

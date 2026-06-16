@@ -54,7 +54,8 @@ final class Reconciler<Toolkit: RenderToolkit> {
                    cached.width == proposal.width, cached.height == proposal.height {
                     return cached.size   // identical content + same proposal → reuse, skip native measure
                 }
-                let size = toolkit.measure(handle, proposal)
+                let size = node.component.map { toolkit.measureComponent(handle, $0, proposal) }
+                    ?? toolkit.measure(handle, proposal)
                 if node.subtreeRevision != 0 {
                     measureCache[node.id] = (node.subtreeRevision, proposal.width, proposal.height, size)
                 }
@@ -66,60 +67,70 @@ final class Reconciler<Toolkit: RenderToolkit> {
     }
 
     private func realize(_ node: RenderNode) -> Toolkit.Handle {
-        let handle = toolkit.makeWidget(node.kind)
-        toolkit.configure(handle, node.patch)
-        toolkit.setAction(handle, node.action)
-        toolkit.setTextHandler(handle, node.onChange)
-        toolkit.setValueHandler(handle, node.onChangeDouble)
-        toolkit.setBoolHandler(handle, node.onChangeBool)
-        if let list = node.list { toolkit.configureList(handle, list) }
-        if let shape = node.shape { toolkit.configureShape(handle, shape) }
-        if let menu = node.menu { toolkit.configureMenu(handle, menu) }
-        if let picker = node.picker { toolkit.configurePicker(handle, picker) }
-        if let datePicker = node.datePicker { toolkit.configureDatePicker(handle, datePicker) }
-        if let colorPicker = node.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
-        if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
-        if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
-        if let outline = node.outline { toolkit.configureOutline(handle, outline) }
-        if let image = node.image { toolkit.configureImage(handle, image) }
-        toolkit.setScrollHandler(handle, node.onScroll)
+        let handle: Toolkit.Handle
+        if let component = node.component {
+            // Open component path: the renderer (or self-hosted code) creates AND configures the widget.
+            handle = toolkit.realize(component)
+        } else {
+            handle = toolkit.makeWidget(node.kind)
+            toolkit.configure(handle, node.patch)
+            toolkit.setAction(handle, node.action)
+            toolkit.setTextHandler(handle, node.onChange)
+            toolkit.setValueHandler(handle, node.onChangeDouble)
+            toolkit.setBoolHandler(handle, node.onChangeBool)
+            if let list = node.list { toolkit.configureList(handle, list) }
+            if let shape = node.shape { toolkit.configureShape(handle, shape) }
+            if let menu = node.menu { toolkit.configureMenu(handle, menu) }
+            if let picker = node.picker { toolkit.configurePicker(handle, picker) }
+            if let datePicker = node.datePicker { toolkit.configureDatePicker(handle, datePicker) }
+            if let colorPicker = node.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
+            if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
+            if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
+            if let outline = node.outline { toolkit.configureOutline(handle, outline) }
+            if let image = node.image { toolkit.configureImage(handle, image) }
+            toolkit.setScrollHandler(handle, node.onScroll)
+        }
         handles[node.id] = handle
         for (index, child) in node.children.enumerated() {
             toolkit.insert(realize(child), into: handle, at: index)
         }
         // A native tab widget builds its tabs from the now-inserted page children, so configure last.
-        if let tabs = node.tabs { toolkit.configureTabs(handle, tabs) }
+        if node.component == nil, let tabs = node.tabs { toolkit.configureTabs(handle, tabs) }
         return handle
     }
 
     private func reconcile(old: RenderNode, new: RenderNode) {
-        guard old.kind == new.kind, let handle = handles[new.id] else { return }
+        guard old.reuseSignature == new.reuseSignature, let handle = handles[new.id] else { return }
         // Incremental skip (Phase 2): a nonzero revision that matches the previous one means the resolve
         // pass returned the *exact same* cached nodes — the subtree is byte-identical, so its widgets are
         // already correct and we touch nothing. This is safe by construction: the revision is preserved
         // only for verbatim-reused subtrees (see `ViewGraph.resolveComposite`).
         if new.subtreeRevision != 0 && new.subtreeRevision == old.subtreeRevision { return }
-        if new.patch != old.patch {
-            toolkit.configure(handle, new.patch)
+        if let component = new.component {
+            toolkit.updateComponent(handle, component)
+        } else {
+            if new.patch != old.patch {
+                toolkit.configure(handle, new.patch)
+            }
+            toolkit.setAction(handle, new.action)
+            toolkit.setTextHandler(handle, new.onChange)
+            toolkit.setValueHandler(handle, new.onChangeDouble)
+            toolkit.setBoolHandler(handle, new.onChangeBool)
+            if let list = new.list { toolkit.configureList(handle, list) }
+            if let shape = new.shape { toolkit.configureShape(handle, shape) }
+            if let menu = new.menu { toolkit.configureMenu(handle, menu) }
+            if let picker = new.picker { toolkit.configurePicker(handle, picker) }
+            if let datePicker = new.datePicker { toolkit.configureDatePicker(handle, datePicker) }
+            if let colorPicker = new.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
+            if let fileImporter = new.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
+            if let fileExporter = new.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
+            if let outline = new.outline { toolkit.configureOutline(handle, outline) }
+            if let image = new.image { toolkit.configureImage(handle, image) }
+            toolkit.setScrollHandler(handle, new.onScroll)
         }
-        toolkit.setAction(handle, new.action)
-        toolkit.setTextHandler(handle, new.onChange)
-        toolkit.setValueHandler(handle, new.onChangeDouble)
-        toolkit.setBoolHandler(handle, new.onChangeBool)
-        if let list = new.list { toolkit.configureList(handle, list) }
-        if let shape = new.shape { toolkit.configureShape(handle, shape) }
-        if let menu = new.menu { toolkit.configureMenu(handle, menu) }
-        if let picker = new.picker { toolkit.configurePicker(handle, picker) }
-        if let datePicker = new.datePicker { toolkit.configureDatePicker(handle, datePicker) }
-        if let colorPicker = new.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
-        if let fileImporter = new.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
-        if let fileExporter = new.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
-        if let outline = new.outline { toolkit.configureOutline(handle, outline) }
-        if let image = new.image { toolkit.configureImage(handle, image) }
-        toolkit.setScrollHandler(handle, new.onScroll)
         reconcileChildren(parent: handle, old: old.children, new: new.children)
         // Configure tabs after the page children are reconciled (titles/selection track the live pages).
-        if let tabs = new.tabs { toolkit.configureTabs(handle, tabs) }
+        if new.component == nil, let tabs = new.tabs { toolkit.configureTabs(handle, tabs) }
     }
 
     /// Keyed child diff: match by ``RenderNode/id``, reuse matched handles (preserving native state)
@@ -129,11 +140,12 @@ final class Reconciler<Toolkit: RenderToolkit> {
     private func reconcileChildren(parent: Toolkit.Handle, old: [RenderNode], new: [RenderNode]) {
         let oldByID = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        // A new child reuses an old one when they share id AND kind (a kind change at the same id is
-        // treated as a remove + realize, since the widget type differs).
+        // A new child reuses an old one when they share id AND reuse-signature (kind, or a migrated
+        // component's widgetKey). A signature change at the same id — e.g. a Picker whose style switched
+        // its native widget — is a remove + realize, since the underlying widget type differs.
         func reusable(_ node: RenderNode) -> Bool {
             guard let prior = oldByID[node.id] else { return false }
-            return prior.kind == node.kind && handles[node.id] != nil
+            return prior.reuseSignature == node.reuseSignature && handles[node.id] != nil
         }
         let keptIDs = Set(new.filter(reusable).map { $0.id })
 

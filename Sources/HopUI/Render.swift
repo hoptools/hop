@@ -351,6 +351,16 @@ public struct RenderNode {
     /// replaces each with `read(compositeRef.body)`, re-running only the bodies that actually changed.
     /// (See `project_hopui_finegrained_reactivity`.) Always nil in a resolved tree (what reconcile/layout see).
     var compositeRef: CompositeNode?
+    /// The open widget component (the migration target replacing `kind` + the per-kind specs). When set,
+    /// the reconciler and layout engine use it (realize/update via the toolkit's component path, role via
+    /// `component.role`, reuse-match via `component.widgetKey`) and ignore `kind`. While migrating,
+    /// un-migrated widgets leave this nil and still use `kind`.
+    public var component: (any WidgetComponent)?
+
+    /// Reuse identity for the keyed child diff: a component's `widgetKey` if migrated, else its `kind`. A
+    /// child is reused across a reconcile only when this matches — so a `Picker` whose style changed its
+    /// native widget (different `widgetKey`) is correctly torn down and recreated rather than reconfigured.
+    var reuseSignature: String { component.map { "c:\($0.widgetKey.rawValue)" } ?? "k:\(kind)" }
     /// Set during resolve: a token identifying this subtree's content. Two nodes with the same nonzero
     /// `subtreeRevision` across successive flushes are byte-identical (the resolve pass preserves it only by
     /// reusing the exact cached nodes), so the reconciler and layout engine can safely skip them. `0` means
@@ -368,7 +378,7 @@ public struct RenderNode {
                 fileImporter: FileImporterSpec? = nil, fileExporter: FileExporterSpec? = nil,
                 tag: AnyHashable? = nil,
                 outline: OutlineSpec? = nil, image: ImageSpec? = nil, tabs: TabSpec? = nil,
-                preferences: NodePreferences? = nil,
+                preferences: NodePreferences? = nil, component: (any WidgetComponent)? = nil,
                 layout: LayoutInfo = LayoutInfo(), onGeometry: (@MainActor (CGSize) -> Void)? = nil,
                 onScroll: (@MainActor (CGSize) -> Void)? = nil,
                 onRowExtent: (@MainActor (Double) -> Void)? = nil,
@@ -393,6 +403,7 @@ public struct RenderNode {
         self.image = image
         self.tabs = tabs
         self.preferences = preferences
+        self.component = component
         self.tag = tag
         self.layout = layout
         self.onGeometry = onGeometry

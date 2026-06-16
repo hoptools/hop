@@ -60,6 +60,31 @@ final class MockToolkit: AppToolkit {
     func clearOps() { ops.removeAll() }
     var makeCount: Int { ops.filter { $0.hasPrefix("make:") }.count }
 
+    // MARK: - Open component system
+    static let toolkitID = ToolkitID.mock
+    let components = ComponentRegistry<MockWidget>()
+    init() { registerBuiltinComponents() }
+
+    func realize(_ component: any WidgetComponent) -> MockWidget {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
+        if let widget = component.makeNative(Self.toolkitID) as? MockWidget { return widget }
+        let widget = MockWidget(kind: .vstack); widgets.append(widget); ops.append("make:placeholder"); return widget
+    }
+    func updateComponent(_ handle: MockWidget, _ component: any WidgetComponent) {
+        if let renderer = components.renderer(for: component.widgetKey) { renderer.update(handle, component); return }
+        component.updateNative(handle, Self.toolkitID)
+    }
+    func measureComponent(_ handle: MockWidget, _ component: any WidgetComponent, _ proposal: ProposedViewSize) -> CGSize {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.measure(handle, component, proposal) }
+        switch component.role {
+        case .fill, .native: return proposal.resolved(.zero)
+        default: return measure(handle, proposal)
+        }
+    }
+    private func registerBuiltinComponents() {
+        // Pilots (Image, Picker) registered here as they migrate.
+    }
+
     func makeWidget(_ kind: WidgetKind) -> MockWidget {
         ops.append("make:\(kind)")
         let widget = MockWidget(kind: kind)
