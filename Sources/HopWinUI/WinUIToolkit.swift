@@ -60,6 +60,12 @@ public final class WinUIWidget {
     // `.tabView` state: the tab-button strip and the current page.
     var tabStrip: WinUI.StackPanel?
     var tabSelected = 0
+    // `.datePicker` state: WinUI splits date and time editing into two controls, hosted side by side; which
+    // are shown depends on the bound `DatePickerComponents`. `dpDate` is the current combined value, so a
+    // partial edit (date-only or time-only) can be merged back with the other component.
+    var datePart: WinUI.CalendarDatePicker?
+    var timePart: WinUI.TimePicker?
+    var dpDate = Date(timeIntervalSince1970: 0)
     // Size stamped by `setFrame` for native panes (read back by `sizeOf`).
     var stampedSize: CGSize?
     // Retained event registrations (kept alive for the widget's lifetime).
@@ -224,21 +230,48 @@ public final class WinUIToolkit: AppToolkit {
             return widget
 
         case .datePicker:
-            // WinUI's CalendarDatePicker covers the date portion (it has no time editing — the time
-            // component is not yet reflected here; see configureDatePicker).
-            let picker = WinUI.CalendarDatePicker()
-            let widget = WinUIWidget(picker, kind: kind)
-            let cleanup = picker.dateChanged.addHandler { [weak widget, weak picker] _, _ in
-                guard let widget, let picker, !widget.suppress else { return }
+            // WinUI has no single date+time control: CalendarDatePicker edits the date and TimePicker the
+            // time. Host both in a row; configureDatePicker shows whichever the bound DatePickerComponents
+            // ask for (e.g. `.date` → date only, `.hourAndMinute` → time only, both → both). CalendarDatePicker
+            // sizes to *stretch*, so pin a minimum width or it collapses to nothing when offered an
+            // unconstrained (HStack) width.
+            let row = WinUI.StackPanel()
+            row.orientation = .horizontal
+            row.spacing = 8
+            row.horizontalAlignment = .left
+            let datePart = WinUI.CalendarDatePicker()
+            datePart.minWidth = 240
+            let timePart = WinUI.TimePicker()
+            timePart.minWidth = 150  // reserve room so it isn't squeezed out beside the date control
+            row.children.append(datePart)
+            row.children.append(timePart)
+            let widget = WinUIWidget(row, kind: kind)
+            widget.datePart = datePart
+            widget.timePart = timePart
+            // A date edit keeps the existing time-of-day; a time edit keeps the existing day. Merge through
+            // `dpDate` so the unedited component is preserved, then report the combined Date.
+            let dateCleanup = datePart.dateChanged.addHandler { [weak widget, weak datePart] _, _ in
+                guard let widget, let datePart, !widget.suppress, let dt = datePart.date else { return }
                 MainActor.assumeIsolated {
-                    if let dt = picker.date { widget.onChangeDate?(Self.date(from: dt)) }
+                    let merged = Self.compose(day: Self.date(from: dt), secondsIntoDay: Self.timeOfDay(widget.dpDate))
+                    widget.dpDate = merged
+                    widget.onChangeDate?(merged)
                 }
             }
-            widget.cleanups.append(cleanup)
+            let timeCleanup = timePart.timeChanged.addHandler { [weak widget, weak timePart] _, _ in
+                guard let widget, let timePart, !widget.suppress else { return }
+                MainActor.assumeIsolated {
+                    let merged = Self.compose(day: widget.dpDate, secondsIntoDay: Double(timePart.time.duration) / 10_000_000)
+                    widget.dpDate = merged
+                    widget.onChangeDate?(merged)
+                }
+            }
+            widget.cleanups.append(dateCleanup)
+            widget.cleanups.append(timeCleanup)
             return widget
 
         case .colorPicker:
-            // WinUI's inline ColorPicker (a full picker surface, not a compact swatch).
+            // WinUI's inline ColorPicker (a full picker surface: spectrum + sliders), bound to the Color.
             let picker = WinUI.ColorPicker()
             let widget = WinUIWidget(picker, kind: kind)
             let cleanup = picker.colorChanged.addHandler { [weak widget, weak picker] _, _ in
@@ -431,11 +464,22 @@ public final class WinUIToolkit: AppToolkit {
     }
 
     public func configureDatePicker(_ handle: WinUIWidget, _ spec: DatePickerSpec) {
-        guard let picker = handle.element as? WinUI.CalendarDatePicker else { return }
         handle.onChangeDate = spec.onChange
-        // CalendarDatePicker edits the date only; the time component, bounds, and style aren't reflected here.
+        handle.dpDate = spec.date
+        // Show the date and/or time control per the bound components, and reflect the current value into each
+        // (bounds and the graphical style aren't mapped here). `.date` ⇒ date only; `.hourAndMinute` ⇒ time
+        // only; both ⇒ both, side by side. Default to the date control if neither is requested.
+        let showDate = spec.components.contains(.date) || spec.components.isEmpty
+        let showTime = spec.components.contains(.hourAndMinute)
         handle.suppress = true
-        picker.date = Self.dateTime(from: spec.date)
+        if let datePart = handle.datePart {
+            datePart.visibility = showDate ? .visible : .collapsed
+            datePart.date = Self.dateTime(from: spec.date)
+        }
+        if let timePart = handle.timePart {
+            timePart.visibility = showTime ? .visible : .collapsed
+            timePart.time = WindowsFoundation.TimeSpan(duration: Int64(Self.timeOfDay(spec.date) * 10_000_000))
+        }
         handle.suppress = false
     }
 
@@ -619,6 +663,12 @@ public final class WinUIToolkit: AppToolkit {
         case .image:
             let natural = handle.imageNaturalSize
             return handle.imageResizable ? proposal.resolved(natural) : natural
+        case .datePicker:
+            // A CalendarDatePicker stretches, so guarantee a usable compact-field size regardless of what
+            // its (stretch-driven) desired size reports for an unconstrained proposal.
+            try? handle.element.measure(WindowsFoundation.Size(width: Float.infinity, height: Float.infinity))
+            let desired = handle.element.desiredSize
+            return CGSize(width: Swift.max(Double(desired.width), 240), height: Swift.max(Double(desired.height), 32))
         default:
             break
         }
@@ -759,6 +809,19 @@ public final class WinUIToolkit: AppToolkit {
     static func dateTime(from date: Date) -> WindowsFoundation.DateTime {
         WindowsFoundation.DateTime(
             universalTime: Int64((date.timeIntervalSince1970 + winrtEpochOffsetSeconds) * 10_000_000))
+    }
+
+    // Date/time composition for the split CalendarDatePicker + TimePicker (all UTC-relative, matching the
+    // tick math above): `timeOfDay` is the seconds since UTC midnight; `compose` rebuilds a Date from one
+    // value's day and another's time-of-day, so editing one control preserves the other's component.
+    private static let secondsPerDay: Double = 86_400
+    static func timeOfDay(_ date: Date) -> Double {
+        let t = date.timeIntervalSince1970
+        return t - (t / secondsPerDay).rounded(.down) * secondsPerDay
+    }
+    static func compose(day: Date, secondsIntoDay: Double) -> Date {
+        let dayStart = (day.timeIntervalSince1970 / secondsPerDay).rounded(.down) * secondsPerDay
+        return Date(timeIntervalSince1970: dayStart + secondsIntoDay)
     }
 
     static func fontWeight(_ weight: HopUI.Font.Weight) -> UWP.FontWeight {
