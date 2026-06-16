@@ -108,6 +108,16 @@ public struct PrimitiveLeafComponent: WidgetComponent {
     }
 }
 
+/// The component for HopUI's layout containers (VStack/HStack/ZStack/GroupBox). It carries no payload
+/// beyond a `widgetKey` and a `role` (which encodes axis/spacing/alignment); children live on the
+/// ``RenderNode`` and the backend's container renderer just creates the empty native container — the
+/// layout engine arranges the children from `role`.
+public struct ContainerComponent: WidgetComponent {
+    public let widgetKey: WidgetKey
+    public let role: WidgetRole
+    public init(_ key: WidgetKey, role: WidgetRole) { self.widgetKey = key; self.role = role }
+}
+
 /// A backend's open registry of component renderers, keyed by ``WidgetKey``. A backend registers its
 /// built-in renderers here; **third-party packages can register their own** (e.g. `appKit.components`
 /// `.register(...)`) — the open replacement for the closed `makeWidget`/`configureX` switch. Generic over

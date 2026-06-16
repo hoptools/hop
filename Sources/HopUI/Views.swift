@@ -227,6 +227,8 @@ public struct VStack<Content: View>: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id, kind: .vstack, patch: WidgetPatch(spacing: spacing),
                    children: evaluate(content, context.appending(0)),
+                   component: ContainerComponent(WidgetKey("vstack"),
+                       role: .stack(axis: .vertical, spacing: spacing, alignment: Alignment(horizontal: alignment, vertical: .center))),
                    layout: LayoutInfo(alignment: Alignment(horizontal: alignment, vertical: .center)))
     }
 }
@@ -248,6 +250,8 @@ public struct HStack<Content: View>: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id, kind: .hstack, patch: WidgetPatch(spacing: spacing),
                    children: evaluate(content, context.appending(0)),
+                   component: ContainerComponent(WidgetKey("hstack"),
+                       role: .stack(axis: .horizontal, spacing: spacing, alignment: Alignment(horizontal: .center, vertical: alignment))),
                    layout: LayoutInfo(alignment: Alignment(horizontal: .center, vertical: alignment)))
     }
 }
@@ -266,6 +270,7 @@ public struct ZStack<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id, kind: .zstack, children: evaluate(content, context.appending(0)),
+                   component: ContainerComponent(WidgetKey("zstack"), role: .zstack(alignment: alignment)),
                    layout: LayoutInfo(alignment: alignment))
     }
 }

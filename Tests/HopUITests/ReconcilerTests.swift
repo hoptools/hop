@@ -97,6 +97,14 @@ final class MockToolkit: AppToolkit {
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
             ), for: WidgetKey(key))
         }
+        // Layout containers — empty native container; the engine arranges children from the role.
+        for (key, kind) in [("vstack", WidgetKind.vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox)] {
+            components.register(.init(
+                make: { [unowned self] _ in makeWidget(kind) },
+                update: { _, _ in },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: WidgetKey(key))
+        }
         // Spec-carrying leaves (DatePicker/ColorPicker/Menu) — delegate to the legacy configure path.
         components.register(.init(
             make: { [unowned self] c in let h = makeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },

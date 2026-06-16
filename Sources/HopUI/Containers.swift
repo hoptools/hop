@@ -48,6 +48,8 @@ struct _CardBox<Content: View>: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id, kind: .groupBox,
                    children: evaluate(content, context.appending(0)),
+                   component: ContainerComponent(WidgetKey("groupBox"),
+                       role: .stack(axis: .vertical, spacing: nil, alignment: Alignment(horizontal: .leading, vertical: .center))),
                    layout: LayoutInfo(alignment: Alignment(horizontal: .leading, vertical: .center)))
     }
 }

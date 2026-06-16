@@ -384,8 +384,20 @@ public final class GTK4Toolkit: AppToolkit {
     private func registerBuiltinComponents() {
         registerLeafComponents()
         registerSpecLeafComponents()
+        registerContainerComponents()
         registerImageComponent()
         registerPickerComponents()
+    }
+
+    private func registerContainerComponents() {
+        let containers: [(String, WidgetKind)] = [("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox)]
+        for (key, kind) in containers {
+            components.register(.init(
+                make: { [unowned self] _ in makeWidget(kind) },
+                update: { _, _ in },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: WidgetKey(key))
+        }
     }
 
     private func registerSpecLeafComponents() {

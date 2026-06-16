@@ -302,8 +302,21 @@ public final class AppKitToolkit: AppToolkit {
     private func registerBuiltinComponents() {
         registerLeafComponents()
         registerSpecLeafComponents()
+        registerContainerComponents()
         registerImageComponent()
         registerPickerComponents()
+    }
+
+    /// Layout containers — an empty native container; the layout engine arranges children from the role.
+    private func registerContainerComponents() {
+        let containers: [(String, WidgetKind)] = [("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox)]
+        for (key, kind) in containers {
+            components.register(.init(
+                make: { [unowned self] _ in makeWidget(kind) },
+                update: { _, _ in },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: WidgetKey(key))
+        }
     }
 
     /// Spec-carrying leaves (DatePicker, ColorPicker, Menu) — delegate to the existing configure path.
