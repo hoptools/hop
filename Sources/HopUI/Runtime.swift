@@ -67,6 +67,11 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
     // Held for the app's lifetime so its @State boxes survive across re-evaluations.
     let rootView = makeRoot()
 
+    // Persists every view's @State by structural identity (not by struct lifetime), so @State works in
+    // nested views exactly like SwiftUI — not just in the retained root view.
+    let stateStore = StateStore()
+    GraphContext.stateStore = stateStore
+
     // A graph source bumped whenever an observed @Observable property changes; the render rule reads
     // it so those changes invalidate (and re-pull) the tree, alongside @State.
     let observationTick = graph.makeSource(0)
@@ -83,7 +88,9 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
             return withObservationTracking {
                 ToolbarCollector.reset()
                 PreferredColorSchemeStore.current = nil
+                stateStore.beginPass()
                 let nodes = evaluate(rootView, RenderContext(path: [.index(0)]))
+                stateStore.endPassAndSweep()  // discard @State of views no longer in the tree
                 let root = nodes.first ?? RenderNode(id: "0", kind: .vstack)
                 return RenderResult(root: root, toolbar: ToolbarCollector.items,
                                     colorScheme: PreferredColorSchemeStore.current)
@@ -142,8 +149,10 @@ func openSecondaryWindow<Toolkit: AppToolkit>(_ def: _WindowDef, toolkit: Toolki
     // Evaluate the content against a throwaway graph so any @State initializes; restore the primary
     // window's graph afterward so its flushes keep using it.
     let savedGraph = GraphContext.current
+    let savedStore = GraphContext.stateStore
     GraphContext.current = Graph()
-    defer { GraphContext.current = savedGraph }
+    GraphContext.stateStore = nil   // a one-shot snapshot needs no identity persistence
+    defer { GraphContext.current = savedGraph; GraphContext.stateStore = savedStore }
 
     let nodes = evaluate(def.content(), RenderContext(path: [.index(0)]))
     let root = nodes.first ?? RenderNode(id: "0", kind: .vstack)

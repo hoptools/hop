@@ -185,28 +185,13 @@ public struct ContentView: View {
     @State private var selection: Playground? = Playground.defaultSelection
     @State private var navPath: [String] = []
 
-    // Playground state lives here and is handed to the playgrounds as bindings (slider/button/text) or
-    // through the environment (observable), so each playground is a self-contained, reusable view.
-    @State private var sliderValue = 50.0
-    @State private var count = 0
+    // Only state genuinely SHARED across playgrounds lives here; everything else is local @State in the
+    // playground that owns it (HopUI persists @State by view identity, like SwiftUI). The Form mirrors the
+    // same name / password / Wi-Fi / volume the individual control playgrounds edit, so those four are shared.
     @State private var name = ""
-    // Menus playground state (lifted here so it persists across re-renders, like the other playgrounds).
-    @State private var flavor = Flavor.vanilla
-    @State private var quantity = 1
-    @State private var lastMenuAction = "—"
-    // Tier-1 control state (lifted here, handed to playgrounds as bindings — like the other playgrounds).
-    @State private var wifiOn = true
-    @State private var notificationsOn = false
-    @State private var stepperQuantity = 3
     @State private var password = ""
-    @State private var appointment = Date()
-    @State private var tint = Color.blue
-    // Files playground state (lifted here so it persists across re-renders, like the other playgrounds —
-    // a nested view's local @State resets each render, so the importer/exporter would never stay presented).
-    @State private var fileImporting = false
-    @State private var fileExporting = false
-    @State private var fileText = "Hello from HopUI!\nEdit this, then export it."
-    @State private var fileStatus = "No file chosen yet."
+    @State private var wifiOn = true
+    @State private var sliderValue = 50.0
 
     public init() {}
 
@@ -245,15 +230,15 @@ public struct ContentView: View {
             if selection == .slider {
                 SliderPlayground(value: $sliderValue)
             } else if selection == .button {
-                ButtonPlayground(count: $count)
+                ButtonPlayground()
             } else if selection == .toggle {
-                TogglePlayground(wifi: $wifiOn, notifications: $notificationsOn)
+                TogglePlayground(wifi: $wifiOn)   // Wi-Fi is shared with the Form; Notifications is local
             } else if selection == .stepper {
-                StepperPlayground(quantity: $stepperQuantity)
+                StepperPlayground()
             } else if selection == .datePicker {
-                DatePickerPlayground(date: $appointment)
+                DatePickerPlayground()
             } else if selection == .colorPicker {
-                ColorPickerPlayground(color: $tint)
+                ColorPickerPlayground()
             } else if selection == .textField {
                 TextFieldPlayground(text: $name)
             } else if selection == .secureField {
@@ -273,7 +258,7 @@ public struct ContentView: View {
             } else if selection == .images {
                 ImagePlayground()
             } else if selection == .menus {
-                MenuPlayground(flavor: $flavor, quantity: $quantity, lastAction: $lastMenuAction)
+                MenuPlayground()
             } else if selection == .progress {
                 ProgressPlayground()
             } else if selection == .disclosure {
@@ -285,8 +270,7 @@ public struct ContentView: View {
             } else if selection == .tabs {
                 TabsPlayground()
             } else if selection == .files {
-                FilePlayground(importing: $fileImporting, exporting: $fileExporting,
-                               text: $fileText, status: $fileStatus)
+                FilePlayground()
             } else {
                 LayoutPlayground()
             }
@@ -314,14 +298,14 @@ struct TextFileDocument: FileDocument {
 }
 #endif
 
-// Builds against HopUI AND Apple's SwiftUI. State is bound from the root so it survives re-renders. The
-// importer is identical on both; only `.fileExporter` differs (SwiftUI needs a FileDocument, HopUI takes
-// Data), so that one modifier is `#if`-selected.
+// Builds against HopUI AND Apple's SwiftUI. Uses ordinary local @State (now that HopUI persists @State by
+// view identity, like SwiftUI — no need to lift it to the root). The importer is identical on both; only
+// `.fileExporter` differs (SwiftUI needs a FileDocument, HopUI takes Data), so that one modifier is `#if`-selected.
 struct FilePlayground: View {
-    @Binding var importing: Bool
-    @Binding var exporting: Bool
-    @Binding var text: String
-    @Binding var status: String
+    @State private var importing = false
+    @State private var exporting = false
+    @State private var text = "Hello from HopUI!\nEdit this, then export it."
+    @State private var status = "No file chosen yet."
 
     var body: some View {
         #if HOPUI_TOOLKIT_SWIFTUI
@@ -392,7 +376,7 @@ struct SliderPlayground: View {
 }
 
 struct ButtonPlayground: View {
-    @Binding var count: Int
+    @State private var count = 0
     var body: some View {
         VStack(spacing: 16) {
             Text("Tap the buttons to change the count")
@@ -410,8 +394,8 @@ struct ButtonPlayground: View {
 }
 
 struct TogglePlayground: View {
-    @Binding var wifi: Bool
-    @Binding var notifications: Bool
+    @Binding var wifi: Bool                       // shared with the Form
+    @State private var notifications = false       // local to this playground
     var body: some View {
         VStack(spacing: 16) {
             Text("Boolean on/off controls bound to @State")
@@ -426,7 +410,7 @@ struct TogglePlayground: View {
 }
 
 struct StepperPlayground: View {
-    @Binding var quantity: Int
+    @State private var quantity = 3
     var body: some View {
         VStack(spacing: 16) {
             Text("Increment or decrement a bound value (0…10)")
@@ -438,7 +422,7 @@ struct StepperPlayground: View {
 }
 
 struct DatePickerPlayground: View {
-    @Binding var date: Date
+    @State private var date = Date()
     var body: some View {
         // Scrolls because the graphical/calendar variations are tall on some toolkits (GTK4 renders
         // every date picker as an inline calendar). Every variation binds to the same @State Date.
@@ -457,7 +441,7 @@ struct DatePickerPlayground: View {
 }
 
 struct ColorPickerPlayground: View {
-    @Binding var color: Color
+    @State private var color = Color.blue
     var body: some View {
         VStack(spacing: 18) {
             Text("Pick a color — bound to @State and previewed below")
@@ -767,9 +751,9 @@ struct House: Shape {
 }
 
 struct MenuPlayground: View {
-    @Binding var flavor: Flavor
-    @Binding var quantity: Int
-    @Binding var lastAction: String
+    @State private var flavor = Flavor.vanilla
+    @State private var quantity = 1
+    @State private var lastAction = "—"
 
     var body: some View {
         VStack(spacing: 18) {

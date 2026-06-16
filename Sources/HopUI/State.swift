@@ -10,6 +10,9 @@ import HopGraph
 @MainActor
 public enum GraphContext {
     static var current: Graph?
+    /// Persists `@State` storage by view identity so nested views' state survives re-renders. Installed by
+    /// the runtime per app graph; `nil` (e.g. a secondary-window snapshot) disables identity persistence.
+    static var stateStore: StateStore?
     /// Performs one re-render: re-pulls the render tree and applies the minimal native mutations.
     static var flush: (@MainActor () -> Void)?
     /// Defers work onto the toolkit's main loop (installed by the runtime, wrapping
@@ -76,9 +79,14 @@ public struct State<Value> {
     nonisolated final class Box {
         var source: Attribute<Value>?
         let initial: Value
+        /// Set by ``StateStore/bind(_:identity:slot:)`` on a *recreated* view: this (fresh) box forwards
+        /// to the persistent box's graph source, so the value survives re-renders. The persistent box is
+        /// retained by the store; the fresh box never makes its own source while delegating.
+        var delegate: Box?
         init(_ initial: Value) { self.initial = initial }
 
         func source(in graph: Graph) -> Attribute<Value> {
+            if let delegate { return delegate.source(in: graph) }
             if let source { return source }
             let created = graph.makeSource(initial)
             source = created
@@ -105,6 +113,22 @@ public struct State<Value> {
 
     public var projectedValue: Binding<Value> {
         Binding(get: { self.wrappedValue }, set: { self.wrappedValue = $0 })
+    }
+}
+
+/// A view property whose storage the framework persists by *view identity* across re-renders (mirroring
+/// SwiftUI's `DynamicProperty`). The evaluator links each one to its persistent slot before the view's
+/// `body` runs. `@State` conforms; `@Binding`/`@Environment` don't (they reference storage owned elsewhere).
+@MainActor
+protocol _DynamicProperty {
+    func _link(identity: String, slot: Int, store: StateStore)
+}
+
+extension State: _DynamicProperty {
+    // Reached via reflection on a value copy of the view — but `box` is a reference shared with the real
+    // view, so binding its delegate here is seen by the view's `body`.
+    func _link(identity: String, slot: Int, store: StateStore) {
+        store.bind(box, identity: identity, slot: slot)
     }
 }
 

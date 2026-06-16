@@ -398,5 +398,27 @@ func evaluate(_ view: any View, _ context: RenderContext) -> [RenderNode] {
     if view is EmptyView {
         return []
     }
+    // A composite (user) view: persist its `@State` by identity before evaluating its body (whose
+    // sub-views are recreated each pass). Wrapper views above are framework-internal and hold no `@State`.
+    if let store = GraphContext.stateStore {
+        linkDynamicProperties(of: view, identity: context.id, store: store)
+    }
     return evaluate(view.body, context.appending(0))
+}
+
+/// Re-attach a view's `@State` (and any other ``_DynamicProperty``) to its persistent, identity-keyed
+/// storage so the value survives this view struct being recreated. Reflects the view's stored properties
+/// in declaration order, skipping (after one sighting) the many view types that declare none.
+@MainActor
+func linkDynamicProperties(of view: any View, identity: String, store: StateStore) {
+    let typeID = ObjectIdentifier(type(of: view))
+    if store.dynamicPropsKnown(typeID) == false { return }   // known to have none → no reflection
+    var slot = 0
+    for child in Mirror(reflecting: view).children {
+        if let dynamic = child.value as? _DynamicProperty {
+            dynamic._link(identity: identity, slot: slot, store: store)
+            slot += 1
+        }
+    }
+    store.recordDynamicProps(typeID, slot > 0)
 }
