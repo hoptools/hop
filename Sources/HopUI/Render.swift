@@ -220,6 +220,71 @@ public struct WidgetPatch: Equatable {
     }
 }
 
+/// Preferences a node contributes UP the tree (mirroring SwiftUI's preference system), attached by
+/// `.toolbar` / `.preferredColorScheme` / `.navigationTitle` / `.navigationDestination`.
+///
+/// Carrying preferences as node data — rather than via the old global side-effect collectors — is what
+/// makes them correct under fine-grained reactivity: a memoized (un-re-run) subtree still carries its
+/// preferences in its cached nodes, so a tree walk after evaluation collects them. A global collector
+/// would silently lose a cached subtree's contributions. (See `project_hopui_finegrained_reactivity`.)
+public struct NodePreferences {
+    /// `.preferredColorScheme(_:)` — window appearance. Outermost wins (first found in pre-order).
+    public var preferredColorScheme: ColorScheme?
+    /// `.toolbar { }` items, concatenated in pre-order across the tree.
+    public var toolbar: [ToolbarItemSpec]?
+    /// `.navigationTitle(_:)` — consumed by the enclosing `NavigationStack`.
+    public var navigationTitle: String?
+    /// `.navigationDestination(for:)` builders — consumed by the enclosing `NavigationStack`.
+    public var navigationDestinations: [ObjectIdentifier: (AnyHashable) -> any View]?
+
+    public init() {}
+
+    /// Whether this node carries any preference (lets the walk skip empty nodes cheaply).
+    var isEmpty: Bool {
+        preferredColorScheme == nil && toolbar == nil && navigationTitle == nil && navigationDestinations == nil
+    }
+
+    /// Combine with an OUTER set of preferences (e.g. those a wrapping modifier accumulated on a composite
+    /// reference): outer wins for the single-valued ones, outer items come first for the toolbar.
+    func merging(_ outer: NodePreferences) -> NodePreferences {
+        var result = self
+        if let scheme = outer.preferredColorScheme { result.preferredColorScheme = scheme }
+        if let items = outer.toolbar { result.toolbar = items + (result.toolbar ?? []) }
+        if let title = outer.navigationTitle { result.navigationTitle = title }
+        if let dests = outer.navigationDestinations {
+            result.navigationDestinations = dests.merging(result.navigationDestinations ?? [:]) { o, _ in o }
+        }
+        return result
+    }
+}
+
+extension WidgetPatch {
+    /// Overlay every field `other` sets (non-nil) onto `self`. Used to transfer patch state a wrapping
+    /// modifier (e.g. `.accessibilityLabel`) accumulated on a composite reference onto its resolved node.
+    mutating func overlay(_ other: WidgetPatch) {
+        if let v = other.text { text = v }
+        if let v = other.title { title = v }
+        if let v = other.spacing { spacing = v }
+        if let v = other.value { value = v }
+        if let v = other.placeholder { placeholder = v }
+        if let v = other.doubleValue { doubleValue = v }
+        if let v = other.boolValue { boolValue = v }
+        if let v = other.minValue { minValue = v }
+        if let v = other.maxValue { maxValue = v }
+        if let v = other.foregroundColor { foregroundColor = v }
+        if let v = other.backgroundColor { backgroundColor = v }
+        if let v = other.font { font = v }
+        if let v = other.fontWeight { fontWeight = v }
+        if let v = other.progressValue { progressValue = v }
+        if let v = other.accessibilityLabel { accessibilityLabel = v }
+        if let v = other.accessibilityValue { accessibilityValue = v }
+        if let v = other.accessibilityHint { accessibilityHint = v }
+        if let v = other.accessibilityIdentifier { accessibilityIdentifier = v }
+        if let v = other.accessibilityHidden { accessibilityHidden = v }
+        if let v = other.accessibilityTraits { accessibilityTraits = v }
+    }
+}
+
 /// A value-type snapshot of one node in the render tree, keyed by a stable ``id``. This is the
 /// toolkit-agnostic intermediate representation the reconciler diffs.
 public struct RenderNode {
@@ -257,6 +322,9 @@ public struct RenderNode {
     public var image: ImageSpec?
     /// Tab configuration for `.tabView` nodes. Not part of equality.
     public var tabs: TabSpec?
+    /// Preferences this node contributes up the tree (`.toolbar`/`.preferredColorScheme`/
+    /// `.navigationTitle`/`.navigationDestination`). Collected by a tree walk. Not part of equality.
+    public var preferences: NodePreferences?
     /// Identity value from `.tag(_:)`, read by a `Picker` to match its selection. Not rendered.
     public var tag: AnyHashable?
     /// Tab title from `.tabItem`, read by a ``TabView`` to build its tab bar. Not rendered directly.
@@ -277,6 +345,17 @@ public struct RenderNode {
     /// scroll's content, so the visible-row window is computed relative to the lazy stack (not the scroll
     /// origin) when it sits below other content. Not part of equality.
     public var onContentOrigin: (@MainActor (Double) -> Void)?
+    /// Internal: a placeholder standing in for a composite (user) view's subtree. `evaluate` emits these
+    /// at composite boundaries instead of reading the child's body — so a parent body NEVER depends on a
+    /// child's value, and a descendant change can't force its ancestors to re-run. ``resolveRenderTree``
+    /// replaces each with `read(compositeRef.body)`, re-running only the bodies that actually changed.
+    /// (See `project_hopui_finegrained_reactivity`.) Always nil in a resolved tree (what reconcile/layout see).
+    var compositeRef: CompositeNode?
+    /// Set during resolve: a token identifying this subtree's content. Two nodes with the same nonzero
+    /// `subtreeRevision` across successive flushes are byte-identical (the resolve pass preserves it only by
+    /// reusing the exact cached nodes), so the reconciler and layout engine can safely skip them. `0` means
+    /// "unstamped" — never skipped.
+    var subtreeRevision: Int = 0
 
     public init(id: String, kind: WidgetKind, patch: WidgetPatch = WidgetPatch(),
                 children: [RenderNode] = [], action: (@MainActor () -> Void)? = nil,
@@ -289,6 +368,7 @@ public struct RenderNode {
                 fileImporter: FileImporterSpec? = nil, fileExporter: FileExporterSpec? = nil,
                 tag: AnyHashable? = nil,
                 outline: OutlineSpec? = nil, image: ImageSpec? = nil, tabs: TabSpec? = nil,
+                preferences: NodePreferences? = nil,
                 layout: LayoutInfo = LayoutInfo(), onGeometry: (@MainActor (CGSize) -> Void)? = nil,
                 onScroll: (@MainActor (CGSize) -> Void)? = nil,
                 onRowExtent: (@MainActor (Double) -> Void)? = nil,
@@ -312,12 +392,38 @@ public struct RenderNode {
         self.outline = outline
         self.image = image
         self.tabs = tabs
+        self.preferences = preferences
         self.tag = tag
         self.layout = layout
         self.onGeometry = onGeometry
         self.onScroll = onScroll
         self.onRowExtent = onRowExtent
         self.onContentOrigin = onContentOrigin
+    }
+}
+
+extension RenderNode {
+    /// Whether any wrapping-modifier state accumulated on this (composite-reference) node and so must be
+    /// transferred onto the resolved subtree. Lets resolve skip the transfer (and an extra revision bump)
+    /// for the common case of a bare composite with no surrounding modifiers.
+    var hasWrapperState: Bool {
+        !layout.modifiers.isEmpty || preferences != nil || tag != nil || tabLabel != nil
+            || fileImporter != nil || fileExporter != nil || patch != WidgetPatch()
+    }
+
+    /// Overlay onto `self` the modifier state a wrapping modifier accumulated on a composite reference
+    /// (which ``resolveRenderTree`` is replacing with `self`): outer layout modifiers (appended after the
+    /// node's own, so they apply outermost), merged preferences, tag/tabItem, file presentations, and any
+    /// patch fields the modifier set. This makes `.frame`/`.toolbar`/`.tag`/… on a composite behave
+    /// exactly as on a primitive — the attached state lands on the composite's first rendered node.
+    mutating func applyWrapperState(from ref: RenderNode) {
+        if !ref.layout.modifiers.isEmpty { layout.modifiers += ref.layout.modifiers }
+        if let refPrefs = ref.preferences { preferences = (preferences ?? NodePreferences()).merging(refPrefs) }
+        if let t = ref.tag { tag = t }
+        if let tl = ref.tabLabel { tabLabel = tl }
+        if let fi = ref.fileImporter { fileImporter = fi }
+        if let fe = ref.fileExporter { fileExporter = fe }
+        patch.overlay(ref.patch)
     }
 }
 
@@ -379,13 +485,16 @@ func evaluate(_ view: any View, _ context: RenderContext) -> [RenderNode] {
         return evaluate(idView.idContent, context.appendingKey(idView.idValue))
     }
     if let envWriter = view as? AnyEnvironmentWriter {
-        // Bracket the ambient environment: descendants of this subtree see the injected object(s);
-        // siblings (evaluated after the defer restores) do not.
-        let saved = EnvironmentStore.current
-        var environment = saved
-        envWriter.writeEnvironment(&environment)
-        EnvironmentStore.current = environment
-        defer { EnvironmentStore.current = saved }
+        // Derive a retained environment attribute for this subtree (pushed with setValueIfChanged, so
+        // descendants re-run only when the derived environment actually changes). Bracket it so leaves
+        // and child composites read it through the graph; siblings (after the defer) see the parent env.
+        let saved = EnvironmentStore.currentAttr
+        if let viewGraph = GraphContext.viewGraph {
+            EnvironmentStore.currentAttr = viewGraph.derivedEnvironment(for: context.id) {
+                envWriter.writeEnvironment(&$0)
+            }
+        }
+        defer { EnvironmentStore.currentAttr = saved }
         return evaluate(envWriter.environmentContent, context.appending(0))
     }
     if let tuple = view as? AnyTupleView {
@@ -398,27 +507,16 @@ func evaluate(_ view: any View, _ context: RenderContext) -> [RenderNode] {
     if view is EmptyView {
         return []
     }
-    // A composite (user) view: persist its `@State` by identity before evaluating its body (whose
-    // sub-views are recreated each pass). Wrapper views above are framework-internal and hold no `@State`.
-    if let store = GraphContext.stateStore {
-        linkDynamicProperties(of: view, identity: context.id, store: store)
+    // A composite (user) view: route through the retained view graph. The node owns a memoized `body`
+    // rule keyed by identity; prop-diff (inside `composite(for:)`) decides whether new incoming props
+    // force it to re-evaluate. We emit a REFERENCE rather than reading the body here, so the enclosing
+    // body never depends on this child's value — a descendant change can't force its ancestors to re-run.
+    // The reference is expanded later by `resolveRenderTree` (which re-runs only the bodies that changed).
+    guard let viewGraph = GraphContext.viewGraph else {
+        return evaluate(view.body, context.appending(0))   // defensive: no view graph installed
     }
-    return evaluate(view.body, context.appending(0))
-}
-
-/// Re-attach a view's `@State` (and any other ``_DynamicProperty``) to its persistent, identity-keyed
-/// storage so the value survives this view struct being recreated. Reflects the view's stored properties
-/// in declaration order, skipping (after one sighting) the many view types that declare none.
-@MainActor
-func linkDynamicProperties(of view: any View, identity: String, store: StateStore) {
-    let typeID = ObjectIdentifier(type(of: view))
-    if store.dynamicPropsKnown(typeID) == false { return }   // known to have none → no reflection
-    var slot = 0
-    for child in Mirror(reflecting: view).children {
-        if let dynamic = child.value as? _DynamicProperty {
-            dynamic._link(identity: identity, slot: slot, store: store)
-            slot += 1
-        }
-    }
-    store.recordDynamicProps(typeID, slot > 0)
+    let node = viewGraph.composite(for: view, id: context.id, context: context)
+    var ref = RenderNode(id: node.id, kind: .vstack)
+    ref.compositeRef = node
+    return [ref]
 }

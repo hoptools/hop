@@ -135,7 +135,12 @@ final class MockToolkit: AppToolkit {
     func setFrame(_ handle: MockWidget, _ rect: CGRect) { handle.frame = rect }
     func sizeOf(_ handle: MockWidget) -> CGSize { handle.frame?.size ?? .zero }
     func setScrollHandler(_ handle: MockWidget, _ handler: (@MainActor (CGSize) -> Void)?) { handle.scrollHandler = handler }
+    /// Identifying labels of widgets actually measured through the toolkit (cache misses), for asserting
+    /// incremental layout: an unchanged subtree's leaves are NOT re-measured.
+    private(set) var measuredLabels: [String] = []
+    func clearMeasured() { measuredLabels.removeAll() }
     func measure(_ handle: MockWidget, _ proposal: ProposedViewSize) -> CGSize {
+        if let label = handle.text ?? handle.title { measuredLabels.append(label) }
         switch handle.kind {
         case .label: return CGSize(width: CGFloat((handle.text ?? "").count) * 8 + 8, height: 20)
         case .button: return CGSize(width: CGFloat((handle.title ?? "").count) * 8 + 16, height: 24)
@@ -840,13 +845,14 @@ private struct WindowDemoApp: App {
         #expect(toolkit.widgets.contains { $0.text == "main content" })
         #expect(toolkit.openedWindows.isEmpty)
 
-        // openWindow(id:) presents the registered "About" Window with its declared title + content.
-        EnvironmentStore.current.openWindow(id: "about")
+        // openWindow(id:) (vended via the base environment) presents the registered "About" Window.
+        let environment = try #require(GraphContext.current).read(try #require(GraphContext.viewGraph).baseEnvironment)
+        environment.openWindow(id: "about")
         #expect(toolkit.openedWindows == ["About"])
         #expect(toolkit.widgets.contains { $0.text == "about content" })
 
         // An unknown id is a no-op.
-        EnvironmentStore.current.openWindow(id: "missing")
+        environment.openWindow(id: "missing")
         #expect(toolkit.openedWindows == ["About"])
     }
 }

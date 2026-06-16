@@ -122,7 +122,7 @@ public struct CommandMenu<Content: View>: Commands {
 
     public func _menuSpecs() -> [MenuSpec] {
         var items: [MenuItemSpec] = []
-        for node in evaluate(content, RenderContext(path: [.index(0)])) where node.kind == .button {
+        for node in evaluateResolved(content, RenderContext(path: [.index(0)])) where node.kind == .button {
             items.append(.button(node.patch.title ?? "", action: node.action ?? {}))
         }
         return [MenuSpec(title, items: items)]

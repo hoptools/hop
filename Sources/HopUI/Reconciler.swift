@@ -12,6 +12,10 @@ final class Reconciler<Toolkit: RenderToolkit> {
     private let toolkit: Toolkit
     private var handles: [String: Toolkit.Handle] = [:]
     private var previous: RenderNode?
+    /// Phase 3 incremental layout: cache each node's measured size by (subtree revision, proposal), so an
+    /// unchanged subtree is not re-measured through the toolkit (the expensive native step) every flush.
+    /// Safe by the same invariant as the reconcile skip — a stable revision means identical content.
+    private var measureCache: [String: (revision: Int, width: Double?, height: Double?, size: CGSize)] = [:]
 
     init(toolkit: Toolkit) { self.toolkit = toolkit }
 
@@ -43,7 +47,19 @@ final class Reconciler<Toolkit: RenderToolkit> {
     func layout(in rect: CGRect) {
         guard let root = previous else { return }
         let engine = LayoutEngine(
-            measureLeaf: { [self] node, proposal in handles[node.id].map { toolkit.measure($0, proposal) } ?? .zero },
+            measureLeaf: { [self] node, proposal in
+                guard let handle = handles[node.id] else { return .zero }
+                if node.subtreeRevision != 0, let cached = measureCache[node.id],
+                   cached.revision == node.subtreeRevision,
+                   cached.width == proposal.width, cached.height == proposal.height {
+                    return cached.size   // identical content + same proposal → reuse, skip native measure
+                }
+                let size = toolkit.measure(handle, proposal)
+                if node.subtreeRevision != 0 {
+                    measureCache[node.id] = (node.subtreeRevision, proposal.width, proposal.height, size)
+                }
+                return size
+            },
             setFrame: { [self] node, frame in if let h = handles[node.id] { toolkit.setFrame(h, frame) } },
             sizeOf: { [self] node in handles[node.id].map { toolkit.sizeOf($0) } ?? .zero })
         engine.place(root, rect)
@@ -78,6 +94,11 @@ final class Reconciler<Toolkit: RenderToolkit> {
 
     private func reconcile(old: RenderNode, new: RenderNode) {
         guard old.kind == new.kind, let handle = handles[new.id] else { return }
+        // Incremental skip (Phase 2): a nonzero revision that matches the previous one means the resolve
+        // pass returned the *exact same* cached nodes — the subtree is byte-identical, so its widgets are
+        // already correct and we touch nothing. This is safe by construction: the revision is preserved
+        // only for verbatim-reused subtrees (see `ViewGraph.resolveComposite`).
+        if new.subtreeRevision != 0 && new.subtreeRevision == old.subtreeRevision { return }
         if new.patch != old.patch {
             toolkit.configure(handle, new.patch)
         }

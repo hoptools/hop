@@ -154,7 +154,7 @@ struct _TabItemModifier<Content: View, Label: View>: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         var node = evaluate(content, context.appending(0)).first
             ?? RenderNode(id: context.id, kind: .vstack)
-        node.tabLabel = firstText(in: evaluate(label, context.appending(1))) ?? node.tabLabel
+        node.tabLabel = firstText(in: evaluateResolved(label, context.appending(1))) ?? node.tabLabel
         return node
     }
 }

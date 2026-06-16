@@ -22,15 +22,17 @@ public func runApp<A: App, Toolkit: AppToolkit>(_ app: A, toolkit: Toolkit) {
         if let id = window.id, registry[id] == nil { registry[id] = window }
     }
 
-    // Install the openWindow environment action before the (blocking) main loop starts.
-    EnvironmentStore.current.openWindow = OpenWindowAction { id in
+    // Seed the base environment with the openWindow action before the (blocking) main loop starts.
+    var baseEnvironment = EnvironmentValues()
+    baseEnvironment.openWindow = OpenWindowAction { id in
         guard let def = registry[id] else { return }
         openSecondaryWindow(def, toolkit: toolkit)
     }
 
     // The primary window is the first `WindowGroup` (id == nil); fall back to the first scene.
     guard let primary = windows.first(where: { $0.id == nil }) ?? windows.first else { return }
-    runRootView(primary.content, title: primary.title, appCommands: appCommands, toolkit: toolkit)
+    runRootView(primary.content, title: primary.title, appCommands: appCommands, toolkit: toolkit,
+                baseEnvironment: baseEnvironment)
 }
 
 /// Boots a HopUI app from a single root view (no scene graph). Kept for tests and simple embedding;
@@ -51,12 +53,15 @@ func mergedMenus(_ appCommands: [MenuSpec]) -> [MenuSpec] {
 /// Runs one fully-reactive root view as the toolkit's primary window: wires it into the attribute
 /// graph, mounts it, installs the toolbar + standard menus, and runs the platform main loop.
 ///
-/// The whole render tree is produced by a single root rule attribute that reads `@State` as it
-/// walks the view tree. A `@State` write invalidates that rule and schedules a flush, which
-/// re-pulls the tree and lets the reconciler apply the minimal native mutations. (Fine-grained
-/// per-body attributes are a later refinement; the reconciler already minimizes widget churn.)
+/// The render tree is produced by a **retained, identity-keyed view graph** (``ViewGraph``): each
+/// composite view's `body` is its own memoized graph rule, the environment flows down as a graph
+/// attribute, and preferences flow up as data on the nodes. A `@State`/`@Observable` write invalidates
+/// only the composite(s) that read it and schedules a flush; the flush re-pulls the tree (re-running
+/// just the changed composites' bodies) and the reconciler applies the minimal native mutations.
+/// (See `project_hopui_finegrained_reactivity`.)
 func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any View,
-                                      title: String, appCommands: [MenuSpec] = [], toolkit: Toolkit) {
+                                      title: String, appCommands: [MenuSpec] = [], toolkit: Toolkit,
+                                      baseEnvironment: EnvironmentValues = EnvironmentValues()) {
     let graph = Graph()
     GraphContext.current = graph
     GraphContext.resetForNewApp()  // clear any prior run's pending-flush flag so this app's flushes aren't suppressed
@@ -64,40 +69,26 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
     ScrollContextStore.reset()
     SidebarColumnContext.reset()
 
-    // Held for the app's lifetime so its @State boxes survive across re-evaluations.
+    // The retained view graph: per-composite memoized bodies + identity-keyed @State + the environment
+    // chain. Held for the app's lifetime.
+    let viewGraph = ViewGraph(graph: graph)
+    GraphContext.viewGraph = viewGraph
+    graph.setValue(baseEnvironment, for: viewGraph.baseEnvironment)  // seed openWindow etc.
+
+    // Held for the app's lifetime so its identity is stable across re-evaluations.
     let rootView = makeRoot()
+    let rootContext = RenderContext(path: [.index(0)])
 
-    // Persists every view's @State by structural identity (not by struct lifetime), so @State works in
-    // nested views exactly like SwiftUI — not just in the retained root view.
-    let stateStore = StateStore()
-    GraphContext.stateStore = stateStore
-
-    // A graph source bumped whenever an observed @Observable property changes; the render rule reads
-    // it so those changes invalidate (and re-pull) the tree, alongside @State.
-    let observationTick = graph.makeSource(0)
-
-    // HopGraph is isolation-agnostic, so its rule closures are nonisolated; the view evaluation
-    // they drive is main-actor work. We always read the graph on the main actor, so asserting that
-    // isolation here is sound.
-    let renderRoot: Attribute<RenderResult> = graph.makeRule { _ in
-        MainActor.assumeIsolated {
-            _ = GraphContext.requireCurrent().read(observationTick)
-            // Track @Observable reads made during evaluation; the first subsequent mutation of any
-            // read property fires onChange, which schedules a deferred re-render (re-establishing
-            // tracking on the next pass).
-            return withObservationTracking {
-                ToolbarCollector.reset()
-                PreferredColorSchemeStore.current = nil
-                stateStore.beginPass()
-                let nodes = evaluate(rootView, RenderContext(path: [.index(0)]))
-                stateStore.endPassAndSweep()  // discard @State of views no longer in the tree
-                let root = nodes.first ?? RenderNode(id: "0", kind: .vstack)
-                return RenderResult(root: root, toolbar: ToolbarCollector.items,
-                                    colorScheme: PreferredColorSchemeStore.current)
-            } onChange: {
-                MainActor.assumeIsolated { GraphContext.requestObservationFlush() }
-            }
-        }
+    // One render pass: route the root through the registry under the base environment, returning the
+    // assembled tree. Only composites whose inputs changed re-run their bodies; the rest are memoized.
+    let renderPass: @MainActor () -> RenderNode = {
+        let savedEnv = EnvironmentStore.currentAttr
+        EnvironmentStore.currentAttr = viewGraph.baseEnvironment
+        defer { EnvironmentStore.currentAttr = savedEnv }
+        // Evaluate the root (emitting composite references), then resolve — re-running only the bodies
+        // that were invalidated since the last pass.
+        let resolved = resolveRenderTree(evaluate(rootView, rootContext), graph)
+        return resolved.first ?? RenderNode(id: rootContext.id, kind: .vstack)
     }
 
     let reconciler = Reconciler(toolkit: toolkit)
@@ -107,31 +98,32 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
         reconciler.layout(in: CGRect(origin: .zero, size: toolkit.contentSize()))
     }
 
+    // Apply window-level preferences (toolbar, color scheme) collected by walking the tree.
+    let applyPreferences: @MainActor (RenderNode) -> Void = { root in
+        let prefs = collectWindowPreferences(root)
+        toolkit.setToolbar(prefs.toolbar)
+        toolkit.setColorScheme(prefs.colorScheme)
+    }
+
     GraphContext.flush = {
         guard graph.hasDirty else { return }
         graph.clearDirty()
-        let result = graph.read(renderRoot)
-        reconciler.update(result.root)
-        toolkit.setToolbar(result.toolbar)
-        toolkit.setColorScheme(result.colorScheme)
+        let root = renderPass()
+        reconciler.update(root)
+        applyPreferences(root)
         relayout()
     }
 
-    // All flushes are coalesced onto the toolkit's main loop (see GraphContext.scheduleFlush): one
-    // re-render per loop turn, run after the current native event finishes. `invalidateRoot` bumps the
-    // observation tick so the render rule re-evaluates — needed for `@Observable` (whose mutations
-    // don't dirty a graph source) and harmless for `@State`.
+    // Flushes are coalesced onto the toolkit's main loop (see GraphContext.scheduleFlush): one
+    // re-render per loop turn, after the current native event finishes. `@Observable` changes invalidate
+    // the specific composite that read the property (no global root invalidation needed anymore).
     GraphContext.scheduleOnMain = { work in toolkit.scheduleOnMainThread(work) }
-    GraphContext.invalidateRoot = {
-        let graph = GraphContext.requireCurrent()
-        graph.setValue(graph.read(observationTick) + 1, for: observationTick)
-    }
+    GraphContext.invalidateRoot = { }
 
     toolkit.run(title: title) { container in
-        let result = graph.read(renderRoot)
-        reconciler.mount(result.root, into: container)
-        toolkit.setToolbar(result.toolbar)
-        toolkit.setColorScheme(result.colorScheme)
+        let root = renderPass()
+        reconciler.mount(root, into: container)
+        applyPreferences(root)
         // HopUI's standard menu bar, plus any app-provided command menus (Scene `.commands`).
         toolkit.setMenu(mergedMenus(appCommands))
         // Own the geometry: lay out now, again after native composites settle, and on every resize.
@@ -146,27 +138,27 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
 /// reactivity. Full per-window `@State` graphs are a later refinement.
 @MainActor
 func openSecondaryWindow<Toolkit: AppToolkit>(_ def: _WindowDef, toolkit: Toolkit) {
-    // Evaluate the content against a throwaway graph so any @State initializes; restore the primary
-    // window's graph afterward so its flushes keep using it.
+    // Evaluate the content against a throwaway graph + view graph so any @State initializes; restore the
+    // primary window's graph afterward so its flushes keep using it.
     let savedGraph = GraphContext.current
-    let savedStore = GraphContext.stateStore
-    GraphContext.current = Graph()
-    GraphContext.stateStore = nil   // a one-shot snapshot needs no identity persistence
-    defer { GraphContext.current = savedGraph; GraphContext.stateStore = savedStore }
+    let savedViewGraph = GraphContext.viewGraph
+    let savedEnv = EnvironmentStore.currentAttr
+    let graph = Graph()
+    let viewGraph = ViewGraph(graph: graph)
+    GraphContext.current = graph
+    GraphContext.viewGraph = viewGraph
+    EnvironmentStore.currentAttr = viewGraph.baseEnvironment
+    defer {
+        GraphContext.current = savedGraph
+        GraphContext.viewGraph = savedViewGraph
+        EnvironmentStore.currentAttr = savedEnv
+    }
 
-    let nodes = evaluate(def.content(), RenderContext(path: [.index(0)]))
+    let nodes = evaluateResolved(def.content(), RenderContext(path: [.index(0)]))
     let root = nodes.first ?? RenderNode(id: "0", kind: .vstack)
 
     toolkit.openWindow(title: def.title) { container in
         let reconciler = Reconciler(toolkit: toolkit)
         reconciler.mount(root, into: container)
     }
-}
-
-/// The output of one render pass: the view tree, the window-level toolbar items, and the preferred
-/// color scheme (nil = follow the system).
-struct RenderResult {
-    let root: RenderNode
-    let toolbar: [ToolbarItemSpec]
-    let colorScheme: ColorScheme?
 }

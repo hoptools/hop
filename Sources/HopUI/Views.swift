@@ -12,7 +12,8 @@ public struct Text: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         // Read inherited text styling from the ambient environment (set by .font/.fontWeight/
         // .foregroundStyle on an ancestor), baking it into the node so the toolkit can apply it.
-        let environment = EnvironmentStore.current
+        // Reading through the graph records a dependency, so this body re-runs when its styling changes.
+        let environment = currentEnvironment()
         return RenderNode(id: context.id, kind: .label,
                           patch: WidgetPatch(text: content,
                                              foregroundColor: environment.foregroundColor,
@@ -82,9 +83,12 @@ public struct NavigationSplitView<Sidebar: View, Detail: View>: View, PrimitiveV
     func makeNode(_ context: RenderContext) -> RenderNode {
         // A List in the leading column renders as a source-list sidebar (matching SwiftUI's automatic
         // `.sidebar` list style there); bracket the flag around the sidebar evaluation only.
+        // Resolve the sidebar eagerly so a List/OutlineGroup inside it (even within a composite) evaluates
+        // while the sidebar flag is set and so renders as a source list. The detail stays a reference
+        // (resolved later) so its content remains fully fine-grained.
         let savedSidebar = SidebarColumnContext.active
         SidebarColumnContext.active = true
-        let sidebarChild = singleChild(evaluate(sidebar, context.appending(0)), id: context.id + "·sidebar")
+        let sidebarChild = singleChild(evaluateResolved(sidebar, context.appending(0)), id: context.id + "·sidebar")
         SidebarColumnContext.active = savedSidebar
         let detailChild = singleChild(evaluate(detail, context.appending(1)), id: context.id + "·detail")
         return RenderNode(id: context.id, kind: .splitView, children: [sidebarChild, detailChild])
@@ -122,7 +126,7 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
         let count = data.count
         let rowText: @MainActor (Int) -> String = { index in
             let elementIndex = data.index(data.startIndex, offsetBy: index)
-            return evaluate(rowContent(data[elementIndex]), RenderContext(path: [])).first?.patch.text ?? ""
+            return evaluateResolved(rowContent(data[elementIndex]), RenderContext(path: [])).first?.patch.text ?? ""
         }
         let resolve: @MainActor () -> Int? = {
             guard let selected = selection.wrappedValue else { return nil }
@@ -162,7 +166,7 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
                 count: count, rowText: rowText, selectedIndex: selectedIndex(), onSelect: select))
         case let .hierarchical(content, selectedID, select):
             // The content is an OutlineGroup producing an `.outline`/`.sidebarOutline` node; inject selection.
-            var node = evaluate(content(), context.appending(0)).first
+            var node = evaluateResolved(content(), context.appending(0)).first
                 ?? RenderNode(id: context.id + "·outline", kind: .outline, outline: OutlineSpec(roots: []))
             node.outline?.selectedID = selectedID().map { AnyHashable($0) }
             node.outline?.onSelect = { anyID in select(anyID?.base as? SelectionValue) }

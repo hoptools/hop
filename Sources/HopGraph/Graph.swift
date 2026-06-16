@@ -113,6 +113,41 @@ public final class Graph {
         dirty.insert(idx)
     }
 
+    /// Write a value only if it differs from the current one (by `equals`), invalidating consumers
+    /// just when it actually changed. This is the engine of fine-grained reactivity: a parent that
+    /// re-runs and re-pushes the *same* derived input (a child's unchanged props, an unchanged derived
+    /// environment) leaves the consumer memoized, so unchanged subtrees are not recomputed.
+    ///
+    /// `markDirty` controls whether the change is recorded in ``dirty`` (which the runtime polls to
+    /// decide whether to flush). Pass `false` for writes performed *during* a flush (e.g. prop-diff
+    /// pushes while evaluating), so they propagate this pass without scheduling a spurious extra flush.
+    /// Returns whether the value changed.
+    @discardableResult
+    public func setValueIfChanged<Value>(_ value: Value, for attribute: Attribute<Value>,
+                                         equals: (Value, Value) -> Bool, markDirty: Bool = true) -> Bool {
+        let idx = attribute.base.index
+        let node = nodes[idx]
+        if let old = node.value as? Value, equals(old, value) { return false }
+        node.value = value
+        invalidateConsumers(of: idx)
+        if markDirty { dirty.insert(idx) }
+        return true
+    }
+
+    /// Mark a rule attribute pending (so it recomputes on next read) and propagate invalidation to its
+    /// consumers — without writing a value. Used to invalidate a composite's `body` rule when a
+    /// non-graph input changed: its view props (prop-diff) or an observed `@Observable` property.
+    ///
+    /// `markDirty` records the change in ``dirty`` so the runtime flushes; pass `false` for
+    /// invalidations performed *during* a flush (prop-diff), which this pass already handles.
+    public func invalidate(_ attribute: AnyAttribute, markDirty: Bool = false) {
+        let idx = attribute.index
+        let node = nodes[idx]
+        if node.state == .valid { node.state = .pending }
+        invalidateConsumers(of: idx)
+        if markDirty { dirty.insert(idx) }
+    }
+
     /// Mark all transitive consumers of `idx` as pending. Does not recompute — that happens on
     /// the next read.
     private func invalidateConsumers(of idx: Int) {

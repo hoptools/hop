@@ -12,13 +12,6 @@ public nonisolated enum ColorScheme: Equatable, Hashable {
     case light, dark
 }
 
-/// Collects the preferred color scheme contributed by the view tree (set by `.preferredColorScheme`,
-/// read by the runtime, which applies it to the window). Like the toolbar/navigation collectors.
-@MainActor
-enum PreferredColorSchemeStore {
-    static var current: ColorScheme?
-}
-
 /// Sets the window's preferred color scheme. Mirrors SwiftUI's `.preferredColorScheme(_:)`.
 struct _PreferredColorSchemeModifier<Content: View>: View, PrimitiveView {
     let content: Content
@@ -29,9 +22,12 @@ struct _PreferredColorSchemeModifier<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let nodes = evaluate(content, context.appending(0))
-        // Set after evaluating content so an outer preference wins over an inner one.
-        PreferredColorSchemeStore.current = scheme
-        return nodes.count == 1 ? nodes[0] : RenderNode(id: context.id, kind: .vstack, children: nodes)
+        var node = nodes.count == 1 ? nodes[0] : RenderNode(id: context.id, kind: .vstack, children: nodes)
+        // Attach as a preference, collected up the tree by `collectWindowPreferences` (outermost wins).
+        var prefs = node.preferences ?? NodePreferences()
+        prefs.preferredColorScheme = scheme
+        node.preferences = prefs
+        return node
     }
 }
 

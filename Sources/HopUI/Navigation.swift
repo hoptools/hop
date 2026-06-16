@@ -6,20 +6,6 @@
 // path-driven: a stack owns a path of pushed values, a link appends to it, a destination builds a
 // view from the top value, and back pops it — no hard-coded view switching.
 
-/// Collects the navigation title contributed by the current subtree (set by `.navigationTitle`, read
-/// by the enclosing `NavigationStack`). Process-wide + main-actor, like the toolbar collector.
-@MainActor
-enum NavigationTitleStore {
-    static var current: String?
-}
-
-/// Collects `.navigationDestination(for:)` builders contributed by a `NavigationStack`'s content,
-/// keyed by the destination value's type. The stack reads this to build a view for a pushed value.
-@MainActor
-enum NavigationDestinations {
-    static var current: [ObjectIdentifier: (AnyHashable) -> any View] = [:]
-}
-
 /// A view that presents a stack of views over a root, mirroring SwiftUI's `NavigationStack`. The
 /// visible view is the destination for the top of the path (or the root when the path is empty),
 /// shown beneath a bar with the navigation title and — when not at the root — a back button.
@@ -50,31 +36,30 @@ public struct NavigationStack<Content: View>: View, PrimitiveView {
         let pathGet = self.pathGet, pathSet = self.pathSet
         let path = pathGet()
 
-        // Evaluate the root content with the push action installed and the title/destination collectors
-        // scoped to this stack, so links inside can push and destinations register against this stack.
-        let savedTitle = NavigationTitleStore.current
-        let savedDestinations = NavigationDestinations.current
-        let savedEnvironment = EnvironmentStore.current
-        NavigationTitleStore.current = nil
-        NavigationDestinations.current = [:]
-        EnvironmentStore.current.navigationPush = { value in pathSet(pathGet() + [value]) }
-        defer {
-            NavigationTitleStore.current = savedTitle
-            NavigationDestinations.current = savedDestinations
-            EnvironmentStore.current = savedEnvironment
+        // Install the push action in the environment for this stack's subtree (derived as a graph
+        // attribute, so it flows down correctly under memoization), then evaluate the content. Titles
+        // and destinations attached by the content are collected by walking the assembled subtree —
+        // which is sound even when child composites are memoized (their cached nodes carry the data).
+        let savedEnvironment = EnvironmentStore.currentAttr
+        if let vg = GraphContext.viewGraph {
+            EnvironmentStore.currentAttr = vg.derivedEnvironment(for: context.id + "·navenv") { env in
+                env.navigationPush = { value in pathSet(pathGet() + [value]) }
+            }
         }
+        defer { EnvironmentStore.currentAttr = savedEnvironment }
 
-        let rootNodes = evaluate(content, context.appending(0))
-        let destinations = NavigationDestinations.current
-        var title = NavigationTitleStore.current
+        let rootNodes = evaluateResolved(content, context.appending(0))
+        let rootPrefs = collectNavigationPreferences(rootNodes)
+        let destinations = rootPrefs.destinations
+        var title = rootPrefs.title
 
         var bodyNodes = rootNodes
         var showBack = false
         // If the path has a top value with a registered destination, that destination is what shows.
         if let top = path.last, let build = destinations[ObjectIdentifier(type(of: top.base))] {
-            NavigationTitleStore.current = nil
-            bodyNodes = evaluate(build(top), context.appending(1000 + path.count))
-            if let pushedTitle = NavigationTitleStore.current { title = pushedTitle }
+            let pushedNodes = evaluateResolved(build(top), context.appending(1000 + path.count))
+            if let pushedTitle = collectNavigationPreferences(pushedNodes).title { title = pushedTitle }
+            bodyNodes = pushedNodes
             showBack = true
         }
 
@@ -112,9 +97,10 @@ public struct NavigationLink: View, PrimitiveView {
     public var body: Never { fatalError("NavigationLink has no body") }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        // Capture the stack's push action (installed in the ambient environment by NavigationStack)
-        // into the button's action, so tapping later pushes onto the path.
-        let push = EnvironmentStore.current.navigationPush
+        // Capture the stack's push action (installed in the environment by NavigationStack) into the
+        // button's action, so tapping later pushes onto the path. Reading through the graph records the
+        // dependency, so this link re-resolves if the enclosing stack's push action changes.
+        let push = currentEnvironment().navigationPush
         let value = self.value
         return RenderNode(id: context.id, kind: .button, patch: WidgetPatch(title: title),
                           action: { push?(value) })
@@ -131,8 +117,13 @@ struct _NavigationDestinationModifier<Content: View>: View, PrimitiveView {
     var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        NavigationDestinations.current[typeKey] = build
-        return passthrough(evaluate(content, context.appending(0)), context)
+        var node = passthrough(evaluate(content, context.appending(0)), context)
+        var prefs = node.preferences ?? NodePreferences()
+        var dests = prefs.navigationDestinations ?? [:]
+        dests[typeKey] = build
+        prefs.navigationDestinations = dests
+        node.preferences = prefs
+        return node
     }
 }
 
@@ -145,10 +136,13 @@ struct _NavigationTitleModifier<Content: View>: View, PrimitiveView {
     var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        let nodes = evaluate(content, context.appending(0))
-        // Set after evaluating content so an outer title wins over an inner one (matches SwiftUI).
-        NavigationTitleStore.current = title
-        return passthrough(nodes, context)
+        var node = passthrough(evaluate(content, context.appending(0)), context)
+        // Attach the title; an outer modifier overwrites an inner one on the shared passthrough node
+        // (and `collectNavigationPreferences` takes the outermost), so an outer title wins (matches SwiftUI).
+        var prefs = node.preferences ?? NodePreferences()
+        prefs.navigationTitle = title
+        node.preferences = prefs
+        return node
     }
 }
 

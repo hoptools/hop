@@ -10,9 +10,9 @@ import HopGraph
 @MainActor
 public enum GraphContext {
     static var current: Graph?
-    /// Persists `@State` storage by view identity so nested views' state survives re-renders. Installed by
-    /// the runtime per app graph; `nil` (e.g. a secondary-window snapshot) disables identity persistence.
-    static var stateStore: StateStore?
+    /// The retained, identity-keyed view graph: per-composite memoized body rules + persistent `@State`.
+    /// Installed by the runtime per app graph (and a throwaway one per secondary-window snapshot).
+    static var viewGraph: ViewGraph?
     /// Performs one re-render: re-pulls the render tree and applies the minimal native mutations.
     static var flush: (@MainActor () -> Void)?
     /// Defers work onto the toolkit's main loop (installed by the runtime, wrapping
@@ -121,14 +121,14 @@ public struct State<Value> {
 /// `body` runs. `@State` conforms; `@Binding`/`@Environment` don't (they reference storage owned elsewhere).
 @MainActor
 protocol _DynamicProperty {
-    func _link(identity: String, slot: Int, store: StateStore)
+    func _link(slot: Int, into node: CompositeNode)
 }
 
 extension State: _DynamicProperty {
     // Reached via reflection on a value copy of the view — but `box` is a reference shared with the real
     // view, so binding its delegate here is seen by the view's `body`.
-    func _link(identity: String, slot: Int, store: StateStore) {
-        store.bind(box, identity: identity, slot: slot)
+    func _link(slot: Int, into node: CompositeNode) {
+        node.bind(box, slot: slot)
     }
 }
 

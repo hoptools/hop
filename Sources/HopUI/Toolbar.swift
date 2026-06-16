@@ -11,19 +11,10 @@ public struct ToolbarItemSpec {
     public let kind: Kind
 }
 
-/// Collects toolbar items produced during a render pass so the runtime can install them on the
-/// window. The whole UI runs on the main actor and renders synchronously, so a simple shared list
-/// suffices (mirrors how SwiftUI's toolbar preferences bubble up to the hosting scene).
-@MainActor
-enum ToolbarCollector {
-    static var items: [ToolbarItemSpec] = []
-    static func reset() { items = [] }
-    static func add(_ newItems: [ToolbarItemSpec]) { items += newItems }
-}
-
 /// Wraps a view together with toolbar content. During evaluation it extracts the toolbar's buttons
-/// and text into ``ToolbarItemSpec``s (reusing the normal Button/Text → RenderNode path) and hands
-/// them to ``ToolbarCollector``, then renders the wrapped content unchanged.
+/// and text into ``ToolbarItemSpec``s (reusing the normal Button/Text → RenderNode path) and attaches
+/// them as a preference on the content node (collected up the tree by ``collectWindowPreferences``),
+/// then renders the wrapped content unchanged.
 public struct ToolbarHost<Content: View, Bar: View>: View, PrimitiveView {
     let content: Content
     let bar: Bar
@@ -33,7 +24,7 @@ public struct ToolbarHost<Content: View, Bar: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         var items: [ToolbarItemSpec] = []
-        for node in evaluate(bar, context.appending(1)) {
+        for node in evaluateResolved(bar, context.appending(1)) {
             switch node.kind {
             case .button:
                 items.append(ToolbarItemSpec(kind: .button(title: node.patch.title ?? "", action: node.action ?? {})))
@@ -43,10 +34,12 @@ public struct ToolbarHost<Content: View, Bar: View>: View, PrimitiveView {
                 break
             }
         }
-        ToolbarCollector.add(items)
 
-        let contentNodes = evaluate(content, context.appending(0))
-        return contentNodes.first ?? RenderNode(id: context.id, kind: .vstack)
+        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, kind: .vstack)
+        var prefs = node.preferences ?? NodePreferences()
+        prefs.toolbar = (prefs.toolbar ?? []) + items
+        node.preferences = prefs
+        return node
     }
 }
 

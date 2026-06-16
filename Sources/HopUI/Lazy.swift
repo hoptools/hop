@@ -171,7 +171,7 @@ private func makeLazyNode<Content: View>(_ context: RenderContext, axis: Axis, s
     if count > 0 && first <= last {
         for i in first ... last {
             let (key, view) = forEach.forEachChild(at: i)
-            var nodes = evaluate(view, context.appendingKey(key))
+            var nodes = evaluateResolved(view, context.appendingKey(key))
             if !nodes.isEmpty {
                 nodes[0].layout.lazyIndex = i
                 rows.append(nodes[0])

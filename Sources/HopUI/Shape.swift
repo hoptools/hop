@@ -81,7 +81,7 @@ public struct _ShapeView: View, PrimitiveView {
         var resolved = spec
         // A bare shape fills with the inherited foreground color (default black), like SwiftUI.
         if resolved.fill == nil, resolved.stroke == nil {
-            resolved.fill = EnvironmentStore.current.foregroundColor ?? .black
+            resolved.fill = currentEnvironment().foregroundColor ?? .black
         }
         return RenderNode(id: context.id, kind: .shape, shape: resolved)
     }
@@ -141,7 +141,9 @@ struct _ShapeNodeModifier<Content: View>: View, PrimitiveView {
     var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        let nodes = evaluate(content, context.appending(0))
+        // Resolve first: a `Shape` is a composite (its body is `_ShapeView`), so without resolving we'd get
+        // a reference whose `.shape` is nil and the fill/stroke/transform mutation would be lost.
+        let nodes = evaluateResolved(content, context.appending(0))
         var node = nodes.first ?? RenderNode(id: context.id, kind: .vstack, children: nodes)
         modify(&node)
         return node

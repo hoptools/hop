@@ -128,7 +128,7 @@ public struct Image: View, PrimitiveView {
         var resolved = spec
         // A template image / symbol tints with the inherited foreground color (default accent), like SwiftUI.
         if resolved.isTemplate, resolved.tint == nil {
-            resolved.tint = EnvironmentStore.current.foregroundColor
+            resolved.tint = currentEnvironment().foregroundColor
         }
         return RenderNode(id: context.id, kind: .image, image: resolved)
     }

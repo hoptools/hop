@@ -41,7 +41,7 @@ public struct Menu<Content: View>: View, PrimitiveView {
     public var body: Never { fatalError("Menu has no body") }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        let entries = menuEntries(from: evaluate(content, context.appending(0)))
+        let entries = menuEntries(from: evaluateResolved(content, context.appending(0)))
         return RenderNode(id: context.id, kind: .menu, menu: MenuContent(label: label, entries: entries))
     }
 }
@@ -111,7 +111,7 @@ public struct Picker<SelectionValue: Hashable, Content: View>: View, PrimitiveVi
     public var body: Never { fatalError("Picker has no body") }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        let nodes = evaluate(content, context.appending(0))
+        let nodes = evaluateResolved(content, context.appending(0))
         var options: [String] = []
         var tags: [AnyHashable] = []
         for (index, node) in nodes.enumerated() {

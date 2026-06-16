@@ -1,15 +1,19 @@
 // Copyright 2026
 // SPDX-License-Identifier: MPL-2.0
 
+import HopGraph
 import Observation
 
 /// An environment system mirroring SwiftUI's `@Environment` / `EnvironmentValues`. It vends the
-/// `openWindow` action by key path and `@Observable` objects by type. The environment is a single
-/// "ambient" value that the evaluator brackets as it descends into `.environment(_:)` subtrees (set
-/// on enter, restored on exit), so an object injected on an ancestor is visible to its descendants
-/// and to nobody else — matching SwiftUI's scoping while the full per-node environment tree remains a
-/// later refinement. (The whole UI runs synchronously on the main actor, which makes the ambient
-/// approach sound.)
+/// `openWindow` action by key path and `@Observable` objects by type.
+///
+/// The environment flows DOWN the view tree as a **graph attribute** (see ``EnvironmentStore``): each
+/// composite body rule brackets the attribute it received, and `.environment(_:)` derives a new
+/// attribute for its subtree. Views read the environment *through the graph* (``currentEnvironment()``),
+/// which records a dependency edge — so a body re-evaluates exactly when the environment it actually
+/// reads changes (and no more). This is what lets memoized subtrees stay correct under fine-grained
+/// reactivity: the environment is a tracked input, not a hidden global. (See
+/// `project_hopui_finegrained_reactivity`.)
 
 /// An action that presents the window registered for a given identifier. Mirrors SwiftUI's
 /// `OpenWindowAction`; invoked as `openWindow(id: "about")`.
@@ -58,13 +62,48 @@ public struct EnvironmentValues {
     public func object<T>(_ type: T.Type) -> T? {
         objects[ObjectIdentifier(type)] as? T
     }
+
+    /// Value equality used for memoization change-detection (`setValueIfChanged`). Compares the styling
+    /// and injected objects that view bodies read; deliberately IGNORES the action closures
+    /// (`openWindow`, `navigationPush`), which are recreated each pass but stable in behavior (they
+    /// capture stable bindings). Injected objects are compared by identity, matching `@Observable`
+    /// reference semantics — so re-deriving the same environment leaves dependents memoized.
+    func sameEnvironment(as other: EnvironmentValues) -> Bool {
+        guard font == other.font,
+              fontWeightOverride == other.fontWeightOverride,
+              foregroundColor == other.foregroundColor,
+              colorScheme == other.colorScheme,
+              (navigationPush == nil) == (other.navigationPush == nil),
+              objects.count == other.objects.count else { return false }
+        for (key, value) in objects {
+            guard let otherValue = other.objects[key],
+                  (value as AnyObject) === (otherValue as AnyObject) else { return false }
+        }
+        return true
+    }
 }
 
-/// The ambient environment for the current point in the view walk. The evaluator brackets this as it
-/// enters and leaves `.environment(_:)` subtrees.
+/// Holds the environment **attribute** for the current point in the view walk. Composite body rules
+/// bracket the attribute they received; `.environment(_:)` / `.font` / `.foregroundStyle` derive a new
+/// attribute for their subtree. Views read it through ``currentEnvironment()`` (recording a graph
+/// dependency), not directly — so the environment is a tracked input, sound under memoization.
 @MainActor
 enum EnvironmentStore {
-    static var current = EnvironmentValues()
+    static var currentAttr: Attribute<EnvironmentValues>?
+    /// Fallback for evaluations performed outside the live environment chain (e.g. List row-text
+    /// extraction against a throwaway context). The real environment always flows via `currentAttr`.
+    static var fallback = EnvironmentValues()
+}
+
+/// Read the ambient environment through the graph. When called inside a body rule's evaluation, the
+/// read records a dependency edge, so that body re-evaluates when the environment it reads changes —
+/// and only then. Falls back to a default when no environment attribute is installed.
+@MainActor
+func currentEnvironment() -> EnvironmentValues {
+    guard let attr = EnvironmentStore.currentAttr, let graph = GraphContext.current else {
+        return EnvironmentStore.fallback
+    }
+    return graph.read(attr)
 }
 
 /// Reads a value from the app's environment. Mirrors SwiftUI's `@Environment`, supporting both the
@@ -99,7 +138,7 @@ public struct Environment<Value> {
 
     public var wrappedValue: Value {
         if let cached = box.value as? Value { return cached }
-        let value = resolved(from: EnvironmentStore.current)
+        let value = resolved(from: currentEnvironment())
         box.value = value
         return value
     }
