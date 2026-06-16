@@ -114,6 +114,15 @@ public struct PrimitiveLeafComponent: WidgetComponent {
     }
 }
 
+/// The open component for a ``Shape``. `spec` is `var` so the shape modifiers (.fill/.stroke/transforms)
+/// can mutate it. Public so backend shape renderers can read it.
+public struct ShapeComponent: WidgetComponent {
+    public var spec: ShapeSpec
+    public init(spec: ShapeSpec) { self.spec = spec }
+    public var widgetKey: WidgetKey { WidgetKey("shape") }
+    public var role: WidgetRole { .leaf }   // greediness comes from the renderer's measure (proposal-resolved)
+}
+
 /// The component for HopUI's layout containers (VStack/HStack/ZStack/GroupBox). It carries no payload
 /// beyond a `widgetKey` and a `role` (which encodes axis/spacing/alignment); children live on the
 /// ``RenderNode`` and the backend's container renderer just creates the empty native container — the

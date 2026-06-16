@@ -14,44 +14,17 @@ struct LayoutEngine {
     /// The current native size of a node's widget (for laying out content inside native composites).
     var sizeOf: (RenderNode) -> CGSize = { _ in .zero }
 
-    /// The layout behavior of a node: from its open ``WidgetComponent`` if migrated, else its `WidgetKind`.
+    /// The layout behavior of a node, from its ``WidgetComponent``'s role.
     private func role(of node: RenderNode) -> LayoutRole {
-        if let component = node.component {
-            switch component.role {
-            case .leaf, .fill: return .leaf
-            case .native: return .native
-            case .spacer(let m): return .spacer(minLength: m)
-            case .stack(let a, let s, let al): return .stack(axis: a, spacing: s, alignment: al)
-            case .zstack(let al): return .zstack(alignment: al)
-            case .scroll(let axis): return .scroll(axis: axis)
-            case .geometry: return .geometry
-            case .lazyStack(let info, let al): return .lazyStack(info, alignment: al)
-            }
-        }
-        switch node.kind {
-        case .vstack, .groupBox:
-            // A group box is a vertical stack of its content; the toolkit draws the card chrome behind it.
-            return .stack(axis: .vertical, spacing: node.patch.spacing, alignment: node.layout.alignment ?? .center)
-        case .hstack:
-            return .stack(axis: .horizontal, spacing: node.patch.spacing, alignment: node.layout.alignment ?? .center)
-        case .zstack:
-            return .zstack(alignment: node.layout.alignment ?? .center)
-        case .spacer:
-            return .spacer(minLength: node.layout.spacerMinLength)
-        case .scroll:
-            return .scroll(axis: node.layout.scrollAxis ?? .vertical)
-        case .geometry:
-            return .geometry
-        case .lazyStack:
-            if let lazy = node.layout.lazy {
-                return .lazyStack(lazy, alignment: node.layout.alignment ?? .center)
-            }
-            return .stack(axis: .vertical, spacing: node.patch.spacing, alignment: node.layout.alignment ?? .center)
-        case .list, .sidebarList, .outline, .sidebarOutline, .splitView, .tabView:
-            return .native
-        case .label, .button, .textField, .secureField, .slider, .toggle, .shape, .image, .menu, .picker,
-             .datePicker, .colorPicker, .progress, .separator, .window:
-            return .leaf
+        switch node.component.role {
+        case .leaf, .fill: return .leaf
+        case .native: return .native
+        case .spacer(let m): return .spacer(minLength: m)
+        case .stack(let a, let s, let al): return .stack(axis: a, spacing: s, alignment: al)
+        case .zstack(let al): return .zstack(alignment: al)
+        case .scroll(let axis): return .scroll(axis: axis)
+        case .geometry: return .geometry
+        case .lazyStack(let info, let al): return .lazyStack(info, alignment: al)
         }
     }
 
@@ -313,19 +286,13 @@ struct LayoutEngine {
                 return maxValue == .infinity            // fills only with an explicit max-infinity
             }
         }
-        if let component = node.component {
-            switch component.role { case .fill, .spacer, .scroll, .geometry: return true; default: return false }
-        }
-        switch node.kind {
-        case .spacer, .scroll, .geometry: return true
-        default: return false
-        }
+        switch node.component.role { case .fill, .spacer, .scroll, .geometry: return true; default: return false }
     }
 
-    /// Whether a node is a Spacer (via its component role, or — pre-migration — its kind).
+    /// Whether a node is a Spacer (via its component role).
     private func isSpacer(_ node: RenderNode) -> Bool {
-        if let role = node.component?.role { if case .spacer = role { return true }; return false }
-        return node.kind == .spacer
+        if case .spacer = node.component.role { return true }
+        return false
     }
 
     private func zstackLayout(_ children: [RenderNode], alignment: Alignment,
@@ -341,8 +308,8 @@ struct LayoutEngine {
     }
 
     private func spacerMinLength(_ node: RenderNode) -> CGFloat {
-        if let role = node.component?.role, case .spacer(let m) = role { return CGFloat(m) }
-        return node.kind == .spacer ? CGFloat(node.layout.spacerMinLength) : 0
+        if case .spacer(let m) = node.component.role { return CGFloat(m) }
+        return 0
     }
 
     private func crossAlign(_ alignment: Alignment, horizontal: Bool, child: CGFloat, in container: CGFloat) -> CGFloat {

@@ -155,6 +155,11 @@ final class MockToolkit: AppToolkit {
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("menu"))
         components.register(.init(
+            make: { [unowned self] c in let h = makeWidget(.shape); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: WidgetKey("shape"))
+        components.register(.init(
             make: { [unowned self] component in
                 let handle = makeWidget(.image)
                 if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }

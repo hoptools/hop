@@ -83,7 +83,7 @@ public struct _ShapeView: View, PrimitiveView {
         if resolved.fill == nil, resolved.stroke == nil {
             resolved.fill = currentEnvironment().foregroundColor ?? .black
         }
-        return RenderNode(id: context.id, kind: .shape, shape: resolved)
+        return RenderNode(id: context.id, kind: .shape, component: ShapeComponent(spec: resolved))
     }
 }
 
@@ -135,17 +135,20 @@ extension Path: Shape {
 /// stroke / frame / rotationEffect / offset / scaleEffect.
 struct _ShapeNodeModifier<Content: View>: View, PrimitiveView {
     let content: Content
-    let modify: (inout RenderNode) -> Void
+    let modify: (inout ShapeSpec) -> Void
 
     typealias Body = Never
     var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         // Resolve first: a `Shape` is a composite (its body is `_ShapeView`), so without resolving we'd get
-        // a reference whose `.shape` is nil and the fill/stroke/transform mutation would be lost.
-        let nodes = evaluateResolved(content, context.appending(0))
-        var node = nodes.first ?? RenderNode(id: context.id, kind: .vstack, children: nodes)
-        modify(&node)
+        // a reference whose component isn't yet a ShapeComponent and the fill/stroke/transform would be lost.
+        var node = evaluateResolved(content, context.appending(0)).first
+            ?? RenderNode(id: context.id, kind: .shape, component: ShapeComponent(spec: ShapeSpec(path: { _ in Path() })))
+        if var shape = node.component as? ShapeComponent {
+            modify(&shape.spec)
+            node.component = shape
+        }
         return node
     }
 }
@@ -153,18 +156,18 @@ struct _ShapeNodeModifier<Content: View>: View, PrimitiveView {
 extension Shape {
     /// Fills the shape with a color. Mirrors SwiftUI's `Shape.fill(_:)`.
     public func fill(_ color: Color) -> some View {
-        _ShapeNodeModifier(content: self) { node in
-            node.shape?.fill = color
-            node.shape?.stroke = nil
+        _ShapeNodeModifier(content: self) { spec in
+            spec.fill = color
+            spec.stroke = nil
         }
     }
 
     /// Strokes the shape's outline. Mirrors SwiftUI's `Shape.stroke(_:lineWidth:)`.
     public func stroke(_ color: Color, lineWidth: CGFloat = 1) -> some View {
-        _ShapeNodeModifier(content: self) { node in
-            node.shape?.stroke = color
-            node.shape?.fill = nil
-            node.shape?.lineWidth = lineWidth
+        _ShapeNodeModifier(content: self) { spec in
+            spec.stroke = color
+            spec.fill = nil
+            spec.lineWidth = lineWidth
         }
     }
 }
@@ -172,18 +175,13 @@ extension Shape {
 extension View {
     /// Rotates the view's shape around its center. Mirrors SwiftUI's `.rotationEffect(_:)`.
     public func rotationEffect(_ angle: Angle) -> some View {
-        _ShapeNodeModifier(content: self) { node in
-            if node.shape != nil { node.shape!.rotation = node.shape!.rotation + angle }
-        }
+        _ShapeNodeModifier(content: self) { spec in spec.rotation = spec.rotation + angle }
     }
 
     /// Offsets the view's shape. Mirrors SwiftUI's `.offset(x:y:)`.
     public func offset(x: CGFloat = 0, y: CGFloat = 0) -> some View {
-        _ShapeNodeModifier(content: self) { node in
-            if node.shape != nil {
-                node.shape!.offset = CGSize(width: node.shape!.offset.width + x,
-                                            height: node.shape!.offset.height + y)
-            }
+        _ShapeNodeModifier(content: self) { spec in
+            spec.offset = CGSize(width: spec.offset.width + x, height: spec.offset.height + y)
         }
     }
 
@@ -194,11 +192,9 @@ extension View {
 
     /// Scales the view's shape with independent x/y factors. Mirrors SwiftUI's `.scaleEffect(x:y:)`.
     public func scaleEffect(x: CGFloat = 1, y: CGFloat = 1) -> some View {
-        _ShapeNodeModifier(content: self) { node in
-            if node.shape != nil {
-                node.shape!.scaleX *= x
-                node.shape!.scaleY *= y
-            }
+        _ShapeNodeModifier(content: self) { spec in
+            spec.scaleX *= x
+            spec.scaleY *= y
         }
     }
 }

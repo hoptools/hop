@@ -375,6 +375,11 @@ public final class AppKitToolkit: AppToolkit {
             update: { [unowned self] h, c in if let m = (c as? MenuComponent)?.content { configureMenu(h, m) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("menu"))
+        components.register(.init(
+            make: { [unowned self] c in let h = makeWidget(.shape); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: WidgetKey("shape"))
     }
 
     /// Simple leaf widgets (Text/Button/TextField/SecureField/Slider/Toggle/Progress/Divider) — all

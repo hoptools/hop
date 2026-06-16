@@ -351,30 +351,64 @@ public struct RenderNode {
     /// replaces each with `read(compositeRef.body)`, re-running only the bodies that actually changed.
     /// (See `project_hopui_finegrained_reactivity`.) Always nil in a resolved tree (what reconcile/layout see).
     var compositeRef: CompositeNode?
-    /// The open widget component (the migration target replacing `kind` + the per-kind specs). When set,
-    /// the reconciler and layout engine use it (realize/update via the toolkit's component path, role via
-    /// `component.role`, reuse-match via `component.widgetKey`) and ignore `kind`. While migrating,
-    /// un-migrated widgets leave this nil and still use `kind`.
-    public var component: (any WidgetComponent)?
+    /// The open widget component — the sole description the reconciler and layout engine use (realize/update
+    /// via the toolkit's component path, role via `component.role`, reuse-match via `component.widgetKey`).
+    /// Views pass one explicitly; internally-constructed nodes get one derived from `kind` (see the init).
+    public var component: any WidgetComponent
 
-    /// Reuse identity for the keyed child diff: a component's `widgetKey` if migrated, else its `kind`. A
-    /// child is reused across a reconcile only when this matches — so a `Picker` whose style changed its
-    /// native widget (different `widgetKey`) is correctly torn down and recreated rather than reconfigured.
-    var reuseSignature: String { component.map { "c:\($0.widgetKey.rawValue)" } ?? "k:\(kind)" }
+    /// Reuse identity for the keyed child diff: the component's `widgetKey`. A child is reused across a
+    /// reconcile only when this matches — so a `Picker` whose style changed its native widget (different
+    /// `widgetKey`) is correctly torn down and recreated rather than reconfigured.
+    var reuseSignature: String { "c:\(component.widgetKey.rawValue)" }
 
     /// The node's widget patch, reading through a migrated leaf component (whose patch now holds the
     /// text/title/value) so content-inspecting primitives (Menu, Picker, Toolbar, OutlineGroup, List,
     /// TabView) keep working during the migration regardless of whether a child is migrated yet.
     var effectivePatch: WidgetPatch { (component as? PrimitiveLeafComponent)?.patch ?? patch }
-    /// The node's primary action, reading through a migrated leaf component (Button's action lives there).
-    var effectiveAction: (@MainActor () -> Void)? { (component as? PrimitiveLeafComponent)?.action ?? action }
-    /// The node's drop-down menu content, reading through a migrated ``MenuComponent`` (for nested submenus).
-    var effectiveMenu: MenuContent? { (component as? MenuComponent)?.content ?? menu }
+    /// The node's primary action, read through its leaf component (Button's action lives there).
+    var effectiveAction: (@MainActor () -> Void)? { (component as? PrimitiveLeafComponent)?.action }
+    /// The node's drop-down menu content, read through its ``MenuComponent`` (for nested submenus).
+    var effectiveMenu: MenuContent? { (component as? MenuComponent)?.content }
     /// Set during resolve: a token identifying this subtree's content. Two nodes with the same nonzero
     /// `subtreeRevision` across successive flushes are byte-identical (the resolve pass preserves it only by
     /// reusing the exact cached nodes), so the reconciler and layout engine can safely skip them. `0` means
     /// "unstamped" — never skipped.
     var subtreeRevision: Int = 0
+
+    /// Derives a component for an internally-constructed node (wrappers, the nav bar, fallbacks) from its
+    /// kind/patch/handlers — a strangler bridge so every node has a component without rewriting those raw
+    /// construction sites. Removed when `WidgetKind` is deleted (those sites then pass a component directly).
+    static func derivedComponent(kind: WidgetKind, patch: WidgetPatch,
+                                 action: (@MainActor () -> Void)?, onChange: (@MainActor (String) -> Void)?,
+                                 onChangeDouble: (@MainActor (Double) -> Void)?, onChangeBool: (@MainActor (Bool) -> Void)?,
+                                 layout: LayoutInfo) -> any WidgetComponent {
+        switch kind {
+        case .vstack, .groupBox:
+            return ContainerComponent(WidgetKey(kind == .groupBox ? "groupBox" : "vstack"),
+                role: .stack(axis: .vertical, spacing: patch.spacing, alignment: layout.alignment ?? .center))
+        case .hstack:
+            return ContainerComponent(WidgetKey("hstack"),
+                role: .stack(axis: .horizontal, spacing: patch.spacing, alignment: layout.alignment ?? .center))
+        case .zstack:
+            return ContainerComponent(WidgetKey("zstack"), role: .zstack(alignment: layout.alignment ?? .center))
+        case .spacer:
+            return ContainerComponent(WidgetKey("spacer"), role: .spacer(minLength: layout.spacerMinLength))
+        case .scroll:
+            return ContainerComponent(WidgetKey("scroll"), role: .scroll(axis: layout.scrollAxis ?? .vertical))
+        case .geometry:
+            return ContainerComponent(WidgetKey("geometry"), role: .geometry)
+        case .lazyStack:
+            if let lazy = layout.lazy {
+                return ContainerComponent(WidgetKey("lazyStack"), role: .lazyStack(lazy, alignment: layout.alignment ?? .center))
+            }
+            return ContainerComponent(WidgetKey("vstack"), role: .stack(axis: .vertical, spacing: nil, alignment: layout.alignment ?? .center))
+        case .list, .sidebarList, .outline, .sidebarOutline, .splitView, .tabView:
+            return ContainerComponent(WidgetKey("\(kind)"), role: .native)
+        default:   // label / button / textField / secureField / slider / toggle / progress / separator / window
+            return PrimitiveLeafComponent(WidgetKey("\(kind)"), patch: patch, action: action,
+                onChange: onChange, onChangeDouble: onChangeDouble, onChangeBool: onChangeBool)
+        }
+    }
 
     public init(id: String, kind: WidgetKind, patch: WidgetPatch = WidgetPatch(),
                 children: [RenderNode] = [], action: (@MainActor () -> Void)? = nil,
@@ -412,7 +446,13 @@ public struct RenderNode {
         self.image = image
         self.tabs = tabs
         self.preferences = preferences
-        self.component = component
+        // Every node carries a component. Views pass one explicitly; the remaining internally-constructed
+        // nodes (wrappers, the nav bar, fallbacks) get one derived from their kind/patch/handlers here, so
+        // the reconciler and layout engine have a single (component) path. (The legacy `kind` is retained
+        // only as the derivation key + each backend's native-creation key until the final WidgetKind removal.)
+        self.component = component ?? RenderNode.derivedComponent(
+            kind: kind, patch: patch, action: action, onChange: onChange,
+            onChangeDouble: onChangeDouble, onChangeBool: onChangeBool, layout: layout)
         self.tag = tag
         self.layout = layout
         self.onGeometry = onGeometry

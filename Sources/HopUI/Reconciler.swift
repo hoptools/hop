@@ -54,8 +54,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
                    cached.width == proposal.width, cached.height == proposal.height {
                     return cached.size   // identical content + same proposal → reuse, skip native measure
                 }
-                let size = node.component.map { toolkit.measureComponent(handle, $0, proposal) }
-                    ?? toolkit.measure(handle, proposal)
+                let size = toolkit.measureComponent(handle, node.component, proposal)
                 if node.subtreeRevision != 0 {
                     measureCache[node.id] = (node.subtreeRevision, proposal.width, proposal.height, size)
                 }
@@ -67,42 +66,15 @@ final class Reconciler<Toolkit: RenderToolkit> {
     }
 
     private func realize(_ node: RenderNode) -> Toolkit.Handle {
-        let handle: Toolkit.Handle
-        if let component = node.component {
-            // Open component path: the renderer (or self-hosted code) creates AND configures the widget.
-            handle = toolkit.realize(component)
-            // Cross-cutting modifier patch (e.g. .accessibilityLabel) attaches to the node, not the
-            // component. Apply it only when a modifier actually set something, so a default (empty) patch
-            // doesn't re-run a widget configure that would reset component-owned state (e.g. progress).
-            if node.patch != WidgetPatch() { toolkit.configure(handle, node.patch) }
-        } else {
-            handle = toolkit.makeWidget(node.kind)
-            toolkit.configure(handle, node.patch)
-            toolkit.setAction(handle, node.action)
-            toolkit.setTextHandler(handle, node.onChange)
-            toolkit.setValueHandler(handle, node.onChangeDouble)
-            toolkit.setBoolHandler(handle, node.onChangeBool)
-            if let list = node.list { toolkit.configureList(handle, list) }
-            if let shape = node.shape { toolkit.configureShape(handle, shape) }
-            if let menu = node.menu { toolkit.configureMenu(handle, menu) }
-            if let picker = node.picker { toolkit.configurePicker(handle, picker) }
-            if let datePicker = node.datePicker { toolkit.configureDatePicker(handle, datePicker) }
-            if let colorPicker = node.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
-            if let outline = node.outline { toolkit.configureOutline(handle, outline) }
-            if let image = node.image { toolkit.configureImage(handle, image) }
-        }
-        // Cross-cutting attachments apply to any widget (migrated or legacy): the scroll handler (nil
-        // for non-scroll), and the file-panel presentations.
-        toolkit.setScrollHandler(handle, node.onScroll)
-        if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
-        if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
+        // The renderer (or self-hosted code) creates AND configures the widget from its component.
+        let handle = toolkit.realize(node.component)
+        applyCrossCutting(handle, node)
         handles[node.id] = handle
         for (index, child) in node.children.enumerated() {
             toolkit.insert(realize(child), into: handle, at: index)
         }
         // A native composite (tab widget) builds itself from the now-inserted children, so notify last.
-        if let component = node.component { toolkit.didInsertChildren(handle, component) }
-        else if let tabs = node.tabs { toolkit.configureTabs(handle, tabs) }
+        toolkit.didInsertChildren(handle, node.component)
         return handle
     }
 
@@ -113,33 +85,21 @@ final class Reconciler<Toolkit: RenderToolkit> {
         // already correct and we touch nothing. This is safe by construction: the revision is preserved
         // only for verbatim-reused subtrees (see `ViewGraph.resolveComposite`).
         if new.subtreeRevision != 0 && new.subtreeRevision == old.subtreeRevision { return }
-        if let component = new.component {
-            toolkit.updateComponent(handle, component)
-            if new.patch != WidgetPatch() { toolkit.configure(handle, new.patch) }   // cross-cutting modifier patch
-        } else {
-            if new.patch != old.patch {
-                toolkit.configure(handle, new.patch)
-            }
-            toolkit.setAction(handle, new.action)
-            toolkit.setTextHandler(handle, new.onChange)
-            toolkit.setValueHandler(handle, new.onChangeDouble)
-            toolkit.setBoolHandler(handle, new.onChangeBool)
-            if let list = new.list { toolkit.configureList(handle, list) }
-            if let shape = new.shape { toolkit.configureShape(handle, shape) }
-            if let menu = new.menu { toolkit.configureMenu(handle, menu) }
-            if let picker = new.picker { toolkit.configurePicker(handle, picker) }
-            if let datePicker = new.datePicker { toolkit.configureDatePicker(handle, datePicker) }
-            if let colorPicker = new.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
-            if let outline = new.outline { toolkit.configureOutline(handle, outline) }
-            if let image = new.image { toolkit.configureImage(handle, image) }
-        }
-        toolkit.setScrollHandler(handle, new.onScroll)
-        if let fileImporter = new.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
-        if let fileExporter = new.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
+        toolkit.updateComponent(handle, new.component)
+        applyCrossCutting(handle, new)
         reconcileChildren(parent: handle, old: old.children, new: new.children)
         // Notify a native composite after its children are reconciled (tab titles/selection track them).
-        if let component = new.component { toolkit.didInsertChildren(handle, component) }
-        else if let tabs = new.tabs { toolkit.configureTabs(handle, tabs) }
+        toolkit.didInsertChildren(handle, new.component)
+    }
+
+    /// Apply the node-level attachments that aren't part of the widget component: the accessibility patch a
+    /// modifier set (only when non-default, so an empty patch doesn't reset component-owned state like
+    /// progress), the scroll handler (nil for non-scroll), and the file-panel presentations.
+    private func applyCrossCutting(_ handle: Toolkit.Handle, _ node: RenderNode) {
+        if node.patch != WidgetPatch() { toolkit.configure(handle, node.patch) }
+        toolkit.setScrollHandler(handle, node.onScroll)
+        if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
+        if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
     }
 
     /// Keyed child diff: match by ``RenderNode/id``, reuse matched handles (preserving native state)
