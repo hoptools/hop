@@ -27,7 +27,7 @@ public struct OutlineGroup<Data, ID, Content>: View, PrimitiveView
                                    children: KeyPath<Data.Element, Data?>,
                                    content: (Data.Element) -> Content) -> [OutlineSpec.Node] {
         data.map { element in
-            let title = evaluateResolved(content(element), RenderContext(path: [])).first?.patch.text ?? ""
+            let title = evaluateResolved(content(element), RenderContext(path: [])).first?.effectivePatch.text ?? ""
             let kids = element[keyPath: children].map {
                 buildNodes($0, id: id, children: children, content: content)
             } ?? []

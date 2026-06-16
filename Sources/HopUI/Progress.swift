@@ -41,6 +41,7 @@ public struct ProgressView: View, PrimitiveView {
             patch.progressValue = Swift.max(0, Swift.min(1, value / total))
         }
         if let label { patch.accessibilityLabel = label }
-        return RenderNode(id: context.id, kind: .progress, patch: patch)
+        return RenderNode(id: context.id, kind: .progress,
+                          component: PrimitiveLeafComponent(WidgetKey("progress"), patch: patch))
     }
 }

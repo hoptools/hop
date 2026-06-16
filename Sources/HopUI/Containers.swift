@@ -162,7 +162,7 @@ struct _TabItemModifier<Content: View, Label: View>: View, PrimitiveView {
 /// The first text found in a node subtree (a tab label may be a `Text` or a `Label` of icon + text).
 @MainActor private func firstText(in nodes: [RenderNode]) -> String? {
     for node in nodes {
-        if let text = node.patch.text { return text }
+        if let text = node.effectivePatch.text { return text }
         if let text = firstText(in: node.children) { return text }
     }
     return nil

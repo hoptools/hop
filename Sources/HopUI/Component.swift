@@ -78,6 +78,36 @@ public extension WidgetComponent {
     func updateNative(_ native: Any, _ toolkit: ToolkitID) {}
 }
 
+/// The component for HopUI's simple leaf widgets (Text, Button, TextField, SecureField, Slider, Toggle,
+/// ProgressView, Divider) — all of which are uniformly "a native widget + a ``WidgetPatch`` + an optional
+/// change handler". Each carries a distinct `widgetKey` (so the reconciler never reuses a Button as a
+/// Slider) and the backend's leaf renderer applies the patch + handlers. (During the strangler migration
+/// each backend's leaf renderer still delegates to the legacy `makeWidget(kind)`; the native code inlines
+/// here in the final sweep, when `WidgetKind` is removed.)
+public struct PrimitiveLeafComponent: WidgetComponent {
+    public let widgetKey: WidgetKey
+    public let role: WidgetRole
+    public let patch: WidgetPatch
+    public let action: (@MainActor () -> Void)?
+    public let onChange: (@MainActor (String) -> Void)?
+    public let onChangeDouble: (@MainActor (Double) -> Void)?
+    public let onChangeBool: (@MainActor (Bool) -> Void)?
+
+    public init(_ key: WidgetKey, role: WidgetRole = .leaf, patch: WidgetPatch = WidgetPatch(),
+                action: (@MainActor () -> Void)? = nil,
+                onChange: (@MainActor (String) -> Void)? = nil,
+                onChangeDouble: (@MainActor (Double) -> Void)? = nil,
+                onChangeBool: (@MainActor (Bool) -> Void)? = nil) {
+        self.widgetKey = key
+        self.role = role
+        self.patch = patch
+        self.action = action
+        self.onChange = onChange
+        self.onChangeDouble = onChangeDouble
+        self.onChangeBool = onChangeBool
+    }
+}
+
 /// A backend's open registry of component renderers, keyed by ``WidgetKey``. A backend registers its
 /// built-in renderers here; **third-party packages can register their own** (e.g. `appKit.components`
 /// `.register(...)`) — the open replacement for the closed `makeWidget`/`configureX` switch. Generic over

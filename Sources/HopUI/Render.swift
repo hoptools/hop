@@ -361,6 +361,13 @@ public struct RenderNode {
     /// child is reused across a reconcile only when this matches — so a `Picker` whose style changed its
     /// native widget (different `widgetKey`) is correctly torn down and recreated rather than reconfigured.
     var reuseSignature: String { component.map { "c:\($0.widgetKey.rawValue)" } ?? "k:\(kind)" }
+
+    /// The node's widget patch, reading through a migrated leaf component (whose patch now holds the
+    /// text/title/value) so content-inspecting primitives (Menu, Picker, Toolbar, OutlineGroup, List,
+    /// TabView) keep working during the migration regardless of whether a child is migrated yet.
+    var effectivePatch: WidgetPatch { (component as? PrimitiveLeafComponent)?.patch ?? patch }
+    /// The node's primary action, reading through a migrated leaf component (Button's action lives there).
+    var effectiveAction: (@MainActor () -> Void)? { (component as? PrimitiveLeafComponent)?.action ?? action }
     /// Set during resolve: a token identifying this subtree's content. Two nodes with the same nonzero
     /// `subtreeRevision` across successive flushes are byte-identical (the resolve pass preserves it only by
     /// reusing the exact cached nodes), so the reconciler and layout engine can safely skip them. `0` means

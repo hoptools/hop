@@ -300,8 +300,35 @@ public final class AppKitToolkit: AppToolkit {
 
     /// Register built-in component renderers. Populated as widgets migrate off the legacy `makeWidget` path.
     private func registerBuiltinComponents() {
+        registerLeafComponents()
         registerImageComponent()
         registerPickerComponents()
+    }
+
+    /// Simple leaf widgets (Text/Button/TextField/SecureField/Slider/Toggle/Progress/Divider) — all
+    /// "native widget + patch + handler". One delegating renderer per key (mapping to the legacy kind for
+    /// now); the native creation inlines here when `WidgetKind` is removed.
+    private func registerLeafComponents() {
+        let leaves: [(String, WidgetKind)] = [
+            ("label", .label), ("button", .button), ("textField", .textField), ("secureField", .secureField),
+            ("slider", .slider), ("toggle", .toggle), ("progress", .progress), ("separator", .separator),
+        ]
+        for (key, kind) in leaves {
+            components.register(.init(
+                make: { [unowned self] component in let handle = makeWidget(kind); applyLeaf(handle, component); return handle },
+                update: { [unowned self] handle, component in applyLeaf(handle, component) },
+                measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+            ), for: WidgetKey(key))
+        }
+    }
+
+    private func applyLeaf(_ handle: AppKitWidget, _ component: any WidgetComponent) {
+        guard let leaf = component as? PrimitiveLeafComponent else { return }
+        configure(handle, leaf.patch)
+        setAction(handle, leaf.action)
+        setTextHandler(handle, leaf.onChange)
+        setValueHandler(handle, leaf.onChangeDouble)
+        setBoolHandler(handle, leaf.onChangeBool)
     }
 
     /// `Picker` renderers — the style-variance pilot. Each style is a *different native widget*, registered

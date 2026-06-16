@@ -71,6 +71,10 @@ final class Reconciler<Toolkit: RenderToolkit> {
         if let component = node.component {
             // Open component path: the renderer (or self-hosted code) creates AND configures the widget.
             handle = toolkit.realize(component)
+            // Cross-cutting modifier patch (e.g. .accessibilityLabel) attaches to the node, not the
+            // component. Apply it only when a modifier actually set something, so a default (empty) patch
+            // doesn't re-run a widget configure that would reset component-owned state (e.g. progress).
+            if node.patch != WidgetPatch() { toolkit.configure(handle, node.patch) }
         } else {
             handle = toolkit.makeWidget(node.kind)
             toolkit.configure(handle, node.patch)
@@ -84,12 +88,13 @@ final class Reconciler<Toolkit: RenderToolkit> {
             if let picker = node.picker { toolkit.configurePicker(handle, picker) }
             if let datePicker = node.datePicker { toolkit.configureDatePicker(handle, datePicker) }
             if let colorPicker = node.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
-            if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
-            if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
             if let outline = node.outline { toolkit.configureOutline(handle, outline) }
             if let image = node.image { toolkit.configureImage(handle, image) }
             toolkit.setScrollHandler(handle, node.onScroll)
         }
+        // Cross-cutting presentation attachments apply to any widget (migrated or legacy).
+        if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
+        if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
         handles[node.id] = handle
         for (index, child) in node.children.enumerated() {
             toolkit.insert(realize(child), into: handle, at: index)
@@ -108,6 +113,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
         if new.subtreeRevision != 0 && new.subtreeRevision == old.subtreeRevision { return }
         if let component = new.component {
             toolkit.updateComponent(handle, component)
+            if new.patch != WidgetPatch() { toolkit.configure(handle, new.patch) }   // cross-cutting modifier patch
         } else {
             if new.patch != old.patch {
                 toolkit.configure(handle, new.patch)
@@ -122,12 +128,12 @@ final class Reconciler<Toolkit: RenderToolkit> {
             if let picker = new.picker { toolkit.configurePicker(handle, picker) }
             if let datePicker = new.datePicker { toolkit.configureDatePicker(handle, datePicker) }
             if let colorPicker = new.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
-            if let fileImporter = new.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
-            if let fileExporter = new.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
             if let outline = new.outline { toolkit.configureOutline(handle, outline) }
             if let image = new.image { toolkit.configureImage(handle, image) }
             toolkit.setScrollHandler(handle, new.onScroll)
         }
+        if let fileImporter = new.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
+        if let fileExporter = new.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
         reconcileChildren(parent: handle, old: old.children, new: new.children)
         // Configure tabs after the page children are reconciled (titles/selection track the live pages).
         if new.component == nil, let tabs = new.tabs { toolkit.configureTabs(handle, tabs) }

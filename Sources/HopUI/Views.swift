@@ -15,10 +15,11 @@ public struct Text: View, PrimitiveView {
         // Reading through the graph records a dependency, so this body re-runs when its styling changes.
         let environment = currentEnvironment()
         return RenderNode(id: context.id, kind: .label,
-                          patch: WidgetPatch(text: content,
-                                             foregroundColor: environment.foregroundColor,
-                                             font: environment.font,
-                                             fontWeight: environment.fontWeightOverride))
+                          component: PrimitiveLeafComponent(WidgetKey("label"),
+                              patch: WidgetPatch(text: content,
+                                                 foregroundColor: environment.foregroundColor,
+                                                 font: environment.font,
+                                                 fontWeight: environment.fontWeightOverride)))
     }
 }
 
@@ -35,7 +36,8 @@ public struct Button: View, PrimitiveView {
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .button, patch: WidgetPatch(title: title), action: action)
+        RenderNode(id: context.id, kind: .button,
+                   component: PrimitiveLeafComponent(WidgetKey("button"), patch: WidgetPatch(title: title), action: action))
     }
 }
 
@@ -56,8 +58,9 @@ public struct TextField: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = text
         return RenderNode(id: context.id, kind: .textField,
-                          patch: WidgetPatch(value: text.wrappedValue, placeholder: placeholder),
-                          onChange: { binding.wrappedValue = $0 })
+                          component: PrimitiveLeafComponent(WidgetKey("textField"),
+                              patch: WidgetPatch(value: text.wrappedValue, placeholder: placeholder),
+                              onChange: { binding.wrappedValue = $0 }))
     }
 }
 
@@ -126,7 +129,7 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
         let count = data.count
         let rowText: @MainActor (Int) -> String = { index in
             let elementIndex = data.index(data.startIndex, offsetBy: index)
-            return evaluateResolved(rowContent(data[elementIndex]), RenderContext(path: [])).first?.patch.text ?? ""
+            return evaluateResolved(rowContent(data[elementIndex]), RenderContext(path: [])).first?.effectivePatch.text ?? ""
         }
         let resolve: @MainActor () -> Int? = {
             guard let selected = selection.wrappedValue else { return nil }
@@ -200,9 +203,10 @@ public struct Slider: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = value
         return RenderNode(id: context.id, kind: .slider,
-                          patch: WidgetPatch(doubleValue: value.wrappedValue,
-                                             minValue: range.lowerBound, maxValue: range.upperBound),
-                          onChangeDouble: { binding.wrappedValue = $0 })
+                          component: PrimitiveLeafComponent(WidgetKey("slider"),
+                              patch: WidgetPatch(doubleValue: value.wrappedValue,
+                                                 minValue: range.lowerBound, maxValue: range.upperBound),
+                              onChangeDouble: { binding.wrappedValue = $0 }))
     }
 }
 

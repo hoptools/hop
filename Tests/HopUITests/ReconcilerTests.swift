@@ -85,6 +85,18 @@ final class MockToolkit: AppToolkit {
         }
     }
     private func registerBuiltinComponents() {
+        // Leaf widgets: delegate to the legacy makeWidget/configure so existing op-log assertions hold.
+        let leaves: [(String, WidgetKind)] = [
+            ("label", .label), ("button", .button), ("textField", .textField), ("secureField", .secureField),
+            ("slider", .slider), ("toggle", .toggle), ("progress", .progress), ("separator", .separator),
+        ]
+        for (key, kind) in leaves {
+            components.register(.init(
+                make: { [unowned self] component in let handle = makeWidget(kind); applyLeaf(handle, component); return handle },
+                update: { [unowned self] handle, component in applyLeaf(handle, component) },
+                measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+            ), for: WidgetKey(key))
+        }
         components.register(.init(
             make: { [unowned self] component in
                 let handle = makeWidget(.image)
@@ -115,6 +127,15 @@ final class MockToolkit: AppToolkit {
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
             ), for: WidgetKey("picker.\(style)"))
         }
+    }
+
+    private func applyLeaf(_ handle: MockWidget, _ component: any WidgetComponent) {
+        guard let leaf = component as? PrimitiveLeafComponent else { return }
+        configure(handle, leaf.patch)
+        setAction(handle, leaf.action)
+        setTextHandler(handle, leaf.onChange)
+        setValueHandler(handle, leaf.onChangeDouble)
+        setBoolHandler(handle, leaf.onChangeBool)
     }
 
     func makeWidget(_ kind: WidgetKind) -> MockWidget {

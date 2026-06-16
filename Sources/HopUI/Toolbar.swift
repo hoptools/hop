@@ -27,9 +27,9 @@ public struct ToolbarHost<Content: View, Bar: View>: View, PrimitiveView {
         for node in evaluateResolved(bar, context.appending(1)) {
             switch node.kind {
             case .button:
-                items.append(ToolbarItemSpec(kind: .button(title: node.patch.title ?? "", action: node.action ?? {})))
+                items.append(ToolbarItemSpec(kind: .button(title: node.effectivePatch.title ?? "", action: node.effectiveAction ?? {})))
             case .label:
-                items.append(ToolbarItemSpec(kind: .text(node.patch.text ?? "")))
+                items.append(ToolbarItemSpec(kind: .text(node.effectivePatch.text ?? "")))
             default:
                 break
             }

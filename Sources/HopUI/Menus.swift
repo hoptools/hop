@@ -53,7 +53,7 @@ func menuEntries(from nodes: [RenderNode]) -> [MenuEntry] {
     for node in nodes {
         switch node.kind {
         case .button:
-            entries.append(.button(title: node.patch.title ?? "", action: node.action ?? {}))
+            entries.append(.button(title: node.effectivePatch.title ?? "", action: node.effectiveAction ?? {}))
         case .separator:
             entries.append(.separator)
         case .menu:
@@ -72,7 +72,8 @@ public struct Divider: View, PrimitiveView {
     public typealias Body = Never
     public var body: Never { fatalError("Divider has no body") }
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .separator)
+        RenderNode(id: context.id, kind: .separator,
+                   component: PrimitiveLeafComponent(WidgetKey("separator")))
     }
 }
 
@@ -115,7 +116,7 @@ public struct Picker<SelectionValue: Hashable, Content: View>: View, PrimitiveVi
         var options: [String] = []
         var tags: [AnyHashable] = []
         for (index, node) in nodes.enumerated() {
-            options.append(node.patch.text ?? node.patch.title ?? "")
+            options.append(node.effectivePatch.text ?? node.effectivePatch.title ?? "")
             tags.append(node.tag ?? AnyHashable(index))  // fall back to position when untagged
         }
         let selectedIndex = tags.firstIndex(of: AnyHashable(selection.wrappedValue))
