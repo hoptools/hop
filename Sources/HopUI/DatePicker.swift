@@ -55,16 +55,16 @@ public struct DatePickerSpec {
 /// A control for choosing a date and/or time, mirroring SwiftUI's `DatePicker`. Bound to a `Date` via a
 /// ``Binding`` and backed by each toolkit's native date control (NSDatePicker on AppKit, a
 /// GtkCalendar + hour/minute spinners on GTK4, a QDateTimeEdit on Qt).
-public struct DatePicker: View, PrimitiveView {
+///
+/// Like SwiftUI it renders the title as a leading label next to the control; the native date control
+/// itself is the `_DatePickerControl` leaf below.
+public struct DatePicker: View {
     let title: String
     let selection: Binding<Date>
     let minDate: Date?
     let maxDate: Date?
     let components: DatePickerComponents
     var style: DatePickerStyle
-
-    public typealias Body = Never
-    public var body: Never { fatalError("DatePicker has no body") }
 
     // MARK: - SwiftUI-matching initializers
 
@@ -107,6 +107,36 @@ public struct DatePicker: View, PrimitiveView {
         copy.style = style
         return copy
     }
+
+    private var control: _DatePickerControl {
+        _DatePickerControl(title: title, selection: selection, minDate: minDate, maxDate: maxDate,
+                           components: components, style: style)
+    }
+
+    @ViewBuilder public var body: some View {
+        if title.isEmpty {
+            control
+        } else {
+            // Label beside the control (sized to content so it fits narrow windows without clipping).
+            HStack(spacing: 12) {
+                Text(title)
+                control
+            }
+        }
+    }
+}
+
+/// The native date control leaf carrying a ``DatePickerSpec``. `DatePicker` wraps this with its label.
+struct _DatePickerControl: View, PrimitiveView {
+    let title: String
+    let selection: Binding<Date>
+    let minDate: Date?
+    let maxDate: Date?
+    let components: DatePickerComponents
+    var style: DatePickerStyle
+
+    typealias Body = Never
+    var body: Never { fatalError("_DatePickerControl has no body") }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = selection

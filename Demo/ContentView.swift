@@ -351,15 +351,14 @@ struct DatePickerPlayground: View {
         // every date picker as an inline calendar). Every variation binds to the same @State Date.
         ScrollView {
             VStack(spacing: 18) {
-                Text("Pick a date/time — each variation is bound to the same @State Date")
-                DatePicker("Appointment (date & time)", selection: $date)
+                Text("Each variation binds to the same @State Date")
+                DatePicker("Appointment", selection: $date)
                 DatePicker("Date only", selection: $date, displayedComponents: .date)
                 DatePicker("Time only", selection: $date, displayedComponents: .hourAndMinute)
-                DatePicker("Graphical calendar", selection: $date, displayedComponents: .date)
+                DatePicker("Calendar", selection: $date, displayedComponents: .date)
                     .datePickerStyle(.graphical)
                 Text("Selected: \(date)")
             }
-            .frame(width: 360)
         }
     }
 }
