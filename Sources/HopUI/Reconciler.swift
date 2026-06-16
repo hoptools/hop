@@ -90,9 +90,10 @@ final class Reconciler<Toolkit: RenderToolkit> {
             if let colorPicker = node.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
             if let outline = node.outline { toolkit.configureOutline(handle, outline) }
             if let image = node.image { toolkit.configureImage(handle, image) }
-            toolkit.setScrollHandler(handle, node.onScroll)
         }
-        // Cross-cutting presentation attachments apply to any widget (migrated or legacy).
+        // Cross-cutting attachments apply to any widget (migrated or legacy): the scroll handler (nil
+        // for non-scroll), and the file-panel presentations.
+        toolkit.setScrollHandler(handle, node.onScroll)
         if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
         if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
         handles[node.id] = handle
@@ -131,8 +132,8 @@ final class Reconciler<Toolkit: RenderToolkit> {
             if let colorPicker = new.colorPicker { toolkit.configureColorPicker(handle, colorPicker) }
             if let outline = new.outline { toolkit.configureOutline(handle, outline) }
             if let image = new.image { toolkit.configureImage(handle, image) }
-            toolkit.setScrollHandler(handle, new.onScroll)
         }
+        toolkit.setScrollHandler(handle, new.onScroll)
         if let fileImporter = new.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
         if let fileExporter = new.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
         reconcileChildren(parent: handle, old: old.children, new: new.children)

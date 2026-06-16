@@ -423,7 +423,10 @@ public final class GTK4Toolkit: AppToolkit {
     }
 
     private func registerContainerComponents() {
-        let containers: [(String, WidgetKind)] = [("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox)]
+        let containers: [(String, WidgetKind)] = [
+            ("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox),
+            ("scroll", .scroll), ("geometry", .geometry), ("lazyStack", .lazyStack), ("spacer", .spacer),
+        ]
         for (key, kind) in containers {
             components.register(.init(
                 make: { [unowned self] _ in makeWidget(kind) },

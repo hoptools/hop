@@ -291,6 +291,7 @@ public struct Spacer: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id, kind: .spacer,
+                   component: ContainerComponent(WidgetKey("spacer"), role: .spacer(minLength: minLength ?? 0)),
                    layout: LayoutInfo(spacerMinLength: minLength ?? 0))
     }
 }

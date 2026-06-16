@@ -51,6 +51,12 @@ public enum WidgetRole {
     case stack(axis: Axis, spacing: Double?, alignment: Alignment)
     /// Children overlaid and aligned within the stack's bounds.
     case zstack(alignment: Alignment)
+    /// A scroll viewport along an axis (its content laid out unbounded along that axis).
+    case scroll(axis: Axis)
+    /// A geometry reader: reports its laid-out size back to its content.
+    case geometry
+    /// A virtualizing lazy stack: only the visible window of rows is materialized.
+    case lazyStack(LazyInfo, alignment: Alignment)
 }
 
 /// A toolkit-agnostic description of one native widget — the open replacement for `WidgetKind` + the

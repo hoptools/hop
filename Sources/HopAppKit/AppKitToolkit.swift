@@ -342,9 +342,13 @@ public final class AppKitToolkit: AppToolkit {
         ), for: WidgetKey("tabView"))
     }
 
-    /// Layout containers — an empty native container; the layout engine arranges children from the role.
+    /// Layout containers + layout-special layers (scroll/geometry/lazy/spacer) — empty native widgets the
+    /// layout engine drives via the role + the node's layout callbacks.
     private func registerContainerComponents() {
-        let containers: [(String, WidgetKind)] = [("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox)]
+        let containers: [(String, WidgetKind)] = [
+            ("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox),
+            ("scroll", .scroll), ("geometry", .geometry), ("lazyStack", .lazyStack), ("spacer", .spacer),
+        ]
         for (key, kind) in containers {
             components.register(.init(
                 make: { [unowned self] _ in makeWidget(kind) },

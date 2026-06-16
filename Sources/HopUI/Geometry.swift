@@ -46,7 +46,9 @@ public struct GeometryReader<Content: View>: View, PrimitiveView {
         let childNodes = evaluate(content(proxy), context.appending(0))
         let child = childNodes.first ?? RenderNode(id: context.id + ".empty", kind: .vstack)
 
-        return RenderNode(id: context.id, kind: .geometry, children: [child], onGeometry: { newSize in
+        return RenderNode(id: context.id, kind: .geometry, children: [child],
+                          component: ContainerComponent(WidgetKey("geometry"), role: .geometry),
+                          onGeometry: { newSize in
             // Only write (and re-render) when the size genuinely changes, so layout converges.
             if newSize != size {
                 graph.setValue(newSize, for: source)

@@ -23,6 +23,9 @@ struct LayoutEngine {
             case .spacer(let m): return .spacer(minLength: m)
             case .stack(let a, let s, let al): return .stack(axis: a, spacing: s, alignment: al)
             case .zstack(let al): return .zstack(alignment: al)
+            case .scroll(let axis): return .scroll(axis: axis)
+            case .geometry: return .geometry
+            case .lazyStack(let info, let al): return .lazyStack(info, alignment: al)
             }
         }
         switch node.kind {
@@ -250,7 +253,7 @@ struct LayoutEngine {
         var spacer = [Bool](repeating: false, count: children.count)  // a Spacer (no spacing around it)
         var flex = [Bool](repeating: false, count: children.count)    // expands along the main axis
         for (i, child) in children.enumerated() {
-            spacer[i] = child.kind == .spacer
+            spacer[i] = isSpacer(child)
             flex[i] = greedyAlong(child, axis)
             if spacer[i] { continue }
             // Measure cross always; measure along too (the ideal extent — a flex child uses it only as a
@@ -311,12 +314,18 @@ struct LayoutEngine {
             }
         }
         if let component = node.component {
-            switch component.role { case .fill, .spacer: return true; default: return false }
+            switch component.role { case .fill, .spacer, .scroll, .geometry: return true; default: return false }
         }
         switch node.kind {
         case .spacer, .scroll, .geometry: return true
         default: return false
         }
+    }
+
+    /// Whether a node is a Spacer (via its component role, or — pre-migration — its kind).
+    private func isSpacer(_ node: RenderNode) -> Bool {
+        if let role = node.component?.role { if case .spacer = role { return true }; return false }
+        return node.kind == .spacer
     }
 
     private func zstackLayout(_ children: [RenderNode], alignment: Alignment,
@@ -332,7 +341,8 @@ struct LayoutEngine {
     }
 
     private func spacerMinLength(_ node: RenderNode) -> CGFloat {
-        node.kind == .spacer ? CGFloat(node.layout.spacerMinLength) : 0
+        if let role = node.component?.role, case .spacer(let m) = role { return CGFloat(m) }
+        return node.kind == .spacer ? CGFloat(node.layout.spacerMinLength) : 0
     }
 
     private func crossAlign(_ alignment: Alignment, horizontal: Bool, child: CGFloat, in container: CGFloat) -> CGFloat {

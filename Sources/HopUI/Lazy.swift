@@ -63,6 +63,7 @@ public struct ScrollView<Content: View>: View, PrimitiveView {
                                layout: LayoutInfo(alignment: .topLeading))
 
         return RenderNode(id: context.id, kind: .scroll, children: [child],
+                          component: ContainerComponent(WidgetKey("scroll"), role: .scroll(axis: axis)),
                           layout: LayoutInfo(scrollAxis: axis),
                           onGeometry: { size in
                               if size != viewport { graph.setValue(size, for: viewportSource); GraphContext.scheduleFlush() }
@@ -180,6 +181,9 @@ private func makeLazyNode<Content: View>(_ context: RenderContext, axis: Axis, s
     }
 
     return RenderNode(id: context.id, kind: .lazyStack, children: rows,
+                      component: ContainerComponent(WidgetKey("lazyStack"),
+                          role: .lazyStack(LazyInfo(axis: axis, rowExtent: rowExtent, spacing: spacing, totalCount: count),
+                                           alignment: alignment)),
                       layout: LayoutInfo(alignment: alignment,
                                          lazy: LazyInfo(axis: axis, rowExtent: rowExtent,
                                                         spacing: spacing, totalCount: count)),

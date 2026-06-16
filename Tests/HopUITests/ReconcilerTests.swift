@@ -100,8 +100,12 @@ final class MockToolkit: AppToolkit {
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
             ), for: WidgetKey(key))
         }
-        // Layout containers — empty native container; the engine arranges children from the role.
-        for (key, kind) in [("vstack", WidgetKind.vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox)] {
+        // Layout containers + layout-special layers — empty native widget; the engine drives the rest.
+        let containerKinds: [(String, WidgetKind)] = [
+            ("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox),
+            ("scroll", .scroll), ("geometry", .geometry), ("lazyStack", .lazyStack), ("spacer", .spacer),
+        ]
+        for (key, kind) in containerKinds {
             components.register(.init(
                 make: { [unowned self] _ in makeWidget(kind) },
                 update: { _, _ in },
