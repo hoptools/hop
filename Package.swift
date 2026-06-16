@@ -47,39 +47,13 @@ qtCxxFlags = []
 qtLinkFlags = []
 #endif
 
-// GTK4 on Windows needs two workarounds that don't apply to macOS/Linux:
-//   1. SwiftPM's built-in pkg-config parser trips over MSYS2's harfbuzz<->freetype2 `.pc` dependency
-//      cycle and silently drops GTK's `-I` include flags, so the CGTK4 module can't find <gtk/gtk.h>.
-//   2. The MSVC toolchain's linker (lld-link) can't consume MSYS2's GNU-format `.dll.a` import libs.
-// So on Windows we bypass `pkgConfig:`, feed clang the include flags ourselves, and link against
-// MSVC-style `.lib` import libraries generated from the GTK DLLs. Run `scripts/setup-windows.ps1`
-// once to populate `.winlibs/` (the generated import libs + the captured pkg-config flag files).
-// macOS and Linux are untouched: there `pkgConfig: "gtk4"` resolves normally and these stay empty.
-let gtkPkgConfig: String?
-let gtkCSwiftSettings: [SwiftSetting]
-let gtkLinkerSettings: [LinkerSetting]
-#if os(Windows)
-let winlibsDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent(".winlibs").path
-func winlibsFlags(_ file: String) -> [String] {
-    guard let text = try? String(contentsOfFile: "\(winlibsDir)/\(file)", encoding: .utf8) else { return [] }
-    return text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-}
-gtkPkgConfig = nil
-gtkCSwiftSettings = [.unsafeFlags(winlibsFlags("gtk4.cflags").flatMap { ["-Xcc", $0] })]
-gtkLinkerSettings = [.unsafeFlags(winlibsFlags("gtk4.libs") + ["-L\(winlibsDir)"])]
-#else
-gtkPkgConfig = "gtk4"
-gtkCSwiftSettings = []
-gtkLinkerSettings = []
-#endif
-
 // Pre-combine the GTK targets' SwiftSettings into explicitly-typed lets. Concatenating several
 // `[SwiftSetting]` lists inline inside the big `targets` array literal pushes Swift 6.2's manifest
 // type-checker over its time budget ("unable to type-check this expression in reasonable time" on
 // Linux); giving each chain a known result type up front keeps it fast.
-let gtkLibSwiftSettings: [SwiftSetting] = uiIsolation + customExecutors + gtkCSwiftSettings
-let gtkDemoSwiftSettings: [SwiftSetting] = uiIsolation + [.define("HOPUI_TOOLKIT_GTK4")] + noPrespecialize + gtkCSwiftSettings
-let gtkExecutorCheckSwiftSettings: [SwiftSetting] = customExecutors + gtkCSwiftSettings
+let gtkLibSwiftSettings: [SwiftSetting] = uiIsolation + customExecutors
+let gtkDemoSwiftSettings: [SwiftSetting] = uiIsolation + [.define("HOPUI_TOOLKIT_GTK4")] + noPrespecialize
+let gtkExecutorCheckSwiftSettings: [SwiftSetting] = customExecutors
 
 // HopUI: a native-Swift, multi-toolkit, demand-driven SwiftUI implementation for the desktop.
 // See ARCHITECTURE.md for the full blueprint. Toolkits: GTK4 (cross-platform), Qt6 (cross-platform),
@@ -120,14 +94,13 @@ if toolkitEnabled("gtk") {
         .systemLibrary(
             name: "CGTK4",
             path: "Sources/CGTK4",
-            pkgConfig: gtkPkgConfig,
+            pkgConfig: "gtk4",
             providers: [.brew(["gtk4"]), .apt(["libgtk-4-dev"])]
         ),
         .target(name: "HopGTK4", dependencies: ["HopUI", "CGTK4"],
-                swiftSettings: gtkLibSwiftSettings,
-                linkerSettings: gtkLinkerSettings),
+                swiftSettings: gtkLibSwiftSettings),
         // Offscreen Cairo pixel-rendering tests for the GTK4 shape path (headless; no display).
-        .testTarget(name: "HopGTK4Tests", dependencies: ["HopGTK4", "CGTK4"], swiftSettings: gtkCSwiftSettings),
+        .testTarget(name: "HopGTK4Tests", dependencies: ["HopGTK4", "CGTK4"]),
         .executableTarget(name: "HopDemoGTK4", dependencies: ["HopGTK4"], path: "Demo/HopDemoGTK4",
                           resources: [.copy("hop-logo.png")],
                           swiftSettings: gtkDemoSwiftSettings),

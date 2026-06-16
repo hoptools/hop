@@ -23,10 +23,10 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
-      - name: Install Swift 6.2
+      - name: Install Swift 6.3.2
         uses: swift-actions/setup-swift@v2
         with:
-          swift-version: "6.2"
+          swift-version: "6.3.2"
       - name: Install GTK4 and Qt
         run: brew install gtk4 pkg-config qt
       - name: Test (all toolkits)
@@ -37,7 +37,7 @@ jobs:
   linux-gtk:
     name: Linux (GTK4)
     runs-on: ubuntu-latest
-    container: swift:6.2
+    container: swift:6.3.2
     env:
       HOP_TOOLKIT: gtk
     steps:
@@ -54,7 +54,7 @@ jobs:
   linux-qt:
     name: Linux (Qt)
     runs-on: ubuntu-latest
-    container: swift:6.2
+    container: swift:6.3.2
     env:
       HOP_TOOLKIT: qt
     steps:
@@ -70,52 +70,6 @@ jobs:
       - name: Build (Qt)
         run: swift build
 
-  windows-gtk:
-    name: Windows (GTK4)
-    # Pinned to windows-2022 (VS 2022 / MSVC 14.4x). `windows-latest` has moved to a VS 18 / MSVC 14.51
-    # toolset whose STL requires Clang 20+, but the Swift 6.2 toolchain ships Clang 19 — compiling Qt's
-    # C++ headers there fails with "STL1000: Unexpected compiler version, expected Clang 20 or newer".
-    runs-on: windows-2022
-    defaults:
-      run:
-        shell: cmd
-    env:
-      HOP_TOOLKIT: gtk
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Swift toolchain
-        uses: compnerd/gha-setup-swift@main
-        with:
-          branch: swift-6.2-release
-          tag: 6.2-RELEASE
-      # GTK4 on Windows is provided by MSYS2/mingw-w64; pkg-config resolves the same way as on
-      # macOS/Linux once PKG_CONFIG_PATH and PATH point at the mingw64 prefix.
-      - name: Install GTK4 (MSYS2)
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gtk4
-            mingw-w64-x86_64-pkgconf
-      # Generate the GTK4 .lib import libraries + captured pkg-config flags that Package.swift reads on
-      # Windows (works around SwiftPM's pkg-config cycle bug + the MSVC linker's lack of .dll.a support).
-      - name: Prepare GTK4 import libraries (.winlibs)
-        # shell: pwsh so the .ps1 actually executes — the job default (cmd) would hand the .ps1 to the
-        # Windows file association instead of running it, which hangs headlessly with no output.
-        shell: pwsh
-        run: ./scripts/setup-windows.ps1 -Prefix D:\a\_temp\msys64\mingw64
-      - name: Test (GTK4)
-        env:
-          PKG_CONFIG_PATH: D:\a\_temp\msys64\mingw64\lib\pkgconfig
-          PATH: D:\a\_temp\msys64\mingw64\bin;${{ env.PATH }}
-        run: swift test
-      - name: Build (GTK4)
-        env:
-          PKG_CONFIG_PATH: D:\a\_temp\msys64\mingw64\lib\pkgconfig
-          PATH: D:\a\_temp\msys64\mingw64\bin;${{ env.PATH }}
-        run: swift build
-
   windows-winui:
     name: Windows (WinUI)
     runs-on: windows-latest
@@ -126,9 +80,9 @@ jobs:
       HOP_TOOLKIT: winui
     steps:
       - uses: actions/checkout@v6
-      # WinUI uses Swift 6.3 (not 6.2 like the other Windows jobs): it's the toolchain the toolkit was
-      # developed/validated against, and the `#if compiler(>=6.3)` deinit workaround in HopUI targets it
-      # (Swift 6.3's SILGen crashes synthesizing the isolating destructor of a generic MainActor class).
+      # WinUI is developed/validated against Swift 6.3.x, and the `#if compiler(>=6.3)` deinit workaround
+      # in HopUI targets it (Swift 6.3's SILGen crashes synthesizing the isolating destructor of a generic
+      # MainActor class).
       - name: Install Swift toolchain
         uses: compnerd/gha-setup-swift@main
         with:
@@ -152,9 +106,10 @@ jobs:
 
   windows-qt:
     name: Windows (Qt)
-    # Pinned to windows-2022 (VS 2022 / MSVC 14.4x). `windows-latest` has moved to a VS 18 / MSVC 14.51
-    # toolset whose STL requires Clang 20+, but the Swift 6.2 toolchain ships Clang 19 — compiling Qt's
-    # C++ headers there fails with "STL1000: Unexpected compiler version, expected Clang 20 or newer".
+    # Pinned to windows-2022 (VS 2022 / MSVC 14.4x), a stable toolset that works with the Swift
+    # toolchain's bundled Clang. `windows-latest` moved to a VS 18 / MSVC 14.51 toolset whose STL
+    # hard-gates on a very recent Clang ("STL1000: Unexpected compiler version, expected Clang 20 or
+    # newer"), which the toolchain's Clang may not satisfy.
     runs-on: windows-2022
     defaults:
       run:
@@ -166,8 +121,8 @@ jobs:
       - name: Install Swift toolchain
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.2-release
-          tag: 6.2-RELEASE
+          branch: swift-6.3.2-release
+          tag: 6.3.2-RELEASE
       # The official Qt build for MSVC; install-qt-action exports QT_ROOT_DIR and puts the Qt DLLs on PATH
       # (needed at test-run time). Package.swift reads QT_ROOT for its Windows include/lib flags.
       # NOTE: Qt only ships the `win64_msvc2022_64` prebuilt binaries (matching the runner's MSVC 2022)
