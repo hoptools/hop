@@ -69,7 +69,11 @@ public enum GraphContext {
 /// writes invalidate it and schedule a flush.
 @propertyWrapper
 public struct State<Value> {
-    final class Box {
+    // `nonisolated`: this is isolation-agnostic backing storage (like HopGraph), only ever touched on the
+    // main run loop. Marking it nonisolated also sidesteps a Swift 6.3 SILGen crash synthesizing the
+    // *isolating* `deinit` for a generic class nested in a generic type under `-default-isolation MainActor`
+    // (assertion in emitIsolatingDestructor); a nonisolated class gets an ordinary deinit. Harmless on 6.2.
+    nonisolated final class Box {
         var source: Attribute<Value>?
         let initial: Value
         init(_ initial: Value) { self.initial = initial }

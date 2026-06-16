@@ -39,6 +39,8 @@ let hopuiToolkitName: String = {
     return "Qt"
     #elseif HOPUI_TOOLKIT_APPKIT
     return "AppKit"
+    #elseif HOPUI_TOOLKIT_WINUI
+    return "WinUI"
     #elseif HOPUI_TOOLKIT_SWIFTUI
     return "SwiftUI"
     #else

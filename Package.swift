@@ -97,6 +97,9 @@ var products: [Product] = [
     .library(name: "HopGraph", targets: ["HopGraph"]),
     .library(name: "HopUI", targets: ["HopUI"]),
 ]
+// Package-level dependencies are added conditionally: only the WinUI toolkit (Windows-only) pulls in
+// the swift-winui WinRT/WinUI 3 projection package, so macOS/Linux builds never need to resolve it.
+var packageDependencies: [Package.Dependency] = []
 var targets: [Target] = [
     .target(name: "HopGraph"),
     .testTarget(name: "HopGraphTests", dependencies: ["HopGraph"]),
@@ -172,10 +175,53 @@ if toolkitEnabled("appkit") {
     ]
 }
 
+// WinUI 3 (Windows App SDK) toolkit — Windows-only, gated behind `#if os(Windows)` like AppKit is behind
+// `canImport(AppKit)`. It binds the real WinUI 3 XAML controls through the swift-winui WinRT projections
+// (https://github.com/hoptools/swift-winui), mapping HopUI widgets onto Canvas/TextBlock/Button/TextBox/
+// ToggleSwitch/Slider/ComboBox/ListView/etc. and running the Windows App SDK's XAML `Application` loop.
+// The package is consumed as a sibling path dependency so the WinUI CI job checks both repos out together
+// (and so any local fixes to the projections take effect without a round-trip through the remote).
+#if os(Windows)
+if toolkitEnabled("winui") {
+    packageDependencies.append(.package(path: "../swift-winui"))
+    // The XAML `Application` run-loop executor uses Swift Concurrency custom executors (like GTK4/Qt).
+    let winuiLibSwiftSettings: [SwiftSetting] = uiIsolation + customExecutors
+    let winuiDemoSwiftSettings: [SwiftSetting] = uiIsolation + [.define("HOPUI_TOOLKIT_WINUI")] + customExecutors + noPrespecialize
+    products += [
+        .library(name: "HopWinUI", targets: ["HopWinUI"]),
+        .executable(name: "hop-demo-winui", targets: ["HopDemoWinUI"]),
+    ]
+    targets += [
+        .target(name: "HopWinUI",
+                dependencies: [
+                    "HopUI",
+                    .product(name: "WinUI", package: "swift-winui"),
+                    .product(name: "WinAppSDK", package: "swift-winui"),
+                    .product(name: "UWP", package: "swift-winui"),
+                    .product(name: "WindowsFoundation", package: "swift-winui"),
+                ],
+                swiftSettings: winuiLibSwiftSettings),
+        // Runtime-free unit tests for the WinUI toolkit's pure helpers (color/font/geometry conversion):
+        // these never activate a WinRT class, so they run without the Windows App Runtime bootstrap.
+        .testTarget(name: "HopWinUITests", dependencies: ["HopWinUI"], swiftSettings: uiIsolation),
+        .executableTarget(name: "HopDemoWinUI",
+                          dependencies: [
+                              "HopWinUI",
+                              .product(name: "WinUI", package: "swift-winui"),
+                              .product(name: "WinAppSDK", package: "swift-winui"),
+                          ],
+                          path: "Demo/HopDemoWinUI",
+                          resources: [.copy("hop-logo.png")],
+                          swiftSettings: winuiDemoSwiftSettings),
+    ]
+}
+#endif
+
 let package = Package(
     name: "hop",
     platforms: [.macOS(.v15)],  // macOS 15: TaskExecutor / withTaskExecutorPreference (custom run-loop executor)
     products: products,
+    dependencies: packageDependencies,
     targets: targets,
     swiftLanguageModes: [.v6],
     cxxLanguageStandard: .cxx17

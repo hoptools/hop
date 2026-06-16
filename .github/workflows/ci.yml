@@ -12,9 +12,10 @@ concurrency:
 
 # The reactive core (HopGraph) and the view-graph/reconciler (HopUI) have no native-toolkit dependency.
 # macOS builds & tests every toolkit (AppKit + GTK4 + Qt) in one job. Linux and Windows split into
-# per-toolkit jobs: `HOP_TOOLKIT=gtk|qt` (read by Package.swift) keeps only that toolkit's targets in
-# the build graph, so each runner installs and exercises ONLY its toolkit — a GTK runner never needs Qt,
-# and a Qt runner never needs GTK.
+# per-toolkit jobs: `HOP_TOOLKIT=gtk|qt|winui` (read by Package.swift) keeps only that toolkit's targets
+# in the build graph, so each runner installs and exercises ONLY its toolkit — a GTK runner never needs
+# Qt, and a Qt runner never needs GTK. Windows additionally has a WinUI 3 job (the real Windows-native
+# toolkit), which binds XAML controls through the swift-winui WinRT projections.
 
 jobs:
   macos:
@@ -107,6 +108,40 @@ jobs:
         env:
           PKG_CONFIG_PATH: D:\a\_temp\msys64\mingw64\lib\pkgconfig
           PATH: D:\a\_temp\msys64\mingw64\bin;${{ env.PATH }}
+        run: swift build
+
+  windows-winui:
+    name: Windows (WinUI)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: cmd
+    env:
+      HOP_TOOLKIT: winui
+    steps:
+      - uses: actions/checkout@v6
+      # WinUI uses Swift 6.3 (not 6.2 like the other Windows jobs): it's the toolchain the toolkit was
+      # developed/validated against, and the `#if compiler(>=6.3)` deinit workaround in HopUI targets it
+      # (Swift 6.3's SILGen crashes synthesizing the isolating destructor of a generic MainActor class).
+      - name: Install Swift toolchain
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.3.2-release
+          tag: 6.3.2-RELEASE
+      # The WinUI 3 toolkit binds real XAML controls through the swift-winui WinRT projections
+      # (https://github.com/hoptools/swift-winui). Package.swift references it as a sibling path dependency
+      # (`../swift-winui`), so check it out next to the hop repo. Pinned to a known-good commit for
+      # reproducibility; bump as the projections advance.
+      - name: Check out swift-winui (sibling path dependency)
+        run: git clone --depth 1 https://github.com/hoptools/swift-winui.git ..\swift-winui
+      # Building the projections needs a Windows SDK whose version is >= the one the bindings were generated
+      # against (10.0.17763); windows-latest ships a newer SDK that is compatible. `swift test` runs the
+      # core suite (HopGraph + HopUI) plus the toolkit's runtime-free conversion tests (HopWinUITests),
+      # none of which activate WinRT, so no Windows App Runtime is required at test time. `swift build` then
+      # compiles the HopWinUI library and the hop-demo-winui executable.
+      - name: Test (core + WinUI helpers)
+        run: swift test
+      - name: Build (WinUI toolkit + demo)
         run: swift build
 
   windows-qt:

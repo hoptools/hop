@@ -15,6 +15,14 @@ final class Reconciler<Toolkit: RenderToolkit> {
 
     init(toolkit: Toolkit) { self.toolkit = toolkit }
 
+    // An explicit nonisolated deinit avoids synthesizing an *isolating* destructor for this generic
+    // MainActor class, which crashes Swift 6.3's SILGen (assertion in emitIsolatingDestructor). Tearing
+    // down the handle map needs no main-actor hop (it only releases references). Gated to 6.3+ so the
+    // synthesized deinit (which compiles fine on the 6.2 toolchain the repo's CI uses) is left untouched.
+    #if compiler(>=6.3)
+    nonisolated deinit {}
+    #endif
+
     /// Create the widget tree for `root` and insert it into `container`.
     func mount(_ root: RenderNode, into container: Toolkit.Handle) {
         let handle = realize(root)
