@@ -5,12 +5,12 @@ import CWinUI
 import HopUI
 import Foundation
 
-// NOTE: This WinUI backend predates the open component system (`WidgetComponent`) and was not migrated
-// during Phase 7 — it still dispatches on this enum and does NOT yet implement the component seam
-// (`realize`/`updateComponent`/`measureComponent`/`didInsertChildren`/`toolkitID`), so it does not build
-// on Windows as-is and needs a Windows-verified port onto the component registry (mirroring AppKit/GTK/Qt).
-// Until then, this module-private enum keeps the existing kind-based dispatch self-contained now that
-// HopUI's public `WidgetKind` has been removed.
+// The WinUI backend implements HopUI's open component system (`WidgetComponent`): a `ComponentRegistry`
+// dispatches `realize`/`updateComponent`/`measureComponent`/`didInsertChildren` to per-`WidgetKey`
+// renderers (mirroring AppKit/GTK/Qt). This module-private enum is the backend's own creation/behavior
+// key — every registered renderer maps its `WidgetKey` onto a `WidgetKind` via `makeNativeWidget`, and the
+// handle carries its `kind` so the configure/measure/setFrame/callback paths can dispatch on it. (HopUI's
+// public `WidgetKind` enum is gone; this one is internal to HopWinUI.)
 enum WidgetKind: Equatable {
     case window, vstack, hstack, label, button, textField, slider
     case list, sidebarList, splitView, shape, menu, picker, datePicker, colorPicker
@@ -200,11 +200,195 @@ public final class WinUIToolkit: AppToolkit {
     private var onReadyClosure: (@MainActor (WinUIWidget) -> Void)?
     var relayoutHandler: (@MainActor () -> Void)?
 
-    public init() {}
+    // MARK: - Open component system (the extensibility seam)
+
+    public static let toolkitID = ToolkitID.winUI
+    public let components = ComponentRegistry<WinUIWidget>()
+
+    public init() { registerBuiltinComponents() }
+
+    public func realize(_ component: any WidgetComponent) -> WinUIWidget {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
+        if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return WinUIWidget(ptr, kind: .vstack) }
+        assertionFailure("HopUI/WinUI: no renderer registered for WidgetKey \"\(component.widgetKey.rawValue)\", and the component self-hosts no native element")
+        return makeWidget(.vstack)
+    }
+
+    public func updateComponent(_ handle: WinUIWidget, _ component: any WidgetComponent) {
+        if let renderer = components.renderer(for: component.widgetKey) { renderer.update(handle, component); return }
+        component.updateNative(handle.handle, Self.toolkitID)
+    }
+
+    public func measureComponent(_ handle: WinUIWidget, _ component: any WidgetComponent, _ proposal: ProposedViewSize) -> CGSize {
+        if let renderer = components.renderer(for: component.widgetKey) { return renderer.measure(handle, component, proposal) }
+        switch component.role {
+        case .fill, .native: return proposal.resolved(.zero)
+        default: return measure(handle, proposal)
+        }
+    }
+
+    public func didInsertChildren(_ handle: WinUIWidget, _ component: any WidgetComponent) {
+        components.renderer(for: component.widgetKey)?.afterChildren?(handle, component)
+    }
+
+    private func registerBuiltinComponents() {
+        registerLeafComponents()
+        registerSpecLeafComponents()
+        registerContainerComponents()
+        registerNativeCompositeComponents()
+        registerImageComponent()
+        registerPickerComponents()
+    }
+
+    /// Simple leaves (Text/Button/TextField/SecureField/Slider/Toggle/ProgressView/Divider): a native
+    /// widget + a ``WidgetPatch`` + optional change handlers, all carried by ``PrimitiveLeafComponent``.
+    private func registerLeafComponents() {
+        let leaves: [WidgetKey] = [.label, .button, .textField, .secureField, .slider, .toggle, .progress, .separator]
+        for key in leaves {
+            components.register(.init(
+                make: { [unowned self] component in let h = makeNativeWidget(key); applyLeaf(h, component); return h },
+                update: { [unowned self] h, component in applyLeaf(h, component) },
+                measure: { [unowned self] h, _, proposal in measure(h, proposal) }
+            ), for: key)
+        }
+    }
+
+    private func applyLeaf(_ handle: WinUIWidget, _ component: any WidgetComponent) {
+        guard let leaf = component as? PrimitiveLeafComponent else { return }
+        configure(handle, leaf.patch)
+        handle.action = leaf.action
+        handle.onChangeString = leaf.onChange
+        handle.onChangeDouble = leaf.onChangeDouble
+        handle.onChangeBool = leaf.onChangeBool
+    }
+
+    /// Leaves carrying a richer spec (DatePicker/ColorPicker/Menu/Shape) — same shape as a leaf, but the
+    /// component's spec drives a dedicated configure step.
+    private func registerSpecLeafComponents() {
+        components.register(.init(
+            make: { [unowned self] c in let h = makeNativeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: .datePicker)
+        components.register(.init(
+            make: { [unowned self] c in let h = makeNativeWidget(.colorPicker); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: .colorPicker)
+        components.register(.init(
+            make: { [unowned self] c in let h = makeNativeWidget(.menu); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
+            update: { [unowned self] h, c in if let m = (c as? MenuComponent)?.content { configureMenu(h, m) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: .menu)
+        components.register(.init(
+            make: { [unowned self] c in let h = makeNativeWidget(.shape); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: .shape)
+    }
+
+    /// Layout containers (VStack/HStack/ZStack/GroupBox + the framework's scroll/geometry/lazyStack/spacer
+    /// wrappers): just the empty native Canvas/ScrollViewer — the layout engine arranges children from `role`.
+    private func registerContainerComponents() {
+        let containers: [WidgetKey] = [.vstack, .hstack, .zstack, .groupBox, .scroll, .geometry, .lazyStack, .spacer]
+        for key in containers {
+            components.register(.init(
+                make: { [unowned self] _ in makeNativeWidget(key) },
+                update: { _, _ in },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: key)
+        }
+    }
+
+    /// Native composites (role `.native`): List/Outline (flat + sidebar), NavigationSplitView, TabView. The
+    /// TabView builds its tab strip in `afterChildren`, once its pages have been inserted.
+    private func registerNativeCompositeComponents() {
+        for key: WidgetKey in [.list, .sidebarList] {
+            components.register(.init(
+                make: { [unowned self] c in let h = makeNativeWidget(key); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
+                update: { [unowned self] h, c in if let s = (c as? ListComponent)?.spec { configureList(h, s) } },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: key)
+        }
+        for key: WidgetKey in [.outline, .sidebarOutline] {
+            components.register(.init(
+                make: { [unowned self] c in let h = makeNativeWidget(key); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
+                update: { [unowned self] h, c in if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) } },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: key)
+        }
+        components.register(.init(
+            make: { [unowned self] _ in makeNativeWidget(.splitView) },
+            update: { _, _ in },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: .splitView)
+        components.register(.init(
+            make: { [unowned self] _ in makeNativeWidget(.tabView) },
+            update: { _, _ in },
+            measure: { [unowned self] h, _, p in measure(h, p) },
+            afterChildren: { [unowned self] h, c in if let s = (c as? TabViewComponent)?.spec { configureTabs(h, s) } }
+        ), for: .tabView)
+    }
+
+    private func registerImageComponent() {
+        components.register(.init(
+            make: { [unowned self] c in let h = makeNativeWidget(.image); if let s = (c as? ImageComponent)?.spec { configureImage(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? ImageComponent)?.spec { configureImage(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: .image)
+    }
+
+    /// `Picker` renderers. Every style currently renders as the native ComboBox; each style keeps a distinct
+    /// `WidgetKey` (so a style change recreates the widget) and shares one renderer.
+    private func registerPickerComponents() {
+        let renderer = ComponentRegistry<WinUIWidget>.Renderer(
+            make: { [unowned self] c in let h = makeWidget(.picker); if let s = (c as? PickerComponent)?.spec { configurePicker(h, s) }; return h },
+            update: { [unowned self] h, c in if let s = (c as? PickerComponent)?.spec { configurePicker(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) })
+        for style in PickerStyle.allCases { components.register(renderer, for: .picker(style)) }
+    }
 
     // MARK: - Widget creation
 
-    public func makeWidget(_ kind: WidgetKind) -> WinUIWidget {
+    /// Create the native element for a built-in ``WidgetKey`` (registered renderers call this with the keys
+    /// the switch knows; picker styles route through `.picker`).
+    private func makeNativeWidget(_ key: WidgetKey) -> WinUIWidget { makeWidget(kind(for: key)) }
+
+    private func kind(for key: WidgetKey) -> WidgetKind {
+        switch key {
+        case .window: return .window
+        case .vstack: return .vstack
+        case .hstack: return .hstack
+        case .zstack: return .zstack
+        case .spacer: return .spacer
+        case .scroll: return .scroll
+        case .geometry: return .geometry
+        case .lazyStack: return .lazyStack
+        case .groupBox: return .groupBox
+        case .label: return .label
+        case .button: return .button
+        case .textField: return .textField
+        case .secureField: return .secureField
+        case .slider: return .slider
+        case .toggle: return .toggle
+        case .progress: return .progress
+        case .separator: return .separator
+        case .shape: return .shape
+        case .menu: return .menu
+        case .datePicker: return .datePicker
+        case .colorPicker: return .colorPicker
+        case .image: return .image
+        case .list: return .list
+        case .sidebarList: return .sidebarList
+        case .outline: return .outline
+        case .sidebarOutline: return .sidebarOutline
+        case .splitView: return .splitView
+        case .tabView: return .tabView
+        default: return .picker  // picker styles ("picker.<style>") and any unknown key
+        }
+    }
+
+    func makeWidget(_ kind: WidgetKind) -> WinUIWidget {
         switch kind {
         case .vstack, .hstack, .zstack, .spacer, .geometry, .lazyStack, .window, .splitView, .tabView:
             return WinUIWidget(hopwinui_canvas_new(), kind: kind, isPanel: true)
@@ -354,10 +538,6 @@ public final class WinUIToolkit: AppToolkit {
         parent.children.remove(at: idx)
     }
 
-    public func setAction(_ handle: WinUIWidget, _ action: (@MainActor () -> Void)?) { handle.action = action }
-    public func setTextHandler(_ handle: WinUIWidget, _ handler: (@MainActor (String) -> Void)?) { handle.onChangeString = handler }
-    public func setValueHandler(_ handle: WinUIWidget, _ handler: (@MainActor (Double) -> Void)?) { handle.onChangeDouble = handler }
-    public func setBoolHandler(_ handle: WinUIWidget, _ handler: (@MainActor (Bool) -> Void)?) { handle.onChangeBool = handler }
     public func setScrollHandler(_ handle: WinUIWidget, _ handler: (@MainActor (CGSize) -> Void)?) { handle.scrollHandler = handler }
 
     // MARK: - Composite configuration

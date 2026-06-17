@@ -242,6 +242,15 @@ public final class ComponentRegistry<Handle: AnyObject> {
     private var renderers: [WidgetKey: Renderer] = [:]
     public init() {}
 
+    // An explicit nonisolated deinit avoids synthesizing an *isolating* destructor for this generic
+    // MainActor class, which crashes Swift 6.3's SILGen (assertion in emitIsolatingDestructor). The
+    // renderer map only releases references, so no main-actor hop is needed. Gated to 6.3+ so the
+    // synthesized deinit (fine on the 6.2 toolchain the repo's CI uses elsewhere) is left untouched.
+    // Mirrors the same workaround in `State.Box` and `Reconciler`.
+    #if compiler(>=6.3)
+    nonisolated deinit {}
+    #endif
+
     public func register(_ renderer: Renderer, for key: WidgetKey) { renderers[key] = renderer }
     public func renderer(for key: WidgetKey) -> Renderer? { renderers[key] }
 }
