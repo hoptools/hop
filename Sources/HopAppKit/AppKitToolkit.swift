@@ -315,86 +315,86 @@ public final class AppKitToolkit: AppToolkit {
     /// Native composites (List, OutlineGroup, NavigationSplitView, TabView) — role `.native`; the widget
     /// arranges its own internals. TabView builds its tab bar from the children via `afterChildren`.
     private func registerNativeCompositeComponents() {
-        for key in ["list", "sidebarList"] {
+        for key: WidgetKey in [.list, .sidebarList] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(key); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? ListComponent)?.spec { configureList(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
-        for key in ["outline", "sidebarOutline"] {
+        for key: WidgetKey in [.outline, .sidebarOutline] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(key); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
         components.register(.init(
-            make: { [unowned self] _ in makeNativeWidget(WidgetKey("splitView")) },
+            make: { [unowned self] _ in makeNativeWidget(.splitView) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("splitView"))
+        ), for: .splitView)
         components.register(.init(
-            make: { [unowned self] _ in makeNativeWidget(WidgetKey("tabView")) },
+            make: { [unowned self] _ in makeNativeWidget(.tabView) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) },
             afterChildren: { [unowned self] h, c in if let s = (c as? TabViewComponent)?.spec { configureTabs(h, s) } }
-        ), for: WidgetKey("tabView"))
+        ), for: .tabView)
     }
 
     /// Layout containers + layout-special layers (scroll/geometry/lazy/spacer) — empty native widgets the
     /// layout engine drives via the role + the node's layout callbacks.
     private func registerContainerComponents() {
-        let containers: [String] = [
-            "vstack", "hstack", "zstack", "groupBox",
-            "scroll", "geometry", "lazyStack", "spacer",
+        let containers: [WidgetKey] = [
+            .vstack, .hstack, .zstack, .groupBox,
+            .scroll, .geometry, .lazyStack, .spacer,
         ]
         for key in containers {
             components.register(.init(
-                make: { [unowned self] _ in makeNativeWidget(WidgetKey(key)) },
+                make: { [unowned self] _ in makeNativeWidget(key) },
                 update: { _, _ in },
                 measure: { [unowned self] h, _, p in measure(h, p) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
     }
 
     /// Spec-carrying leaves (DatePicker, ColorPicker, Menu) — delegate to the existing configure path.
     private func registerSpecLeafComponents() {
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("datePicker")); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("datePicker"))
+        ), for: .datePicker)
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("colorPicker")); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.colorPicker); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("colorPicker"))
+        ), for: .colorPicker)
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("menu")); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.menu); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
             update: { [unowned self] h, c in if let m = (c as? MenuComponent)?.content { configureMenu(h, m) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("menu"))
+        ), for: .menu)
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("shape")); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.shape); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("shape"))
+        ), for: .shape)
     }
 
     /// Simple leaf widgets (Text/Button/TextField/SecureField/Slider/Toggle/Progress/Divider) — all
     /// "native widget + patch + handler". One renderer per key; `makeNativeWidget(key)` creates the widget.
     private func registerLeafComponents() {
-        let leaves: [String] = [
-            "label", "button", "textField", "secureField",
-            "slider", "toggle", "progress", "separator",
+        let leaves: [WidgetKey] = [
+            .label, .button, .textField, .secureField,
+            .slider, .toggle, .progress, .separator,
         ]
         for key in leaves {
             components.register(.init(
-                make: { [unowned self] component in let handle = makeNativeWidget(WidgetKey(key)); applyLeaf(handle, component); return handle },
+                make: { [unowned self] component in let handle = makeNativeWidget(key); applyLeaf(handle, component); return handle },
                 update: { [unowned self] handle, component in applyLeaf(handle, component) },
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
     }
 
@@ -414,7 +414,7 @@ public final class AppKitToolkit: AppToolkit {
         // .menu / .automatic → NSPopUpButton (delegates to the existing picker path).
         let menu = ComponentRegistry<AppKitWidget>.Renderer(
             make: { [unowned self] component in
-                let handle = makeNativeWidget(WidgetKey("picker"))
+                let handle = makeNativeWidget(.picker)
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
                 return handle
             },
@@ -422,8 +422,8 @@ public final class AppKitToolkit: AppToolkit {
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) })
-        components.register(menu, for: WidgetKey("picker.menu"))
-        components.register(menu, for: WidgetKey("picker.automatic"))
+        components.register(menu, for: .picker(.menu))
+        components.register(menu, for: .picker(.automatic))
 
         // .segmented → NSSegmentedControl (a genuinely different native widget).
         components.register(.init(
@@ -444,7 +444,7 @@ public final class AppKitToolkit: AppToolkit {
                    let spec = (component as? PickerComponent)?.spec { applySegmented(seg, target, spec) }
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
-        ), for: WidgetKey("picker.segmented"))
+        ), for: .picker(.segmented))
 
         // .radioGroup → an NSStackView of radio buttons (a `.native` composite the renderer manages).
         components.register(.init(
@@ -464,7 +464,7 @@ public final class AppKitToolkit: AppToolkit {
                    let spec = (component as? PickerComponent)?.spec { applyRadioGroup(stack, target, spec) }
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
-        ), for: WidgetKey("picker.radioGroup"))
+        ), for: .picker(.radioGroup))
     }
 
     private func applySegmented(_ seg: NSSegmentedControl, _ target: PickerTarget, _ spec: PickerSpec) {
@@ -497,7 +497,7 @@ public final class AppKitToolkit: AppToolkit {
     private func registerImageComponent() {
         components.register(.init(
             make: { [unowned self] component in
-                let handle = makeNativeWidget(WidgetKey("image"))
+                let handle = makeNativeWidget(.image)
                 if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
                 return handle
             },
@@ -505,15 +505,15 @@ public final class AppKitToolkit: AppToolkit {
                 if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
-        ), for: WidgetKey("image"))
+        ), for: .image)
     }
 
     public func makeNativeWidget(_ key: WidgetKey) -> AppKitWidget {
-        switch key.rawValue {
-        case "vstack", "hstack":
+        switch key {
+        case .vstack, .hstack:
             // Containers are plain absolute-positioning layers; HopUI's layout engine owns geometry.
             return AppKitWidget(FlippedView())
-        case "groupBox":
+        case .groupBox:
             // A card container: a flipped layer-backed view drawing a rounded, bordered, filled chrome.
             let card = FlippedView()
             card.wantsLayer = true
@@ -522,9 +522,9 @@ public final class AppKitToolkit: AppToolkit {
             card.layer?.borderColor = NSColor.gray.withAlphaComponent(0.35).cgColor
             card.layer?.backgroundColor = NSColor.gray.withAlphaComponent(0.10).cgColor
             return AppKitWidget(card)
-        case "label":
+        case .label:
             return AppKitWidget(HopLabel(labelWithString: ""))
-        case "textField":
+        case .textField:
             let field = NSTextField(string: "")
             field.isEditable = true
             field.isBezeled = true
@@ -534,7 +534,7 @@ public final class AppKitToolkit: AppToolkit {
             field.delegate = delegate
             widget.textDelegate = delegate
             return widget
-        case "secureField":
+        case .secureField:
             let field = NSSecureTextField(string: "")
             field.isEditable = true
             field.isBezeled = true
@@ -544,7 +544,7 @@ public final class AppKitToolkit: AppToolkit {
             field.delegate = delegate
             widget.textDelegate = delegate
             return widget
-        case "toggle":
+        case .toggle:
             let toggle = NSSwitch()
             let widget = AppKitWidget(toggle)
             let target = SwitchTarget()
@@ -552,7 +552,7 @@ public final class AppKitToolkit: AppToolkit {
             toggle.action = #selector(SwitchTarget.changed(_:))
             widget.switchTarget = target
             return widget
-        case "button":
+        case .button:
             let button = NSButton(title: "", target: nil, action: nil)
             button.bezelStyle = .rounded
             let widget = AppKitWidget(button)
@@ -561,7 +561,7 @@ public final class AppKitToolkit: AppToolkit {
             button.action = #selector(ActionTrampoline.fire)
             widget.trampoline = trampoline
             return widget
-        case "slider":
+        case .slider:
             let slider = NSSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
             slider.isContinuous = true
             let widget = AppKitWidget(slider)
@@ -570,38 +570,38 @@ public final class AppKitToolkit: AppToolkit {
             slider.action = #selector(SliderTarget.changed(_:))
             widget.sliderTarget = target
             return widget
-        case "list":
+        case .list:
             return makeList(sidebar: false)
-        case "sidebarList":
+        case .sidebarList:
             return makeList(sidebar: true)
-        case "outline":
+        case .outline:
             return makeOutline(sidebar: false)
-        case "sidebarOutline":
+        case .sidebarOutline:
             return makeOutline(sidebar: true)
-        case "splitView":
+        case .splitView:
             let split = NSSplitView()
             split.isVertical = true
             split.dividerStyle = .thin
             return AppKitWidget(split)
-        case "tabView":
+        case .tabView:
             let tab = NSTabView()
             let widget = AppKitWidget(tab)
             let delegate = TabViewDelegate()
             tab.delegate = delegate
             widget.tabDelegate = delegate
             return widget
-        case "shape":
+        case .shape:
             return AppKitWidget(HopShapeView())
-        case "image":
+        case .image:
             let imageView = HopImageView()
             imageView.imageScaling = .scaleNone
             imageView.imageAlignment = .alignCenter
             return AppKitWidget(imageView)
-        case "menu":
+        case .menu:
             // A pull-down button: item 0 is the always-shown label; the rest are the actions.
             let popup = NSPopUpButton(frame: .zero, pullsDown: true)
             return AppKitWidget(popup)
-        case "picker":
+        case .picker:
             let popup = NSPopUpButton(frame: .zero, pullsDown: false)
             let widget = AppKitWidget(popup)
             let target = PickerTarget()
@@ -609,7 +609,7 @@ public final class AppKitToolkit: AppToolkit {
             popup.action = #selector(PickerTarget.changed(_:))
             widget.pickerTarget = target
             return widget
-        case "datePicker":
+        case .datePicker:
             // Style/elements/value are set in configureDatePicker; this is just a sensible default.
             let picker = NSDatePicker()
             picker.datePickerMode = .single
@@ -622,7 +622,7 @@ public final class AppKitToolkit: AppToolkit {
             picker.action = #selector(DatePickerTarget.changed(_:))
             widget.datePickerTarget = target
             return widget
-        case "colorPicker":
+        case .colorPicker:
             let well = NSColorWell()
             let widget = AppKitWidget(well)
             let target = ColorWellTarget()
@@ -630,14 +630,14 @@ public final class AppKitToolkit: AppToolkit {
             well.action = #selector(ColorWellTarget.changed(_:))
             widget.colorWellTarget = target
             return widget
-        case "separator":
+        case .separator:
             let box = NSBox()
             box.boxType = .separator
             return AppKitWidget(box)
-        case "zstack", "geometry", "lazyStack", "spacer":
+        case .zstack, .geometry, .lazyStack, .spacer:
             // Absolute-positioning layers for the layout engine (no native auto-layout).
             return AppKitWidget(FlippedView())
-        case "scroll":
+        case .scroll:
             // A native scroll viewport; its single content child becomes the (flipped) document view.
             let scroll = NSScrollView()
             scroll.hasVerticalScroller = true
@@ -646,14 +646,14 @@ public final class AppKitToolkit: AppToolkit {
             scroll.drawsBackground = false
             scroll.borderType = .noBorder
             return AppKitWidget(scroll)
-        case "progress":
+        case .progress:
             let indicator = NSProgressIndicator()
             indicator.style = .bar
             indicator.isIndeterminate = false
             indicator.minValue = 0
             indicator.maxValue = 1
             return AppKitWidget(indicator)
-        case "window":
+        case .window:
             return AppKitWidget(NSView())
         default:
             // Unknown key (e.g. a self-hosting component that reached here without a renderer): a plain layer.

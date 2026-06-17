@@ -51,7 +51,7 @@ public struct Menu<Content: View>: View, PrimitiveView {
 public struct MenuComponent: WidgetComponent {
     public let content: MenuContent
     public init(content: MenuContent) { self.content = content }
-    public var widgetKey: WidgetKey { WidgetKey("menu") }
+    public var widgetKey: WidgetKey { .menu }
     public var role: WidgetRole { .leaf }
 }
 
@@ -60,12 +60,12 @@ public struct MenuComponent: WidgetComponent {
 func menuEntries(from nodes: [RenderNode]) -> [MenuEntry] {
     var entries: [MenuEntry] = []
     for node in nodes {
-        switch node.component.widgetKey.rawValue {
-        case "button":
+        switch node.component.widgetKey {
+        case .button:
             entries.append(.button(title: node.effectivePatch.title ?? "", action: node.effectiveAction ?? {}))
-        case "separator":
+        case .separator:
             entries.append(.separator)
-        case "menu":
+        case .menu:
             entries.append(.submenu(title: node.effectiveMenu?.label ?? "", entries: node.effectiveMenu?.entries ?? []))
         default:
             break
@@ -82,7 +82,7 @@ public struct Divider: View, PrimitiveView {
     public var body: Never { fatalError("Divider has no body") }
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id,
-                   component: PrimitiveLeafComponent(WidgetKey("separator")))
+                   component: PrimitiveLeafComponent(.separator))
     }
 }
 
@@ -148,6 +148,13 @@ public enum PickerStyle: String, Hashable, Sendable, CaseIterable {
     case automatic, menu, segmented, radioGroup
 }
 
+public extension WidgetKey {
+    /// A `Picker`'s key for a given style — the implementation identity (a `.menu` popup and a `.segmented`
+    /// control are different native widgets), so a style change recreates the widget. Backends register one
+    /// renderer per `.picker(style)`.
+    static func picker(_ style: PickerStyle) -> WidgetKey { WidgetKey("picker.\(style.rawValue)") }
+}
+
 /// The open ``WidgetComponent`` for ``Picker``. The canonical example of style-driven implementation
 /// variance: `widgetKey` encodes the style, so each style dispatches to its own backend renderer and a
 /// style change tears down + recreates the native widget. `radioGroup` is a `.native` composite (a
@@ -157,7 +164,7 @@ public struct PickerComponent: WidgetComponent {
     public let style: PickerStyle
     public let spec: PickerSpec
     public init(style: PickerStyle, spec: PickerSpec) { self.style = style; self.spec = spec }
-    public var widgetKey: WidgetKey { WidgetKey("picker.\(style.rawValue)") }
+    public var widgetKey: WidgetKey { .picker(style) }
     public var role: WidgetRole { style == .radioGroup ? .native : .leaf }
 }
 
@@ -180,7 +187,7 @@ struct _TaggedView<Content: View>: View, PrimitiveView {
     var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, component: PrimitiveLeafComponent(WidgetKey("label")))
+        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, component: PrimitiveLeafComponent(.label))
         node.tag = tag
         return node
     }

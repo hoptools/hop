@@ -11,7 +11,7 @@ import Testing
 @MainActor @Suite struct LazyStackTests {
     /// The texts of the currently-live (materialized) rows under the lazy stack.
     private func liveRows(_ toolkit: MockToolkit) -> [String] {
-        guard let lazy = toolkit.widgets.first(where: { $0.kind == "lazyStack" }) else { return [] }
+        guard let lazy = toolkit.widgets.first(where: { $0.kind == .lazyStack }) else { return [] }
         return lazy.children.compactMap { $0.text }
     }
 
@@ -30,7 +30,7 @@ import Testing
         #expect(rows.contains("Row 0"))
         #expect(!rows.contains("Row 500"))
         // And we never *created* anywhere near 1000 label widgets.
-        #expect(toolkit.widgets.filter { $0.kind == "label" }.count < 100)
+        #expect(toolkit.widgets.filter { $0.kind == .label }.count < 100)
     }
 
     @Test func testLazyVStackIsSizedToFullContentForScrolling() throws {
@@ -42,7 +42,7 @@ import Testing
 
         // The lazy stack reports the full content height (≈ 1000 rows tall), far taller than the 600
         // viewport, so the native scroll bar reflects the whole list.
-        let lazy = try #require(toolkit.widgets.first { $0.kind == "lazyStack" })
+        let lazy = try #require(toolkit.widgets.first { $0.kind == .lazyStack })
         #expect((lazy.frame?.height ?? 0) > 20000)
     }
 
@@ -55,7 +55,7 @@ import Testing
         #expect(liveRows(toolkit).contains("Row 0"))
 
         // Simulate a scroll down by 500pt and let the feedback re-render.
-        let scroll = try #require(toolkit.widgets.first { $0.kind == "scroll" })
+        let scroll = try #require(toolkit.widgets.first { $0.kind == .scroll })
         scroll.scrollHandler?(CGSize(width: 0, height: 500))
         toolkit.drainMainThread()
 
@@ -78,7 +78,7 @@ import Testing
 
         // Scroll past the header and into the list; the window must follow (relative to the lazy stack's
         // own origin), not stay stuck at the top.
-        let scroll = try #require(toolkit.widgets.first { $0.kind == "scroll" })
+        let scroll = try #require(toolkit.widgets.first { $0.kind == .scroll })
         scroll.scrollHandler?(CGSize(width: 0, height: 600))
         toolkit.drainMainThread()
         toolkit.drainMainThread()

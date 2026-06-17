@@ -99,7 +99,7 @@ public struct DisclosureGroup<Content: View>: View, PrimitiveView {
         }
 
         let header = RenderNode(id: context.id + "·hdr",
-                                component: PrimitiveLeafComponent(WidgetKey("button"),
+                                component: PrimitiveLeafComponent(.button,
                                     patch: WidgetPatch(title: (expanded ? "▾  " : "▸  ") + title),
                                     action: toggle))
         var children = [header]

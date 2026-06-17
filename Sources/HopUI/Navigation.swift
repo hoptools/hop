@@ -66,12 +66,12 @@ public struct NavigationStack<Content: View>: View, PrimitiveView {
         var barChildren: [RenderNode] = []
         if showBack {
             barChildren.append(RenderNode(id: context.id + "·back",
-                component: PrimitiveLeafComponent(WidgetKey("button"),
+                component: PrimitiveLeafComponent(.button,
                     patch: WidgetPatch(title: "‹ Back"),
                     action: { var p = pathGet(); if !p.isEmpty { p.removeLast() }; pathSet(p) })))
         }
         barChildren.append(RenderNode(id: context.id + "·title",
-                                      component: PrimitiveLeafComponent(WidgetKey("label"),
+                                      component: PrimitiveLeafComponent(.label,
                                           patch: WidgetPatch(text: title ?? ""))))
         let bar = RenderNode(id: context.id + "·navbar", component: ContainerComponent.hstack(spacing: 8),
                              patch: WidgetPatch(spacing: 8), children: barChildren)
@@ -105,7 +105,7 @@ public struct NavigationLink: View, PrimitiveView {
         let push = currentEnvironment().navigationPush
         let value = self.value
         return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(WidgetKey("button"), patch: WidgetPatch(title: title),
+                          component: PrimitiveLeafComponent(.button, patch: WidgetPatch(title: title),
                               action: { push?(value) }))
     }
 }

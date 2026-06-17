@@ -32,6 +32,40 @@ public struct WidgetKey: Hashable, Sendable {
     public init(_ rawValue: String) { self.rawValue = rawValue }
 }
 
+/// The keys for HopUI's built-in widgets, so call sites reference `.button` (etc.) instead of repeating
+/// string literals. Third-party components define their own keys the same way (an extension on `WidgetKey`).
+public extension WidgetKey {
+    static let window = WidgetKey("window")
+    static let vstack = WidgetKey("vstack")
+    static let hstack = WidgetKey("hstack")
+    static let zstack = WidgetKey("zstack")
+    static let spacer = WidgetKey("spacer")
+    static let scroll = WidgetKey("scroll")
+    static let geometry = WidgetKey("geometry")
+    static let lazyStack = WidgetKey("lazyStack")
+    static let groupBox = WidgetKey("groupBox")
+    static let label = WidgetKey("label")
+    static let button = WidgetKey("button")
+    static let textField = WidgetKey("textField")
+    static let secureField = WidgetKey("secureField")
+    static let slider = WidgetKey("slider")
+    static let toggle = WidgetKey("toggle")
+    static let progress = WidgetKey("progress")
+    static let separator = WidgetKey("separator")
+    static let shape = WidgetKey("shape")
+    static let menu = WidgetKey("menu")
+    static let picker = WidgetKey("picker")   // the base popup; per-style keys come from picker(_:)
+    static let datePicker = WidgetKey("datePicker")
+    static let colorPicker = WidgetKey("colorPicker")
+    static let image = WidgetKey("image")
+    static let list = WidgetKey("list")
+    static let sidebarList = WidgetKey("sidebarList")
+    static let outline = WidgetKey("outline")
+    static let sidebarOutline = WidgetKey("sidebarOutline")
+    static let splitView = WidgetKey("splitView")
+    static let tabView = WidgetKey("tabView")
+}
+
 /// How the layout engine treats a component (replaces the `WidgetKind` switch in `LayoutEngine`). A
 /// component computes its own role — so a single view type can be a leaf for one style and a native
 /// composite for another. The callback-carrying cases (scroll/geometry/lazyStack) are added as those
@@ -116,7 +150,7 @@ public struct PrimitiveLeafComponent: WidgetComponent {
 public struct ShapeComponent: WidgetComponent {
     public var spec: ShapeSpec
     public init(spec: ShapeSpec) { self.spec = spec }
-    public var widgetKey: WidgetKey { WidgetKey("shape") }
+    public var widgetKey: WidgetKey { .shape }
     public var role: WidgetRole { .leaf }   // greediness comes from the renderer's measure (proposal-resolved)
 }
 
@@ -132,15 +166,15 @@ public struct ContainerComponent: WidgetComponent {
     /// A plain vertical stack — the common shape of HopUI's internal wrapper nodes (transparent
     /// containers the framework inserts around content). `spacing`/`alignment` flow into the layout role.
     public static func vstack(spacing: Double? = nil, alignment: Alignment = .center) -> ContainerComponent {
-        ContainerComponent(WidgetKey("vstack"), role: .stack(axis: .vertical, spacing: spacing, alignment: alignment))
+        ContainerComponent(.vstack, role: .stack(axis: .vertical, spacing: spacing, alignment: alignment))
     }
     /// A plain horizontal stack.
     public static func hstack(spacing: Double? = nil, alignment: Alignment = .center) -> ContainerComponent {
-        ContainerComponent(WidgetKey("hstack"), role: .stack(axis: .horizontal, spacing: spacing, alignment: alignment))
+        ContainerComponent(.hstack, role: .stack(axis: .horizontal, spacing: spacing, alignment: alignment))
     }
     /// A plain overlay (z-)stack.
     public static func zstack(alignment: Alignment = .center) -> ContainerComponent {
-        ContainerComponent(WidgetKey("zstack"), role: .zstack(alignment: alignment))
+        ContainerComponent(.zstack, role: .zstack(alignment: alignment))
     }
 }
 
@@ -152,7 +186,7 @@ public struct ListComponent: WidgetComponent {
     public let spec: ListSpec
     public let sidebar: Bool
     public init(spec: ListSpec, sidebar: Bool) { self.spec = spec; self.sidebar = sidebar }
-    public var widgetKey: WidgetKey { WidgetKey(sidebar ? "sidebarList" : "list") }
+    public var widgetKey: WidgetKey { sidebar ? .sidebarList : .list }
     public var role: WidgetRole { .native }
 }
 
@@ -162,7 +196,7 @@ public struct OutlineComponent: WidgetComponent {
     public var spec: OutlineSpec
     public let sidebar: Bool
     public init(spec: OutlineSpec, sidebar: Bool) { self.spec = spec; self.sidebar = sidebar }
-    public var widgetKey: WidgetKey { WidgetKey(sidebar ? "sidebarOutline" : "outline") }
+    public var widgetKey: WidgetKey { sidebar ? .sidebarOutline : .outline }
     public var role: WidgetRole { .native }
 }
 
@@ -171,7 +205,7 @@ public struct OutlineComponent: WidgetComponent {
 public struct TabViewComponent: WidgetComponent {
     public let spec: TabSpec
     public init(spec: TabSpec) { self.spec = spec }
-    public var widgetKey: WidgetKey { WidgetKey("tabView") }
+    public var widgetKey: WidgetKey { .tabView }
     public var role: WidgetRole { .native }
 }
 
@@ -179,7 +213,7 @@ public struct TabViewComponent: WidgetComponent {
 /// it positions itself.
 public struct SplitViewComponent: WidgetComponent {
     public init() {}
-    public var widgetKey: WidgetKey { WidgetKey("splitView") }
+    public var widgetKey: WidgetKey { .splitView }
     public var role: WidgetRole { .native }
 }
 

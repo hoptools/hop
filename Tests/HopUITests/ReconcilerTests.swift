@@ -9,7 +9,7 @@ import Observation
 /// view-graph → reconciler → toolkit pipeline can be tested headlessly.
 @MainActor
 final class MockWidget {
-    let kind: String
+    let kind: WidgetKey
     var text: String?
     var title: String?
     var value: String?
@@ -48,7 +48,7 @@ final class MockWidget {
     // Live child order, maintained by the toolkit's insert/move/remove so tests can assert ordering
     // and handle reuse (object identity) across reconciliation.
     var children: [MockWidget] = []
-    init(kind: String) { self.kind = kind }
+    init(kind: WidgetKey) { self.kind = kind }
 }
 
 @MainActor
@@ -71,7 +71,7 @@ final class MockToolkit: AppToolkit {
         if let widget = component.makeNative(Self.toolkitID) as? MockWidget {
             widgets.append(widget); ops.append("make:selfhosted"); return widget   // decoupled, no registered renderer
         }
-        let widget = MockWidget(kind: "vstack"); widgets.append(widget); ops.append("make:placeholder"); return widget
+        let widget = MockWidget(kind: .vstack); widgets.append(widget); ops.append("make:placeholder"); return widget
     }
     func updateComponent(_ handle: MockWidget, _ component: any WidgetComponent) {
         if let renderer = components.renderer(for: component.widgetKey) { renderer.update(handle, component); return }
@@ -89,79 +89,79 @@ final class MockToolkit: AppToolkit {
     }
     private func registerBuiltinComponents() {
         // Leaf widgets: delegate to the legacy makeWidget/configure so existing op-log assertions hold.
-        let leaves: [String] = [
-            "label", "button", "textField", "secureField",
-            "slider", "toggle", "progress", "separator",
+        let leaves: [WidgetKey] = [
+            .label, .button, .textField, .secureField,
+            .slider, .toggle, .progress, .separator,
         ]
         for key in leaves {
             components.register(.init(
-                make: { [unowned self] component in let handle = makeNativeWidget(WidgetKey(key)); applyLeaf(handle, component); return handle },
+                make: { [unowned self] component in let handle = makeNativeWidget(key); applyLeaf(handle, component); return handle },
                 update: { [unowned self] handle, component in applyLeaf(handle, component) },
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
         // Layout containers + layout-special layers — empty native widget; the engine drives the rest.
-        let containerKinds: [String] = [
-            "vstack", "hstack", "zstack", "groupBox",
-            "scroll", "geometry", "lazyStack", "spacer",
+        let containerKinds: [WidgetKey] = [
+            .vstack, .hstack, .zstack, .groupBox,
+            .scroll, .geometry, .lazyStack, .spacer,
         ]
         for key in containerKinds {
             components.register(.init(
-                make: { [unowned self] _ in makeNativeWidget(WidgetKey(key)) },
+                make: { [unowned self] _ in makeNativeWidget(key) },
                 update: { _, _ in },
                 measure: { [unowned self] h, _, p in measure(h, p) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
         // Native composites (List/OutlineGroup/SplitView/TabView).
-        for key in ["list", "sidebarList"] {
+        for key: WidgetKey in [.list, .sidebarList] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(key); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? ListComponent)?.spec { configureList(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
-        for key in ["outline", "sidebarOutline"] {
+        for key: WidgetKey in [.outline, .sidebarOutline] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(key); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
-            ), for: WidgetKey(key))
+            ), for: key)
         }
         components.register(.init(
-            make: { [unowned self] _ in makeNativeWidget(WidgetKey("splitView")) },
+            make: { [unowned self] _ in makeNativeWidget(.splitView) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("splitView"))
+        ), for: .splitView)
         components.register(.init(
-            make: { [unowned self] _ in makeNativeWidget(WidgetKey("tabView")) },
+            make: { [unowned self] _ in makeNativeWidget(.tabView) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) },
             afterChildren: { [unowned self] h, c in if let s = (c as? TabViewComponent)?.spec { configureTabs(h, s) } }
-        ), for: WidgetKey("tabView"))
+        ), for: .tabView)
         // Spec-carrying leaves (DatePicker/ColorPicker/Menu) — delegate to the legacy configure path.
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("datePicker")); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("datePicker"))
+        ), for: .datePicker)
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("colorPicker")); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.colorPicker); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("colorPicker"))
+        ), for: .colorPicker)
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("menu")); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.menu); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
             update: { [unowned self] h, c in if let m = (c as? MenuComponent)?.content { configureMenu(h, m) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("menu"))
+        ), for: .menu)
         components.register(.init(
-            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("shape")); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(.shape); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
-        ), for: WidgetKey("shape"))
+        ), for: .shape)
         components.register(.init(
             make: { [unowned self] component in
-                let handle = makeNativeWidget(WidgetKey("image"))
+                let handle = makeNativeWidget(.image)
                 if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
                 return handle
             },
@@ -169,17 +169,17 @@ final class MockToolkit: AppToolkit {
                 if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
-        ), for: WidgetKey("image"))
+        ), for: .image)
 
         // Picker: one renderer per style, each producing a distinguishable mock widget so tests can assert
         // recreate-on-style-change (makeCount) and which native path was taken (pickerStyleName).
-        for style in ["menu", "automatic", "segmented", "radioGroup"] {
+        for style in PickerStyle.allCases {
             components.register(.init(
                 make: { [unowned self] component in
-                    let widget = MockWidget(kind: "picker")
+                    let widget = MockWidget(kind: .picker)
                     widgets.append(widget)
-                    ops.append("make:picker.\(style)")
-                    widget.pickerStyleName = style
+                    ops.append("make:picker.\(style.rawValue)")
+                    widget.pickerStyleName = style.rawValue
                     if let spec = (component as? PickerComponent)?.spec { configurePicker(widget, spec) }
                     return widget
                 },
@@ -187,7 +187,7 @@ final class MockToolkit: AppToolkit {
                     if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
                 },
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
-            ), for: WidgetKey("picker.\(style)"))
+            ), for: .picker(style))
         }
     }
 
@@ -202,7 +202,7 @@ final class MockToolkit: AppToolkit {
 
     func makeNativeWidget(_ key: WidgetKey) -> MockWidget {
         ops.append("make:\(key.rawValue)")
-        let widget = MockWidget(kind: key.rawValue)
+        let widget = MockWidget(kind: key)
         widgets.append(widget)
         return widget
     }
@@ -224,7 +224,7 @@ final class MockToolkit: AppToolkit {
         if let hidden = patch.accessibilityHidden { handle.axHidden = hidden }
         if let traits = patch.accessibilityTraits { handle.axTraits = traits }
         // Progress: kind tells us it's a bar; a nil progressValue means indeterminate.
-        if handle.kind == "progress" { handle.hasProgress = true; handle.progressValue = patch.progressValue }
+        if handle.kind == .progress { handle.hasProgress = true; handle.progressValue = patch.progressValue }
     }
 
     func insert(_ child: MockWidget, into parent: MockWidget, at index: Int) {
@@ -282,14 +282,14 @@ final class MockToolkit: AppToolkit {
     func measure(_ handle: MockWidget, _ proposal: ProposedViewSize) -> CGSize {
         if let label = handle.text ?? handle.title { measuredLabels.append(label) }
         switch handle.kind {
-        case "label": return CGSize(width: CGFloat((handle.text ?? "").count) * 8 + 8, height: 20)
-        case "button": return CGSize(width: CGFloat((handle.title ?? "").count) * 8 + 16, height: 24)
-        case "textField", "secureField": return CGSize(width: 120, height: 24)
-        case "slider": return CGSize(width: 100, height: 20)
-        case "toggle": return CGSize(width: 40, height: 22)
-        case "progress": return CGSize(width: 100, height: 8)
-        case "shape": return proposal.resolved(CGSize(width: 10, height: 10))  // shapes are greedy
-        case "image":
+        case .label: return CGSize(width: CGFloat((handle.text ?? "").count) * 8 + 8, height: 20)
+        case .button: return CGSize(width: CGFloat((handle.title ?? "").count) * 8 + 16, height: 24)
+        case .textField, .secureField: return CGSize(width: 120, height: 24)
+        case .slider: return CGSize(width: 100, height: 20)
+        case .toggle: return CGSize(width: 40, height: 22)
+        case .progress: return CGSize(width: 100, height: 8)
+        case .shape: return proposal.resolved(CGSize(width: 10, height: 10))  // shapes are greedy
+        case .image:
             let natural = CGSize(width: 30, height: 20)  // deterministic natural size for layout assertions
             return (handle.imageSpec?.resizable ?? false) ? proposal.resolved(natural) : natural
         default: return CGSize(width: proposal.width ?? 40, height: proposal.height ?? 20)
@@ -307,7 +307,7 @@ final class MockToolkit: AppToolkit {
 
     private(set) var rootContainer: MockWidget?
     func run(title: String, onReady: @escaping @MainActor (MockWidget) -> Void) {
-        let container = MockWidget(kind: "window")
+        let container = MockWidget(kind: .window)
         rootContainer = container
         onReady(container)
     }
@@ -328,7 +328,7 @@ final class MockToolkit: AppToolkit {
     private(set) var openedWindows: [String] = []
     func openWindow(title: String, onReady: @escaping @MainActor (MockWidget) -> Void) {
         openedWindows.append(title)
-        onReady(MockWidget(kind: "window"))
+        onReady(MockWidget(kind: .window))
     }
 
     private(set) var appliedColorScheme: ColorScheme?
@@ -371,7 +371,7 @@ private struct TestCounter: View {
         toolkit.clearOps()
 
         // Drive the button's action exactly as a real click would.
-        let button = try #require(toolkit.widgets.first { $0.kind == "button" })
+        let button = try #require(toolkit.widgets.first { $0.kind == .button })
         button.action?()
         toolkit.drainMainThread()
 
@@ -390,7 +390,7 @@ private struct TestCounter: View {
         toolkit.clearOps()
 
         // Simulate the user typing into the field exactly as the toolkit's change handler would.
-        let field = try #require(toolkit.widgets.first { $0.kind == "textField" })
+        let field = try #require(toolkit.widgets.first { $0.kind == .textField })
         field.onChange?("Ada")
         toolkit.drainMainThread()
 
@@ -405,7 +405,7 @@ private struct TestCounter: View {
         toolkit.clearOps()
 
         // Dragging the slider updates the same @State the counter button and label use.
-        let slider = try #require(toolkit.widgets.first { $0.kind == "slider" })
+        let slider = try #require(toolkit.widgets.first { $0.kind == .slider })
         slider.onChangeDouble?(5)
         toolkit.drainMainThread()
 
@@ -413,11 +413,11 @@ private struct TestCounter: View {
         #expect(toolkit.makeCount == 0)
 
         // And the button still drives the same state, now visible on the slider.
-        let button = try #require(toolkit.widgets.first { $0.kind == "button" })
+        let button = try #require(toolkit.widgets.first { $0.kind == .button })
         button.action?()
         toolkit.drainMainThread()
         #expect(toolkit.widgets.contains { $0.text == "Count: 6" })
-        #expect(toolkit.widgets.first { $0.kind == "slider" }?.doubleValue == 6)
+        #expect(toolkit.widgets.first { $0.kind == .slider }?.doubleValue == 6)
     }
 }
 
@@ -436,12 +436,12 @@ private struct ListSelectionView: View {
         let toolkit = MockToolkit()
         runHopApp(ListSelectionView(), toolkit: toolkit, title: "test")
 
-        let list = try #require(toolkit.widgets.first { $0.kind == "list" })
+        let list = try #require(toolkit.widgets.first { $0.kind == .list })
         let spec = try #require(list.listSpec)
 
         // The whole 100k-row list is one widget — rows are fetched lazily, not materialized.
         #expect(spec.count == 100_000)
-        #expect(toolkit.widgets.filter { $0.kind == "label" }.count == 1) // only the detail label
+        #expect(toolkit.widgets.filter { $0.kind == .label }.count == 1) // only the detail label
         #expect(spec.rowText(99_999) == "Row 99999")
         #expect(toolkit.widgets.contains { $0.text == "No selection" })
 
@@ -547,7 +547,7 @@ private struct A11yDemo: View {
         #expect(rating.axValue == "4 out of 5 stars")
 
         // A button carries a label + hint.
-        let save = try #require(toolkit.widgets.first { $0.kind == "button" })
+        let save = try #require(toolkit.widgets.first { $0.kind == .button })
         #expect(save.axLabel == "Save document")
         #expect(save.axHint == "Writes your changes to disk")
 
@@ -657,7 +657,7 @@ private struct StyleDemo: View {
         // `.background` wraps the view in a container painted with the color (so it covers any padding/
         // frame, matching SwiftUI) — the yellow is on the wrapping container, with the text as its child.
         let bgContainer = try #require(toolkit.widgets.first { $0.backgroundColor == .yellow })
-        #expect(bgContainer.kind == "zstack")
+        #expect(bgContainer.kind == .zstack)
         #expect(bgContainer.children.contains { $0.text == "bg" })
 
         // Font and foreground style are environment-inherited from the enclosing VStack.
@@ -713,7 +713,7 @@ private struct NavDemo: View {
 
         // Master-detail navigation: selecting B in the sidebar navigates the detail to B. A List in the
         // NavigationSplitView's leading column renders as a `.sidebarList` (source-list styling).
-        let list = try #require(toolkit.widgets.first { $0.kind == "sidebarList" })
+        let list = try #require(toolkit.widgets.first { $0.kind == .sidebarList })
         list.listSpec?.onSelect(1)
         toolkit.drainMainThread()
         #expect(toolkit.liveLabels().contains("BodyB"))
@@ -724,7 +724,7 @@ private struct NavDemo: View {
         list.listSpec?.onSelect(0)
         toolkit.drainMainThread()
         #expect(toolkit.liveLabels().contains("BodyA"))
-        try #require(toolkit.widgets.first { $0.kind == "button" && $0.title == "go" }).action?()
+        try #require(toolkit.widgets.first { $0.kind == .button && $0.title == "go" }).action?()
         toolkit.drainMainThread()
         #expect(toolkit.liveLabels().contains("DeepPage"))
         #expect(toolkit.liveLabels().contains("Deep"))    // pushed view's navigation title
@@ -732,7 +732,7 @@ private struct NavDemo: View {
         #expect(!(toolkit.liveLabels().contains("BodyA")))
 
         // Pop via Back → root view restored, destination gone.
-        try #require(toolkit.widgets.first { $0.kind == "button" && $0.title == "‹ Back" }).action?()
+        try #require(toolkit.widgets.first { $0.kind == .button && $0.title == "‹ Back" }).action?()
         toolkit.drainMainThread()
         #expect(toolkit.liveLabels().contains("BodyA"))
         #expect(!(toolkit.liveLabels().contains("DeepPage")))
@@ -826,11 +826,11 @@ private struct KeyedFieldDemo: View {
     @Test func testForEachReorderReusesRowWidgetsAndPreservesState() throws {
         let toolkit = MockToolkit()
         runHopApp(KeyedFieldDemo(), toolkit: toolkit, title: "test")
-        let vstack = try #require(toolkit.widgets.first { $0.kind == "vstack" })
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
         // Two text-field rows in order; the first is bound to row-1 state.
-        #expect(vstack.children.filter { $0.kind == "textField" }.count == 2)
-        let field1 = try #require(vstack.children.first { $0.kind == "textField" })
+        #expect(vstack.children.filter { $0.kind == .textField }.count == 2)
+        let field1 = try #require(vstack.children.first { $0.kind == .textField })
 
         // Type into row 1; its bound @State (and the widget's value) update in place.
         field1.onChange?("hello")
@@ -855,7 +855,7 @@ private struct KeyedFieldDemo: View {
     @Test func testForEachReorderEmitsOnlyMoves() throws {
         let toolkit = MockToolkit()
         runHopApp(KeyedListDemo(), toolkit: toolkit, title: "test")
-        let vstack = try #require(toolkit.widgets.first { $0.kind == "vstack" })
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
         #expect(vstack.children.compactMap { $0.text } == ["Item 1", "Item 2", "Item 3"])
         let middle = try #require(vstack.children.first { $0.text == "Item 2" })
 
@@ -873,7 +873,7 @@ private struct KeyedFieldDemo: View {
     @Test func testForEachInsertIsMinimal() throws {
         let toolkit = MockToolkit()
         runHopApp(KeyedListDemo(), toolkit: toolkit, title: "test")
-        let vstack = try #require(toolkit.widgets.first { $0.kind == "vstack" })
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
         toolkit.clearOps()
         try #require(toolkit.widgets.first { $0.title == "insertFront" }).action?()
@@ -888,7 +888,7 @@ private struct KeyedFieldDemo: View {
     @Test func testForEachDeleteRemovesOnlyTheDroppedRow() throws {
         let toolkit = MockToolkit()
         runHopApp(KeyedListDemo(), toolkit: toolkit, title: "test")
-        let vstack = try #require(toolkit.widgets.first { $0.kind == "vstack" })
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
         toolkit.clearOps()
         try #require(toolkit.widgets.first { $0.title == "dropFirst" }).action?()
@@ -929,7 +929,7 @@ private struct BranchDemo: View {
     @Test func testExplicitIDChangeRebuildsSubtree() throws {
         let toolkit = MockToolkit()
         runHopApp(IDResetDemo(), toolkit: toolkit, title: "test")
-        let vstack = try #require(toolkit.widgets.first { $0.kind == "vstack" })
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
         let before = try #require(vstack.children.first { $0.text == "Tagged" })
 
         toolkit.clearOps()
@@ -946,10 +946,10 @@ private struct BranchDemo: View {
     @Test func testConditionalBranchSwitchResetsIdentity() throws {
         let toolkit = MockToolkit()
         runHopApp(BranchDemo(), toolkit: toolkit, title: "test")
-        let vstack = try #require(toolkit.widgets.first { $0.kind == "vstack" })
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
 
         // The else arm (a Button) is shown first.
-        #expect(vstack.children.first?.kind == "button")
+        #expect(vstack.children.first?.kind == .button)
         #expect(vstack.children.first?.title == "OFF")
 
         toolkit.clearOps()
@@ -958,7 +958,7 @@ private struct BranchDemo: View {
 
         // Switching arms is a distinct identity (and kind), so the button is torn down and the text
         // built fresh — not reconciled in place.
-        #expect(vstack.children.first?.kind == "label")
+        #expect(vstack.children.first?.kind == .label)
         #expect(vstack.children.first?.text == "ON")
         #expect(toolkit.makeCount >= 1)
         #expect(toolkit.removeCount >= 1)
@@ -1031,7 +1031,7 @@ private struct ShapeDemo: View {
         runHopApp(ShapeDemo(), toolkit: toolkit, title: "test")
 
         // Four shape widgets were created.
-        #expect(toolkit.widgets.filter { $0.kind == "shape" }.count == 4)
+        #expect(toolkit.widgets.filter { $0.kind == .shape }.count == 4)
 
         // Rectangle: red fill, fixed 40×20 (the layout engine sized it from `.frame`), and a single
         // native rect path element.
@@ -1114,7 +1114,7 @@ private struct MenuDemo: View {
         let toolkit = MockToolkit()
         runHopApp(MenuDemo(), toolkit: toolkit, title: "test")
 
-        let widget = try #require(toolkit.widgets.first { $0.kind == "menu" })
+        let widget = try #require(toolkit.widgets.first { $0.kind == .menu })
         let menu = try #require(widget.menu)
         #expect(menu.label == "Actions")
         #expect(menu.entries.count == 4)  // New, ──, Save, Export▸
@@ -1138,7 +1138,7 @@ private struct MenuDemo: View {
         let toolkit = MockToolkit()
         runHopApp(MenuDemo(), toolkit: toolkit, title: "test")
 
-        let widget = try #require(toolkit.widgets.first { $0.kind == "picker" })
+        let widget = try #require(toolkit.widgets.first { $0.kind == .picker })
         let picker = try #require(widget.picker)
         #expect(picker.options == ["One", "Two", "Three"])
         #expect(picker.selectedIndex == 1)  // choice == 2 → tag 2 is at index 1
@@ -1159,8 +1159,8 @@ private struct MenuDemo: View {
         runHopApp(SplitDemo(), toolkit: toolkit, title: "test")
 
         // One split widget; the List is the sidebar (rendered as a `.sidebarList`), the Text is the detail.
-        #expect(toolkit.widgets.filter { $0.kind == "splitView" }.count == 1)
-        let list = try #require(toolkit.widgets.first { $0.kind == "sidebarList" })
+        #expect(toolkit.widgets.filter { $0.kind == .splitView }.count == 1)
+        let list = try #require(toolkit.widgets.first { $0.kind == .sidebarList })
         #expect(list.listSpec?.count == 50)
         #expect(toolkit.widgets.contains { $0.text == "None" })
 
@@ -1220,7 +1220,7 @@ private struct MenuDemo: View {
         let toolkit = MockToolkit()
         runHopApp(ProgressDemo(), toolkit: toolkit, title: "test")
 
-        let bars = toolkit.widgets.filter { $0.kind == "progress" }
+        let bars = toolkit.widgets.filter { $0.kind == .progress }
         #expect(bars.count == 2)
         #expect(bars.contains { $0.progressValue == 0.3 })                 // determinate
         #expect(bars.contains { $0.hasProgress && $0.progressValue == nil }) // indeterminate
@@ -1229,7 +1229,7 @@ private struct MenuDemo: View {
         toolkit.clearOps()
         try #require(toolkit.widgets.first { $0.title == "advance" }).action?()
         toolkit.drainMainThread()
-        #expect(toolkit.widgets.contains { $0.kind == "progress" && $0.progressValue == 0.8 })
+        #expect(toolkit.widgets.contains { $0.kind == .progress && $0.progressValue == 0.8 })
         #expect(toolkit.makeCount == 0)
     }
 }

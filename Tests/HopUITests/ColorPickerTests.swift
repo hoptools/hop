@@ -20,7 +20,7 @@ import Testing
         runHopApp(ColorPickerHost(color: Color(red: 0.1, green: 0.2, blue: 0.3, opacity: 1)),
                   toolkit: toolkit, title: "test")
         #expect(toolkit.liveLabels().contains("Tint"))   // composed leading label
-        let spec = try #require(toolkit.widgets.first { $0.kind == "colorPicker" }?.colorPicker)
+        let spec = try #require(toolkit.widgets.first { $0.kind == .colorPicker }?.colorPicker)
         #expect(spec.supportsOpacity == true)
         #expect(spec.color.red == 0.1)
         #expect(spec.color.blue == 0.3)
@@ -29,11 +29,11 @@ import Testing
     @Test func testChangeWritesBackToBinding() throws {
         let toolkit = MockToolkit()
         runHopApp(ColorPickerHost(color: .black), toolkit: toolkit, title: "test")
-        let widget = try #require(toolkit.widgets.first { $0.kind == "colorPicker" })
+        let widget = try #require(toolkit.widgets.first { $0.kind == .colorPicker })
         toolkit.clearOps()
         widget.colorPicker?.onChange(Color(red: 0.25, green: 0.5, blue: 0.75, opacity: 0.5))
         toolkit.drainMainThread()
-        let spec = try #require(toolkit.widgets.first { $0.kind == "colorPicker" }?.colorPicker)
+        let spec = try #require(toolkit.widgets.first { $0.kind == .colorPicker }?.colorPicker)
         #expect(spec.color.red == 0.25)
         #expect(spec.color.green == 0.5)
         #expect(spec.color.blue == 0.75)
@@ -44,7 +44,7 @@ import Testing
     @Test func testSupportsOpacityFlows() throws {
         let toolkit = MockToolkit()
         runHopApp(ColorPickerHost(color: .red, supportsOpacity: false), toolkit: toolkit, title: "test")
-        let spec = try #require(toolkit.widgets.first { $0.kind == "colorPicker" }?.colorPicker)
+        let spec = try #require(toolkit.widgets.first { $0.kind == .colorPicker }?.colorPicker)
         #expect(spec.supportsOpacity == false)
     }
 }

@@ -14,7 +14,7 @@ import HopUI
 
     @Test func testActionMenuBuildsPullDownPopupWithSeparatorAndSubmenu() throws {
         let toolkit = AppKitToolkit()
-        let handle = toolkit.makeNativeWidget(WidgetKey("menu"))
+        let handle = toolkit.makeNativeWidget(.menu)
         var fired = ""
         toolkit.configureMenu(handle, MenuContent(label: "Actions", entries: [
             .button(title: "New", action: { fired = "New" }),
@@ -42,7 +42,7 @@ import HopUI
 
     @Test func testPickerPopulatesOptionsSelectsAndReportsChanges() throws {
         let toolkit = AppKitToolkit()
-        let handle = toolkit.makeNativeWidget(WidgetKey("picker"))
+        let handle = toolkit.makeNativeWidget(.picker)
         var picked = -1
         toolkit.configurePicker(handle, PickerSpec(title: "Number", options: ["One", "Two", "Three"],
                                                    selectedIndex: 2, onSelect: { picked = $0 }))

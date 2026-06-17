@@ -168,6 +168,6 @@ public struct Image: View, PrimitiveView {
 public struct ImageComponent: WidgetComponent {
     public let spec: ImageSpec
     public init(spec: ImageSpec) { self.spec = spec }
-    public var widgetKey: WidgetKey { WidgetKey("image") }
+    public var widgetKey: WidgetKey { .image }
     public var role: WidgetRole { .leaf }
 }

@@ -10,7 +10,7 @@ import Testing
 @MainActor @Suite struct LayoutEngineTests {
     /// A label's intrinsic size, matching the MockToolkit's measure: `text.count * 8 + 8` wide, 20 tall.
     private static func measure(_ node: RenderNode, _ proposal: ProposedViewSize) -> CGSize {
-        if node.component.widgetKey.rawValue == "label" { return CGSize(width: Double((node.patch.text ?? "").count) * 8 + 8, height: 20) }
+        if node.component.widgetKey == .label { return CGSize(width: Double((node.patch.text ?? "").count) * 8 + 8, height: 20) }
         return proposal.resolved(.zero)
     }
 
@@ -25,10 +25,10 @@ import Testing
             sizeOf: { paneSizes[$0.id] ?? .zero })
 
         let sidebar = RenderNode(id: "sidebar", component: ContainerComponent.vstack(), children: [
-            RenderNode(id: "srow", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "Item")),
+            RenderNode(id: "srow", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "Item")),
         ])
         let detail = RenderNode(id: "detail", component: ContainerComponent.vstack(), children: [
-            RenderNode(id: "dlabel", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "Detail")),
+            RenderNode(id: "dlabel", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "Detail")),
         ])
         let split = RenderNode(id: "split", component: SplitViewComponent(), children: [sidebar, detail])
 
@@ -54,8 +54,8 @@ import Testing
 
         let pane = RenderNode(id: "pane", component: ContainerComponent.vstack(), children: [
             RenderNode(id: "row", component: ContainerComponent.hstack(spacing: 0), patch: WidgetPatch(spacing: 0), children: [
-                RenderNode(id: "a", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "A")),
-                RenderNode(id: "b", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "B")),
+                RenderNode(id: "a", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "A")),
+                RenderNode(id: "b", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "B")),
             ]),
         ])
         let split = RenderNode(id: "split", component: SplitViewComponent(), children: [pane])

@@ -63,7 +63,7 @@ public struct ScrollView<Content: View>: View, PrimitiveView {
                                layout: LayoutInfo(alignment: .topLeading))
 
         return RenderNode(id: context.id,
-                          component: ContainerComponent(WidgetKey("scroll"), role: .scroll(axis: axis)),
+                          component: ContainerComponent(.scroll, role: .scroll(axis: axis)),
                           children: [child],
                           layout: LayoutInfo(scrollAxis: axis),
                           onGeometry: { size in
@@ -184,7 +184,7 @@ private func makeLazyNode<Content: View>(_ context: RenderContext, axis: Axis, s
     }
 
     return RenderNode(id: context.id,
-                      component: ContainerComponent(WidgetKey("lazyStack"),
+                      component: ContainerComponent(.lazyStack,
                           role: .lazyStack(LazyInfo(axis: axis, rowExtent: rowExtent, spacing: spacing, totalCount: count),
                                            alignment: alignment)),
                       children: rows,

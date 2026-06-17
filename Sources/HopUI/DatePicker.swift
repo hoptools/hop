@@ -154,6 +154,6 @@ struct _DatePickerControl: View, PrimitiveView {
 public struct DatePickerComponent: WidgetComponent {
     public let spec: DatePickerSpec
     public init(spec: DatePickerSpec) { self.spec = spec }
-    public var widgetKey: WidgetKey { WidgetKey("datePicker") }
+    public var widgetKey: WidgetKey { .datePicker }
     public var role: WidgetRole { .leaf }
 }

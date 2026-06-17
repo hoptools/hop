@@ -15,7 +15,7 @@ public struct Text: View, PrimitiveView {
         // Reading through the graph records a dependency, so this body re-runs when its styling changes.
         let environment = currentEnvironment()
         return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(WidgetKey("label"),
+                          component: PrimitiveLeafComponent(.label,
                               patch: WidgetPatch(text: content,
                                                  foregroundColor: environment.foregroundColor,
                                                  font: environment.font,
@@ -37,7 +37,7 @@ public struct Button: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id,
-                   component: PrimitiveLeafComponent(WidgetKey("button"), patch: WidgetPatch(title: title), action: action))
+                   component: PrimitiveLeafComponent(.button, patch: WidgetPatch(title: title), action: action))
     }
 }
 
@@ -58,7 +58,7 @@ public struct TextField: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = text
         return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(WidgetKey("textField"),
+                          component: PrimitiveLeafComponent(.textField,
                               patch: WidgetPatch(value: text.wrappedValue, placeholder: placeholder),
                               onChange: { binding.wrappedValue = $0 }))
     }
@@ -209,7 +209,7 @@ public struct Slider: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = value
         return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(WidgetKey("slider"),
+                          component: PrimitiveLeafComponent(.slider,
                               patch: WidgetPatch(doubleValue: value.wrappedValue,
                                                  minValue: range.lowerBound, maxValue: range.upperBound),
                               onChangeDouble: { binding.wrappedValue = $0 }))
@@ -232,7 +232,7 @@ public struct VStack<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id,
-                   component: ContainerComponent(WidgetKey("vstack"),
+                   component: ContainerComponent(.vstack,
                        role: .stack(axis: .vertical, spacing: spacing, alignment: Alignment(horizontal: alignment, vertical: .center))),
                    patch: WidgetPatch(spacing: spacing),
                    children: evaluate(content, context.appending(0)),
@@ -256,7 +256,7 @@ public struct HStack<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id,
-                   component: ContainerComponent(WidgetKey("hstack"),
+                   component: ContainerComponent(.hstack,
                        role: .stack(axis: .horizontal, spacing: spacing, alignment: Alignment(horizontal: .center, vertical: alignment))),
                    patch: WidgetPatch(spacing: spacing),
                    children: evaluate(content, context.appending(0)),
@@ -278,7 +278,7 @@ public struct ZStack<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id,
-                   component: ContainerComponent(WidgetKey("zstack"), role: .zstack(alignment: alignment)),
+                   component: ContainerComponent(.zstack, role: .zstack(alignment: alignment)),
                    children: evaluate(content, context.appending(0)),
                    layout: LayoutInfo(alignment: alignment))
     }
@@ -294,7 +294,7 @@ public struct Spacer: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         RenderNode(id: context.id,
-                   component: ContainerComponent(WidgetKey("spacer"), role: .spacer(minLength: minLength ?? 0)),
+                   component: ContainerComponent(.spacer, role: .spacer(minLength: minLength ?? 0)),
                    layout: LayoutInfo(spacerMinLength: minLength ?? 0))
     }
 }

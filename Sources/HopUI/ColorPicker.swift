@@ -78,6 +78,6 @@ struct _ColorPickerControl: View, PrimitiveView {
 public struct ColorPickerComponent: WidgetComponent {
     public let spec: ColorPickerSpec
     public init(spec: ColorPickerSpec) { self.spec = spec }
-    public var widgetKey: WidgetKey { WidgetKey("colorPicker") }
+    public var widgetKey: WidgetKey { .colorPicker }
     public var role: WidgetRole { .leaf }
 }

@@ -42,6 +42,6 @@ public struct ProgressView: View, PrimitiveView {
         }
         if let label { patch.accessibilityLabel = label }
         return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(WidgetKey("progress"), patch: patch))
+                          component: PrimitiveLeafComponent(.progress, patch: patch))
     }
 }

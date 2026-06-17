@@ -27,7 +27,7 @@ import Foundation
         runHopApp(DatePickerHost(date: start), toolkit: toolkit, title: "test")
         // Composed as a leading label + the native date leaf.
         #expect(toolkit.liveLabels().contains("Appointment"))
-        let spec = try #require(toolkit.widgets.first { $0.kind == "datePicker" }?.datePicker)
+        let spec = try #require(toolkit.widgets.first { $0.kind == .datePicker }?.datePicker)
         #expect(spec.date == start)
         #expect(spec.components.contains(.date))
         #expect(spec.components.contains(.hourAndMinute))
@@ -36,12 +36,12 @@ import Foundation
     @Test func testChangeWritesBackToBinding() throws {
         let toolkit = MockToolkit()
         runHopApp(DatePickerHost(date: Date(timeIntervalSince1970: 0), components: .date), toolkit: toolkit, title: "test")
-        let picker = try #require(toolkit.widgets.first { $0.kind == "datePicker" })
+        let picker = try #require(toolkit.widgets.first { $0.kind == .datePicker })
         toolkit.clearOps()
         let newDate = Date(timeIntervalSince1970: 86_400)
         picker.datePicker?.onChange(newDate)   // simulate the user picking a new date
         toolkit.drainMainThread()
-        let updated = try #require(toolkit.widgets.first { $0.kind == "datePicker" })
+        let updated = try #require(toolkit.widgets.first { $0.kind == .datePicker })
         #expect(updated.datePicker?.date == newDate)   // binding round-tripped; spec reflects it
         #expect(toolkit.makeCount == 0)                // reconfigured in place, not rebuilt
     }
@@ -50,7 +50,7 @@ import Foundation
         let toolkit = MockToolkit()
         runHopApp(DatePickerHost(date: Date(timeIntervalSince1970: 0), components: .hourAndMinute, style: .graphical),
                   toolkit: toolkit, title: "test")
-        let spec = try #require(toolkit.widgets.first { $0.kind == "datePicker" }?.datePicker)
+        let spec = try #require(toolkit.widgets.first { $0.kind == .datePicker }?.datePicker)
         #expect(spec.components == .hourAndMinute)
         #expect(spec.style == .graphical)
     }

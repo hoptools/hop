@@ -10,7 +10,7 @@ import Foundation
     private func imageSpec(_ view: some View) -> ImageSpec? {
         let toolkit = MockToolkit()
         runHopApp(view, toolkit: toolkit, title: "test")
-        return toolkit.widgets.first { $0.kind == "image" }?.imageSpec
+        return toolkit.widgets.first { $0.kind == .image }?.imageSpec
     }
 
     @Test func testSystemNameIsTemplateSymbol() throws {
@@ -52,11 +52,11 @@ import Foundation
 
     @Test func testMeasureIntrinsicVsGreedy() {
         let toolkit = MockToolkit()
-        let natural = MockWidget(kind: "image")
+        let natural = MockWidget(kind: .image)
         natural.imageSpec = ImageSpec(source: .system("x"), resizable: false)
         #expect(toolkit.measure(natural, ProposedViewSize(width: 200, height: 200)) == CGSize(width: 30, height: 20))
 
-        let greedy = MockWidget(kind: "image")
+        let greedy = MockWidget(kind: .image)
         greedy.imageSpec = ImageSpec(source: .system("x"), resizable: true)
         #expect(toolkit.measure(greedy, ProposedViewSize(width: 200, height: 200)) == CGSize(width: 200, height: 200))
     }
@@ -67,7 +67,7 @@ import Foundation
         #expect(toolkit.ops.contains("image:system:a"))
 
         toolkit.clearOps()
-        try #require(toolkit.widgets.first { $0.kind == "button" }).action?()
+        try #require(toolkit.widgets.first { $0.kind == .button }).action?()
         toolkit.drainMainThread()
         #expect(toolkit.ops.contains("image:system:b"))  // the same widget is reconfigured…
         #expect(toolkit.makeCount == 0)                   // …not rebuilt
