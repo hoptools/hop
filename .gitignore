@@ -6,6 +6,9 @@
 .winui
 demo-launch.png
 
+# CI playground screenshots (scripts/ci/screenshot-playgrounds.*) — artifacts, not source
+ci-screenshots/
+
 # SwiftPM build products
 .build/
 .swiftpm/
