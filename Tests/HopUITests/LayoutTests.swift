@@ -59,7 +59,7 @@ import Testing
         let toolkit = MockToolkit()
         runHopApp(ZStack { Rectangle().frame(width: 40, height: 40); Text("A") }, toolkit: toolkit, title: "t")
         // The ZStack is 40×40 (its largest child). The rectangle fills it; the 16×20 label centers within.
-        let rect = try #require(toolkit.widgets.first { $0.kind == .shape })
+        let rect = try #require(toolkit.widgets.first { $0.kind == "shape" })
         #expect(rect.frame == CGRect(x: 0, y: 0, width: 40, height: 40))
         #expect(try label("A", toolkit).frame == CGRect(x: 12, y: 10, width: 16, height: 20))
     }
@@ -70,7 +70,7 @@ import Testing
         // "X" is 16×20; padding(10) makes the box 36×40. `.background` wraps the padded view in a container
         // sized to it, so the yellow covers the padding (not just the 16×20 text).
         let bg = try #require(toolkit.widgets.first { $0.backgroundColor == .yellow })
-        #expect(bg.kind == .zstack)
+        #expect(bg.kind == "zstack")
         #expect(bg.frame == CGRect(x: 0, y: 0, width: 36, height: 40))
         // The text sits inset by the padding within the background container.
         #expect(try label("X", toolkit).frame == CGRect(x: 10, y: 10, width: 16, height: 20))

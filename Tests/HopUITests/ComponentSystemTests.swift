@@ -34,7 +34,7 @@ private struct SelfHostedComponent: WidgetComponent {
     var widgetKey: WidgetKey { WidgetKey("test.selfhosted") }
     var role: WidgetRole { .leaf }
     func makeNative(_ toolkit: ToolkitID) -> Any? {
-        let widget = MockWidget(kind: .label)   // the mock's "raw native widget"
+        let widget = MockWidget(kind: "label")   // the mock's "raw native widget"
         widget.text = "self-hosted!"
         return widget
     }
@@ -50,14 +50,14 @@ private struct SelfHostedComponent: WidgetComponent {
 
 @MainActor @Suite struct ComponentSystemTests {
     private func button(_ toolkit: MockToolkit, _ title: String) -> MockWidget? {
-        toolkit.widgets.first { $0.kind == .button && $0.title == title }
+        toolkit.widgets.first { $0.kind == "button" && $0.title == title }
     }
     private func tap(_ toolkit: MockToolkit, _ title: String) throws {
         try #require(button(toolkit, title)).action?()
         toolkit.drainMainThread()
     }
     private func picker(_ toolkit: MockToolkit) -> MockWidget? {
-        toolkit.widgets.last { $0.kind == .picker }   // newest, after any recreate
+        toolkit.widgets.last { $0.kind == "picker" }   // newest, after any recreate
     }
 
     // MARK: built-in via the component path
@@ -65,7 +65,7 @@ private struct SelfHostedComponent: WidgetComponent {
     @Test func testImageRendersViaComponentRegistry() throws {
         let toolkit = MockToolkit()
         runHopApp(Image(systemName: "star").frame(width: 20, height: 20), toolkit: toolkit, title: "t")
-        let image = try #require(toolkit.widgets.first { $0.kind == .image })
+        let image = try #require(toolkit.widgets.first { $0.kind == "image" })
         #expect(image.imageSpec != nil)   // realized + configured through the registered image renderer
     }
 

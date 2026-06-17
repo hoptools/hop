@@ -29,33 +29,33 @@ import Foundation
     @Test func testToggleBindsAndReflectsState() throws {
         let toolkit = MockToolkit()
         runHopApp(ToggleHost(), toolkit: toolkit, title: "test")
-        let toggle = try #require(toolkit.widgets.first { $0.kind == .toggle })
+        let toggle = try #require(toolkit.widgets.first { $0.kind == "toggle" })
         #expect(toggle.boolValue == false)
         #expect(toolkit.liveLabels().contains("Wi-Fi"))  // the composed label
 
         toolkit.clearOps()
         toggle.onChangeBool?(true)            // simulate the user flipping the switch
         toolkit.drainMainThread()
-        #expect(try #require(toolkit.widgets.first { $0.kind == .toggle }).boolValue == true)
+        #expect(try #require(toolkit.widgets.first { $0.kind == "toggle" }).boolValue == true)
         #expect(toolkit.makeCount == 0)       // reconfigured, not rebuilt
     }
 
     @Test func testSecureFieldIsMaskedKindAndBinds() throws {
         let toolkit = MockToolkit()
         runHopApp(SecureHost(), toolkit: toolkit, title: "test")
-        let field = try #require(toolkit.widgets.first { $0.kind == .secureField })
-        #expect(field.kind == .secureField)   // a distinct kind from .textField
+        let field = try #require(toolkit.widgets.first { $0.kind == "secureField" })
+        #expect(field.kind == "secureField")   // a distinct kind from .textField
 
         field.onChange?("hunter2")
         toolkit.drainMainThread()
-        #expect(try #require(toolkit.widgets.first { $0.kind == .secureField }).value == "hunter2")
+        #expect(try #require(toolkit.widgets.first { $0.kind == "secureField" }).value == "hunter2")
     }
 
     @Test func testStepperIncrementsAndClampsToRange() throws {
         let toolkit = MockToolkit()
         runHopApp(StepperHost(), toolkit: toolkit, title: "test")
         func button(_ title: String) -> MockWidget? {
-            toolkit.widgets.first { $0.kind == .button && $0.title == title }
+            toolkit.widgets.first { $0.kind == "button" && $0.title == title }
         }
         #expect(toolkit.liveLabels().contains("Count: 5"))
 
@@ -74,13 +74,13 @@ import Foundation
     @Test func testLabelComposesIconAndTitle() {
         let toolkit = MockToolkit()
         runHopApp(Label("Files", systemImage: "folder"), toolkit: toolkit, title: "test")
-        #expect(toolkit.widgets.contains { $0.kind == .image })   // the leading icon
+        #expect(toolkit.widgets.contains { $0.kind == "image" })   // the leading icon
         #expect(toolkit.liveLabels().contains("Files"))           // the title
     }
 
     @Test func testLinkRendersAsTitledButton() {
         let toolkit = MockToolkit()
         runHopApp(Link("Hop", destination: URL(string: "https://github.com/hoptools/hop")!), toolkit: toolkit, title: "test")
-        #expect(toolkit.widgets.contains { $0.kind == .button && $0.title == "Hop" })
+        #expect(toolkit.widgets.contains { $0.kind == "button" && $0.title == "Hop" })
     }
 }

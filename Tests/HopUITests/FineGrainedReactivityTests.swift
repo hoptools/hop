@@ -115,7 +115,7 @@ import Observation
 
 @MainActor @Suite struct FineGrainedReactivityTests {
     private func button(_ toolkit: MockToolkit, _ title: String) -> MockWidget? {
-        toolkit.widgets.first { $0.kind == .button && $0.title == title }
+        toolkit.widgets.first { $0.kind == "button" && $0.title == title }
     }
     private func tap(_ toolkit: MockToolkit, _ title: String) throws {
         try #require(button(toolkit, title)).action?()

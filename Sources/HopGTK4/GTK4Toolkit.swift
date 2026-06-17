@@ -365,7 +365,7 @@ public final class GTK4Toolkit: AppToolkit {
     public func realize(_ component: any WidgetComponent) -> GTK4Widget {
         if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
         if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return GTK4Widget(ptr) }
-        return makeWidget(.vstack)
+        return makeNativeWidget(WidgetKey("vstack"))
     }
 
     public func updateComponent(_ handle: GTK4Widget, _ component: any WidgetComponent) {
@@ -395,27 +395,27 @@ public final class GTK4Toolkit: AppToolkit {
     }
 
     private func registerNativeCompositeComponents() {
-        for (key, kind) in [("list", WidgetKind.list), ("sidebarList", .sidebarList)] {
+        for key in ["list", "sidebarList"] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? ListComponent)?.spec { configureList(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: WidgetKey(key))
         }
-        for (key, kind) in [("outline", WidgetKind.outline), ("sidebarOutline", .sidebarOutline)] {
+        for key in ["outline", "sidebarOutline"] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: WidgetKey(key))
         }
         components.register(.init(
-            make: { [unowned self] _ in makeWidget(.splitView) },
+            make: { [unowned self] _ in makeNativeWidget(WidgetKey("splitView")) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("splitView"))
         components.register(.init(
-            make: { [unowned self] _ in makeWidget(.tabView) },
+            make: { [unowned self] _ in makeNativeWidget(WidgetKey("tabView")) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) },
             afterChildren: { [unowned self] h, c in if let s = (c as? TabViewComponent)?.spec { configureTabs(h, s) } }
@@ -423,13 +423,13 @@ public final class GTK4Toolkit: AppToolkit {
     }
 
     private func registerContainerComponents() {
-        let containers: [(String, WidgetKind)] = [
-            ("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox),
-            ("scroll", .scroll), ("geometry", .geometry), ("lazyStack", .lazyStack), ("spacer", .spacer),
+        let containers: [String] = [
+            "vstack", "hstack", "zstack", "groupBox",
+            "scroll", "geometry", "lazyStack", "spacer",
         ]
-        for (key, kind) in containers {
+        for key in containers {
             components.register(.init(
-                make: { [unowned self] _ in makeWidget(kind) },
+                make: { [unowned self] _ in makeNativeWidget(WidgetKey(key)) },
                 update: { _, _ in },
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: WidgetKey(key))
@@ -438,35 +438,35 @@ public final class GTK4Toolkit: AppToolkit {
 
     private func registerSpecLeafComponents() {
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("datePicker")); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("datePicker"))
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.colorPicker); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("colorPicker")); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("colorPicker"))
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.menu); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("menu")); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
             update: { [unowned self] h, c in if let m = (c as? MenuComponent)?.content { configureMenu(h, m) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("menu"))
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.shape); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("shape")); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("shape"))
     }
 
     private func registerLeafComponents() {
-        let leaves: [(String, WidgetKind)] = [
-            ("label", .label), ("button", .button), ("textField", .textField), ("secureField", .secureField),
-            ("slider", .slider), ("toggle", .toggle), ("progress", .progress), ("separator", .separator),
+        let leaves: [String] = [
+            "label", "button", "textField", "secureField",
+            "slider", "toggle", "progress", "separator",
         ]
-        for (key, kind) in leaves {
+        for key in leaves {
             components.register(.init(
-                make: { [unowned self] component in let handle = makeWidget(kind); applyLeaf(handle, component); return handle },
+                make: { [unowned self] component in let handle = makeNativeWidget(WidgetKey(key)); applyLeaf(handle, component); return handle },
                 update: { [unowned self] handle, component in applyLeaf(handle, component) },
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
             ), for: WidgetKey(key))
@@ -488,7 +488,7 @@ public final class GTK4Toolkit: AppToolkit {
     private func registerPickerComponents() {
         let renderer = ComponentRegistry<GTK4Widget>.Renderer(
             make: { [unowned self] component in
-                let handle = makeWidget(.picker)
+                let handle = makeNativeWidget(WidgetKey("picker"))
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
                 return handle
             },
@@ -502,7 +502,7 @@ public final class GTK4Toolkit: AppToolkit {
     private func registerImageComponent() {
         components.register(.init(
             make: { [unowned self] component in
-                let handle = makeWidget(.image)
+                let handle = makeNativeWidget(WidgetKey("image"))
                 if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
                 return handle
             },
@@ -513,96 +513,98 @@ public final class GTK4Toolkit: AppToolkit {
         ), for: WidgetKey("image"))
     }
 
-    public func makeWidget(_ kind: WidgetKind) -> GTK4Widget {
+    public func makeNativeWidget(_ key: WidgetKey) -> GTK4Widget {
         let widget: UnsafeMutableRawPointer
-        switch kind {
+        switch key.rawValue {
         // Box-model containers are absolute-positioning GtkFixed layers; the layout engine owns geometry.
-        case .vstack, .hstack, .zstack, .spacer, .window, .geometry, .lazyStack: widget = hop_fixed_new()!
-        case .groupBox:
+        case "vstack", "hstack", "zstack", "spacer", "window", "geometry", "lazyStack": widget = hop_fixed_new()!
+        case "groupBox":
             widget = hop_fixed_new()!
             hop_widget_add_css_class(widget, "card")  // Adwaita's rounded, bordered, filled card chrome
-        case .scroll: widget = hop_scrolled_window_new()!  // a real clipping/scrolling viewport
-        case .label:  widget = hop_label_new("")!
-        case .button: widget = hop_button_new("")!
-        case .textField: widget = hop_entry_new()!
-        case .slider: widget = hop_scale_new(0, 1)!
-        case .list: widget = hop_list_new()!
-        case .sidebarList:
+        case "scroll": widget = hop_scrolled_window_new()!  // a real clipping/scrolling viewport
+        case "label":  widget = hop_label_new("")!
+        case "button": widget = hop_button_new("")!
+        case "textField": widget = hop_entry_new()!
+        case "slider": widget = hop_scale_new(0, 1)!
+        case "list": widget = hop_list_new()!
+        case "sidebarList":
             widget = hop_list_new()!
             hop_list_set_sidebar(widget, 1)  // source-list styling baked in at creation
-        case .outline: widget = hop_tree_new()!
-        case .sidebarOutline:
+        case "outline": widget = hop_tree_new()!
+        case "sidebarOutline":
             widget = hop_tree_new()!
             hop_tree_set_sidebar(widget, 1)  // source-list styling baked in at creation
-        case .splitView: widget = hop_paned_new()!
-        case .tabView: widget = hop_notebook_new()!
-        case .image: widget = hop_picture_new()!
-        case .toggle: widget = hop_switch_new()!
-        case .secureField:
+        case "splitView": widget = hop_paned_new()!
+        case "tabView": widget = hop_notebook_new()!
+        case "image": widget = hop_picture_new()!
+        case "toggle": widget = hop_switch_new()!
+        case "secureField":
             widget = hop_entry_new()!
             hop_entry_set_visibility(widget, 0)  // mask typed characters (password field)
-        case .shape: widget = hop_drawing_area_new()!
-        case .menu: widget = hop_menu_button_new()!
-        case .picker: widget = hop_dropdown_new()!
-        case .datePicker: widget = hop_datepicker_new()!
-        case .colorPicker: widget = hop_colorbutton_new()!
-        case .progress: widget = hop_progress_bar_new()!
-        case .separator:
+        case "shape": widget = hop_drawing_area_new()!
+        case "menu": widget = hop_menu_button_new()!
+        case "picker": widget = hop_dropdown_new()!
+        case "datePicker": widget = hop_datepicker_new()!
+        case "colorPicker": widget = hop_colorbutton_new()!
+        case "progress": widget = hop_progress_bar_new()!
+        case "separator":
             widget = hop_separator_new(1)!  // a divider between stacked rows is a horizontal line
+        default:
+            widget = hop_fixed_new()!  // unknown key (e.g. self-hosting component without a renderer): a plain layer
         }
         // Take an owning reference so our handle stays valid across reparenting/removal.
         hop_object_ref_sink(widget)
         let handle = GTK4Widget(widget)
-        if kind == .textField || kind == .secureField || kind == .slider || kind == .progress { handle.flexibleWidth = true }
+        if key.rawValue == "textField" || key.rawValue == "secureField" || key.rawValue == "slider" || key.rawValue == "progress" { handle.flexibleWidth = true }
 
-        if kind == .button {
+        if key.rawValue == "button" {
             let box = GTK4ActionBox()
             handle.actionBox = box
             _ = hop_connect_clicked(widget, gtk4ClickedCallback, Unmanaged.passUnretained(box).toOpaque())
-        } else if kind == .textField || kind == .secureField {
+        } else if key.rawValue == "textField" || key.rawValue == "secureField" {
             let box = GTK4ActionBox()
             handle.actionBox = box
             _ = hop_connect_changed(widget, gtk4ChangedCallback, Unmanaged.passUnretained(box).toOpaque())
-        } else if kind == .toggle {
+        } else if key.rawValue == "toggle" {
             handle.isToggle = true
             let box = GTK4ActionBox()
             handle.actionBox = box
             _ = hop_switch_connect(widget, gtk4SwitchCallback, Unmanaged.passUnretained(box).toOpaque())
-        } else if kind == .slider {
+        } else if key.rawValue == "slider" {
             let box = GTK4ActionBox()
             handle.actionBox = box
             _ = hop_connect_value_changed(widget, gtk4ValueChangedCallback, Unmanaged.passUnretained(box).toOpaque())
-        } else if kind == .list || kind == .sidebarList {
+        } else if key.rawValue == "list" || key.rawValue == "sidebarList" {
             // The selection signal is connected in configureList, after the model is built.
             handle.actionBox = GTK4ActionBox()
-        } else if kind == .outline || kind == .sidebarOutline {
+        } else if key.rawValue == "outline" || key.rawValue == "sidebarOutline" {
             // The selection signal is connected in configureOutline, after the tree model is built.
             handle.actionBox = GTK4ActionBox()
-        } else if kind == .shape {
+        } else if key.rawValue == "shape" {
             handle.isShape = true
             let box = GTK4ActionBox()
             handle.actionBox = box
             hop_drawing_area_set_draw_func(widget, gtk4DrawCallback, Unmanaged.passUnretained(box).toOpaque())
-        } else if kind == .image {
+        } else if key.rawValue == "image" {
             handle.isImage = true
-        } else if kind == .picker {
+        } else if key.rawValue == "picker" {
             // Selection signal is connected in configurePicker after the model is set.
             handle.actionBox = GTK4ActionBox()
-        } else if kind == .datePicker {
+        } else if key.rawValue == "datePicker" {
             // Sub-widget signals are connected in configureDatePicker (once components are known).
             handle.actionBox = GTK4ActionBox()
-        } else if kind == .colorPicker {
+        } else if key.rawValue == "colorPicker" {
             let box = GTK4ActionBox()
             handle.actionBox = box
             _ = hop_colorbutton_connect(widget, gtk4ColorSetCallback, Unmanaged.passUnretained(box).toOpaque())
-        } else if kind == .progress {
+        } else if key.rawValue == "progress" {
             handle.isProgress = true
-        } else if kind == .splitView {
+        } else if key.rawValue == "splitView" {
             handle.isSplit = true
-        } else if kind == .tabView {
+        } else if key.rawValue == "tabView" {
             handle.isTabView = true
             handle.actionBox = GTK4ActionBox()  // switch-page signal connected in configureTabs
-        } else if kind == .scroll {
+        } else if key.rawValue == "scroll" {
             handle.isScroll = true
         }
         return handle

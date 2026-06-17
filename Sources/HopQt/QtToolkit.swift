@@ -285,7 +285,7 @@ public final class QtToolkit: AppToolkit {
     public func realize(_ component: any WidgetComponent) -> QtWidget {
         if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
         if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return QtWidget(ptr) }
-        return makeWidget(.vstack)
+        return makeNativeWidget(WidgetKey("vstack"))
     }
 
     public func updateComponent(_ handle: QtWidget, _ component: any WidgetComponent) {
@@ -315,27 +315,27 @@ public final class QtToolkit: AppToolkit {
     }
 
     private func registerNativeCompositeComponents() {
-        for (key, kind) in [("list", WidgetKind.list), ("sidebarList", .sidebarList)] {
+        for key in ["list", "sidebarList"] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? ListComponent)?.spec { configureList(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? ListComponent)?.spec { configureList(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: WidgetKey(key))
         }
-        for (key, kind) in [("outline", WidgetKind.outline), ("sidebarOutline", .sidebarOutline)] {
+        for key in ["outline", "sidebarOutline"] {
             components.register(.init(
-                make: { [unowned self] c in let h = makeWidget(kind); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
+                make: { [unowned self] c in let h = makeNativeWidget(WidgetKey(key)); if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) }; return h },
                 update: { [unowned self] h, c in if let s = (c as? OutlineComponent)?.spec { configureOutline(h, s) } },
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: WidgetKey(key))
         }
         components.register(.init(
-            make: { [unowned self] _ in makeWidget(.splitView) },
+            make: { [unowned self] _ in makeNativeWidget(WidgetKey("splitView")) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("splitView"))
         components.register(.init(
-            make: { [unowned self] _ in makeWidget(.tabView) },
+            make: { [unowned self] _ in makeNativeWidget(WidgetKey("tabView")) },
             update: { _, _ in },
             measure: { [unowned self] h, _, p in measure(h, p) },
             afterChildren: { [unowned self] h, c in if let s = (c as? TabViewComponent)?.spec { configureTabs(h, s) } }
@@ -343,13 +343,13 @@ public final class QtToolkit: AppToolkit {
     }
 
     private func registerContainerComponents() {
-        let containers: [(String, WidgetKind)] = [
-            ("vstack", .vstack), ("hstack", .hstack), ("zstack", .zstack), ("groupBox", .groupBox),
-            ("scroll", .scroll), ("geometry", .geometry), ("lazyStack", .lazyStack), ("spacer", .spacer),
+        let containers: [String] = [
+            "vstack", "hstack", "zstack", "groupBox",
+            "scroll", "geometry", "lazyStack", "spacer",
         ]
-        for (key, kind) in containers {
+        for key in containers {
             components.register(.init(
-                make: { [unowned self] _ in makeWidget(kind) },
+                make: { [unowned self] _ in makeNativeWidget(WidgetKey(key)) },
                 update: { _, _ in },
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: WidgetKey(key))
@@ -358,35 +358,35 @@ public final class QtToolkit: AppToolkit {
 
     private func registerSpecLeafComponents() {
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.datePicker); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("datePicker")); if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? DatePickerComponent)?.spec { configureDatePicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("datePicker"))
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.colorPicker); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("colorPicker")); if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ColorPickerComponent)?.spec { configureColorPicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("colorPicker"))
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.menu); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("menu")); if let m = (c as? MenuComponent)?.content { configureMenu(h, m) }; return h },
             update: { [unowned self] h, c in if let m = (c as? MenuComponent)?.content { configureMenu(h, m) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("menu"))
         components.register(.init(
-            make: { [unowned self] c in let h = makeWidget(.shape); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
+            make: { [unowned self] c in let h = makeNativeWidget(WidgetKey("shape")); if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? ShapeComponent)?.spec { configureShape(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) }
         ), for: WidgetKey("shape"))
     }
 
     private func registerLeafComponents() {
-        let leaves: [(String, WidgetKind)] = [
-            ("label", .label), ("button", .button), ("textField", .textField), ("secureField", .secureField),
-            ("slider", .slider), ("toggle", .toggle), ("progress", .progress), ("separator", .separator),
+        let leaves: [String] = [
+            "label", "button", "textField", "secureField",
+            "slider", "toggle", "progress", "separator",
         ]
-        for (key, kind) in leaves {
+        for key in leaves {
             components.register(.init(
-                make: { [unowned self] component in let handle = makeWidget(kind); applyLeaf(handle, component); return handle },
+                make: { [unowned self] component in let handle = makeNativeWidget(WidgetKey(key)); applyLeaf(handle, component); return handle },
                 update: { [unowned self] handle, component in applyLeaf(handle, component) },
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
             ), for: WidgetKey(key))
@@ -408,7 +408,7 @@ public final class QtToolkit: AppToolkit {
     private func registerPickerComponents() {
         let renderer = ComponentRegistry<QtWidget>.Renderer(
             make: { [unowned self] component in
-                let handle = makeWidget(.picker)
+                let handle = makeNativeWidget(WidgetKey("picker"))
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
                 return handle
             },
@@ -422,7 +422,7 @@ public final class QtToolkit: AppToolkit {
     private func registerImageComponent() {
         components.register(.init(
             make: { [unowned self] component in
-                let handle = makeWidget(.image)
+                let handle = makeNativeWidget(WidgetKey("image"))
                 if let spec = (component as? ImageComponent)?.spec { configureImage(handle, spec) }
                 return handle
             },
@@ -433,39 +433,39 @@ public final class QtToolkit: AppToolkit {
         ), for: WidgetKey("image"))
     }
 
-    public func makeWidget(_ kind: WidgetKind) -> QtWidget {
-        switch kind {
-        case .vstack, .hstack, .zstack, .spacer, .window, .geometry, .lazyStack:
+    public func makeNativeWidget(_ key: WidgetKey) -> QtWidget {
+        switch key.rawValue {
+        case "vstack", "hstack", "zstack", "spacer", "window", "geometry", "lazyStack":
             // Box-model containers are absolute-positioning layers; the layout engine owns geometry.
             let widget = QtWidget(hopqt_fixed_new()!)
             widget.isFixed = true
             return widget
-        case .groupBox:
+        case "groupBox":
             let widget = QtWidget(hopqt_fixed_new()!)
             widget.isFixed = true
             hopqt_widget_make_card(widget.ptr)  // rounded/bordered/filled card chrome
             return widget
-        case .scroll:
+        case "scroll":
             // A real clipping/scrolling viewport; its single content child scrolls within it.
             let widget = QtWidget(hopqt_scrollarea_new()!)
             widget.isScroll = true
             return widget
-        case .label:
+        case "label":
             return QtWidget(hopqt_label_new("")!)
-        case .button:
+        case "button":
             let widget = QtWidget(hopqt_button_new("")!)
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_button_connect(widget.ptr, qtClickCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .textField:
+        case "textField":
             let widget = QtWidget(hopqt_lineedit_new("")!)
             widget.flexibleWidth = true
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_lineedit_connect(widget.ptr, qtChangedCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .secureField:
+        case "secureField":
             let widget = QtWidget(hopqt_lineedit_new("")!)
             hopqt_lineedit_set_password(widget.ptr, 1)  // mask typed characters
             widget.flexibleWidth = true
@@ -473,73 +473,78 @@ public final class QtToolkit: AppToolkit {
             widget.actionBox = box
             hopqt_lineedit_connect(widget.ptr, qtChangedCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .toggle:
+        case "toggle":
             let widget = QtWidget(hopqt_switch_new()!)
             widget.isToggle = true
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_switch_connect(widget.ptr, qtSwitchCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .slider:
+        case "slider":
             let widget = QtWidget(hopqt_slider_new(0, 1)!)
             widget.flexibleWidth = true
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_slider_connect(widget.ptr, qtSliderCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .datePicker:
+        case "datePicker":
             let widget = QtWidget(hopqt_datetime_new()!)
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_datetime_connect(widget.ptr, qtDateCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .colorPicker:
+        case "colorPicker":
             let widget = QtWidget(hopqt_colorwell_new()!)
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_colorwell_connect(widget.ptr, qtColorCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .list, .sidebarList:
+        case "list", "sidebarList":
             let widget = QtWidget(hopqt_list_new()!)
-            if kind == .sidebarList { hopqt_list_set_sidebar(widget.ptr, 1) }  // source-list styling at creation
+            if key.rawValue == "sidebarList" { hopqt_list_set_sidebar(widget.ptr, 1) }  // source-list styling at creation
             widget.actionBox = QtActionBox()  // selection connected in configureList after the model is set
             return widget
-        case .outline, .sidebarOutline:
+        case "outline", "sidebarOutline":
             let widget = QtWidget(hopqt_tree_new()!)
-            if kind == .sidebarOutline { hopqt_tree_set_sidebar(widget.ptr, 1) }  // source-list styling at creation
+            if key.rawValue == "sidebarOutline" { hopqt_tree_set_sidebar(widget.ptr, 1) }  // source-list styling at creation
             widget.actionBox = QtActionBox()  // selection connected in configureOutline
             return widget
-        case .image:
+        case "image":
             let widget = QtWidget(hopqt_imageview_new()!)
             widget.isImage = true
             return widget
-        case .tabView:
+        case "tabView":
             let widget = QtWidget(hopqt_tabwidget_new()!)
             widget.isTabView = true
             widget.actionBox = QtActionBox()  // currentChanged connected in configureTabs
             return widget
-        case .splitView:
+        case "splitView":
             let widget = QtWidget(hopqt_splitter_new()!)
             widget.isSplit = true
             return widget
-        case .shape:
+        case "shape":
             let box = QtActionBox()
             let widget = QtWidget(hopqt_shape_new(qtPaintCallback, Unmanaged.passUnretained(box).toOpaque())!)
             widget.actionBox = box
             widget.isShape = true
             return widget
-        case .menu:
+        case "menu":
             return QtWidget(hopqt_menubutton_new("")!)
-        case .picker:
+        case "picker":
             let widget = QtWidget(hopqt_combo_new()!)
             widget.actionBox = QtActionBox()  // selection signal connected in configurePicker
             return widget
-        case .separator:
+        case "separator":
             return QtWidget(hopqt_separator_new()!)
-        case .progress:
+        case "progress":
             let widget = QtWidget(hopqt_progress_new()!)
             widget.isProgress = true
             widget.flexibleWidth = true
+            return widget
+        default:
+            // Unknown key (e.g. a self-hosting component that reached here without a renderer): a plain layer.
+            let widget = QtWidget(hopqt_fixed_new()!)
+            widget.isFixed = true
             return widget
         }
     }

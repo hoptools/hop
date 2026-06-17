@@ -43,7 +43,7 @@ import Testing
 
 @MainActor @Suite struct StateIdentityTests {
     private func button(_ toolkit: MockToolkit, _ title: String) -> MockWidget? {
-        toolkit.widgets.first { $0.kind == .button && $0.title == title }
+        toolkit.widgets.first { $0.kind == "button" && $0.title == title }
     }
 
     @Test func testNestedStatePersistsAcrossReRender() throws {
@@ -81,7 +81,7 @@ import Testing
     @Test func testSiblingsHaveIndependentState() throws {
         let toolkit = MockToolkit()
         runHopApp(TwoCounters(), toolkit: toolkit, title: "test")
-        let incs = toolkit.widgets.filter { $0.kind == .button && $0.title == "inc" }
+        let incs = toolkit.widgets.filter { $0.kind == "button" && $0.title == "inc" }
         #expect(incs.count == 2)
 
         incs[0].action?()                                     // bump only the first sibling

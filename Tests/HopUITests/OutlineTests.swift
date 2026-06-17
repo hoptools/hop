@@ -41,7 +41,7 @@ private struct OutlineSidebarView: View {
         runHopApp(OutlineSidebarView(), toolkit: toolkit, title: "test")
 
         // In a NavigationSplitView's leading column, the OutlineGroup renders as a source-list tree.
-        let outline = try #require(toolkit.widgets.first { $0.kind == .sidebarOutline })
+        let outline = try #require(toolkit.widgets.first { $0.kind == "sidebarOutline" })
         let spec = try #require(outline.outline)
         #expect(spec.roots.count == 2)
         #expect(spec.roots[0].title == "Controls")
@@ -58,7 +58,7 @@ private struct OutlineSidebarView: View {
         #expect(toolkit.makeCount == 0)  // a selection change rebuilds no widgets
 
         // After the re-render the outline spec carries the selection back down.
-        let updated = try #require((toolkit.widgets.first { $0.kind == .sidebarOutline })?.outline)
+        let updated = try #require((toolkit.widgets.first { $0.kind == "sidebarOutline" })?.outline)
         #expect(updated.selectedID == AnyHashable("slider"))
     }
 
@@ -97,7 +97,7 @@ private struct DisclosureBoundView: View {
         let toolkit = MockToolkit()
         runHopApp(DisclosureBoundView(), toolkit: toolkit, title: "test")
 
-        let header = try #require(toolkit.widgets.first { $0.kind == .button })
+        let header = try #require(toolkit.widgets.first { $0.kind == "button" })
         #expect(header.title == "▸  More")
         #expect(!toolkit.liveLabels().contains("Hidden detail"))  // collapsed: content not mounted
 
