@@ -196,8 +196,9 @@ let package = Package(
 #if os(macOS)
 // The native-SwiftUI build of the demo runs only on Apple platforms (SwiftUI is Apple-only). It
 // compiles the SAME shared ContentView with HOPUI_TOOLKIT_SWIFTUI, importing Apple's SwiftUI instead
-// of HopUI. Grouped with the AppKit (Apple) toolkit selection.
-if toolkitEnabled("appkit") {
+// of HopUI. Included for the AppKit selection (the Apple toolkit) and for its own `HOP_TOOLKIT=swiftui`
+// selection, so CI can build/screenshot the SwiftUI reference in isolation without the AppKit toolkit.
+if toolkitEnabled("appkit") || toolkitEnabled("swiftui") {
     package.products += [
         .executable(name: "hop-demo-native", targets: ["HopDemoNative"]),
     ]

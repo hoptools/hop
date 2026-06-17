@@ -22,6 +22,11 @@
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
+// Full (not just consuming) Input header: defines the TappedEventHandler / DoubleTappedEventHandler
+// delegate constructor templates used by hopwinui_tap_connect. Without it only the `.2.h` forward-decl is
+// pulled in, so the constructor is declared-but-not-defined and Clang rejects instantiating it with a
+// no-linkage local lambda ("used but not defined in this translation unit").
+#include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Markup.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>

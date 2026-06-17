@@ -11,38 +11,120 @@ concurrency:
   cancel-in-progress: true
 
 # The reactive core (HopGraph) and the view-graph/reconciler (HopUI) have no native-toolkit dependency.
-# macOS builds & tests every toolkit (AppKit + GTK4 + Qt) in one job. Linux and Windows split into
-# per-toolkit jobs: `HOP_TOOLKIT=gtk|qt|winui` (read by Package.swift) keeps only that toolkit's targets
-# in the build graph, so each runner installs and exercises ONLY its toolkit — a GTK runner never needs
-# Qt, and a Qt runner never needs GTK. Windows additionally has a WinUI 3 job (the real Windows-native
-# toolkit), which binds XAML controls through the CWinUI C++/WinRT shim (no projection dependency).
+# Every platform splits into per-toolkit jobs driven by `HOP_TOOLKIT` (read by Package.swift), which keeps
+# only that toolkit's targets in the build graph — so each runner installs and exercises ONLY its toolkit
+# (a GTK runner never needs Qt, an AppKit runner never needs GTK). macOS supports four backends — AppKit,
+# the native-SwiftUI reference demo (`HOP_TOOLKIT=swiftui`), GTK4, and Qt — one job each. Linux supports
+# GTK4 + Qt; Windows supports WinUI 3 (the real Windows-native toolkit, bound through the CWinUI C++/WinRT
+# shim) + Qt. The toolkit-independent HopGraph/HopUI test suite runs in each non-reference toolkit job.
 
 jobs:
-  macos:
-    name: macOS (AppKit + GTK4 + Qt)
+  macos-appkit:
+    name: macOS (AppKit)
     runs-on: macos-15
+    env:
+      HOP_TOOLKIT: appkit
     steps:
       - uses: actions/checkout@v6
       - name: Install Swift 6.3.2
         uses: swift-actions/setup-swift@main
         with:
           swift-version: "6.3.2"
-      - name: Install GTK4 and Qt
-        run: brew install gtk4 pkg-config qt
-      - name: Test (all toolkits)
+      # AppKit is part of the macOS SDK, so no toolkit install is needed.
+      - name: Test (AppKit)
         run: swift test
-      - name: Build (all toolkits)
+      - name: Build (AppKit)
         run: swift build
-      # Launch every backend's demo, screenshot each playground, and attach them as an artifact. The
-      # heavy lifting (window capture, per-playground relaunch) lives in scripts/ci so the YAML stays thin.
-      - name: Screenshot playgrounds (AppKit + SwiftUI + GTK4 + Qt)
+      - name: Screenshot playgrounds (AppKit)
         continue-on-error: true
-        run: scripts/ci/screenshot-playgrounds.sh ci-screenshots appkit swiftui gtk4 qt
+        run: scripts/ci/screenshot-playgrounds.sh ci-screenshots appkit
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: screenshots-macos
+          name: screenshots-macos-appkit
+          path: ci-screenshots
+          if-no-files-found: warn
+
+  macos-swiftui:
+    name: macOS (SwiftUI reference)
+    runs-on: macos-15
+    env:
+      HOP_TOOLKIT: swiftui
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Swift 6.3.2
+        uses: swift-actions/setup-swift@main
+        with:
+          swift-version: "6.3.2"
+      # The SwiftUI backend is the reference demo (Apple's SwiftUI, no HopUI toolkit): it only needs to
+      # compile + render. The toolkit-independent HopGraph/HopUI test suite runs in the AppKit/GTK4/Qt jobs.
+      - name: Build (SwiftUI reference demo)
+        run: swift build
+      - name: Screenshot playgrounds (SwiftUI)
+        continue-on-error: true
+        run: scripts/ci/screenshot-playgrounds.sh ci-screenshots swiftui
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-macos-swiftui
+          path: ci-screenshots
+          if-no-files-found: warn
+
+  macos-gtk:
+    name: macOS (GTK4)
+    runs-on: macos-15
+    env:
+      HOP_TOOLKIT: gtk
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Swift 6.3.2
+        uses: swift-actions/setup-swift@main
+        with:
+          swift-version: "6.3.2"
+      - name: Install GTK4
+        run: brew install gtk4 pkg-config
+      - name: Test (GTK4)
+        run: swift test
+      - name: Build (GTK4)
+        run: swift build
+      - name: Screenshot playgrounds (GTK4)
+        continue-on-error: true
+        run: scripts/ci/screenshot-playgrounds.sh ci-screenshots gtk4
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-macos-gtk
+          path: ci-screenshots
+          if-no-files-found: warn
+
+  macos-qt:
+    name: macOS (Qt)
+    runs-on: macos-15
+    env:
+      HOP_TOOLKIT: qt
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Swift 6.3.2
+        uses: swift-actions/setup-swift@main
+        with:
+          swift-version: "6.3.2"
+      - name: Install Qt
+        run: brew install qt
+      - name: Test (Qt)
+        run: swift test
+      - name: Build (Qt)
+        run: swift build
+      - name: Screenshot playgrounds (Qt)
+        continue-on-error: true
+        run: scripts/ci/screenshot-playgrounds.sh ci-screenshots qt
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-macos-qt
           path: ci-screenshots
           if-no-files-found: warn
 
@@ -209,7 +291,7 @@ jobs:
   # gallery still builds from whatever succeeded if some toolkit job failed.
   pages:
     name: Publish screenshot gallery
-    needs: [macos, linux-gtk, linux-qt, windows-winui, windows-qt]
+    needs: [macos-appkit, macos-swiftui, macos-gtk, macos-qt, linux-gtk, linux-qt, windows-winui, windows-qt]
     if: ${{ always() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
