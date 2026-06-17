@@ -44,9 +44,40 @@ Write-Host "Playgrounds ($($pgs.Count)): $($pgs -join ', ')"
 $bin = (swift build --show-bin-path).Trim()
 Write-Host "Binaries: $bin"
 
+# Uniform window size for screenshots; the Qt/AppKit/native backends honor HOP_WINDOW_SIZE at window
+# creation (1280x800 is the standard Mac marketing size). WinUI keeps its shim default.
+if (-not $env:HOP_WINDOW_SIZE) { $env:HOP_WINDOW_SIZE = "1280x800" }
+Write-Host "Window size: $($env:HOP_WINDOW_SIZE)"
+
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
+# Capture JUST a window (not the whole desktop): PrintWindow renders the window's own content to a
+# bitmap, so it works even when the window is larger than the runner's screen or partly off-screen.
+Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+public static class HopWin {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
+    public static Bitmap Capture(IntPtr hWnd) {
+        RECT r; if (!GetWindowRect(hWnd, out r)) return null;
+        int w = r.Right - r.Left, h = r.Bottom - r.Top;
+        if (w <= 0 || h <= 0) return null;
+        Bitmap bmp = new Bitmap(w, h);
+        using (Graphics g = Graphics.FromImage(bmp)) {
+            IntPtr hdc = g.GetHdc();
+            PrintWindow(hWnd, hdc, 2); // PW_RENDERFULLCONTENT - needed for GPU/DWM-composited windows
+            g.ReleaseHdc(hdc);
+        }
+        return bmp;
+    }
+}
+"@
+
+# Whole-screen fallback when a window handle never appears.
 function Capture-Screen($path) {
     $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
     $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
@@ -54,6 +85,15 @@ function Capture-Screen($path) {
     $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose(); $bmp.Dispose()
+}
+
+# Capture an app's main window by handle; returns $true on success.
+function Capture-Window([IntPtr]$hWnd, $path) {
+    $bmp = [HopWin]::Capture($hWnd)
+    if ($null -eq $bmp) { return $false }
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Dispose()
+    return $true
 }
 
 # The WinUI demo is a framework-dependent, *unpackaged* Windows App SDK app, so launching it needs two
@@ -101,8 +141,17 @@ foreach ($tk in $Toolkits) {
         $proc = $null
         try {
             $proc = Start-Process -FilePath $exePath -PassThru -ErrorAction Stop
-            Start-Sleep -Seconds 4
-            Capture-Screen $out
+            # Wait for the app's main window to appear, then capture just it (fall back to whole screen).
+            $hWnd = [IntPtr]::Zero
+            for ($i = 0; $i -lt 40; $i++) {
+                Start-Sleep -Milliseconds 250
+                $proc.Refresh()
+                if ($proc.MainWindowHandle -ne [IntPtr]::Zero) { $hWnd = $proc.MainWindowHandle; break }
+            }
+            Start-Sleep -Seconds 1   # let it finish drawing
+            $shot = $false
+            if ($hWnd -ne [IntPtr]::Zero) { $shot = Capture-Window $hWnd $out }
+            if (-not $shot) { Capture-Screen $out }
             if (Test-Path $out) { Write-Host "  OK $tk / $pg"; $ok++ } else { Write-Host "  FAIL $tk / $pg"; $bad++ }
         } catch {
             Write-Host "  FAIL $tk / $pg : $_"; $bad++

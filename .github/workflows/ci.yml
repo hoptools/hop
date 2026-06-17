@@ -58,7 +58,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y libgtk-4-dev pkg-config \
-            xvfb x11-utils x11-apps imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme
+            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme
       - name: Test (GTK4)
         run: swift test
       - name: Build (GTK4)
@@ -88,7 +88,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y qt6-base-dev \
-            xvfb x11-utils x11-apps imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0
+            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0
       - name: Test (Qt)
         run: swift test
       - name: Build (Qt)
@@ -202,3 +202,36 @@ jobs:
           name: screenshots-windows-qt
           path: ci-screenshots
           if-no-files-found: warn
+
+  # After every platform/toolkit job, collect their screenshot artifacts into one static gallery (each
+  # playground shown side-by-side across backends) and publish it to GitHub Pages. Requires the repo's
+  # Pages source to be set to "GitHub Actions" (Settings → Pages). Runs on main only; `always()` so the
+  # gallery still builds from whatever succeeded if some toolkit job failed.
+  pages:
+    name: Publish screenshot gallery
+    needs: [macos, linux-gtk, linux-qt, windows-winui, windows-qt]
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download all screenshot artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: screenshots-*
+          path: artifacts
+      - name: Build gallery
+        run: python3 scripts/ci/build-gallery.py artifacts _site --title "HopUI · Playground Screenshots"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

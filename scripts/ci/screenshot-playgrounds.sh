@@ -52,6 +52,11 @@ echo "Backends: ${TOOLKITS[*]}"
 echo "Playgrounds (${#PGS[@]}): ${PGS[*]}"
 echo "Binaries:  $BIN"
 
+# Uniform window size for screenshots — each backend's primary window honors HOP_WINDOW_SIZE (see
+# hopRequestedWindowSize() / HopDemoApp's .defaultSize). 1280x800 is the standard Mac marketing size.
+export HOP_WINDOW_SIZE="${HOP_WINDOW_SIZE:-1280x800}"
+echo "Window size: $HOP_WINDOW_SIZE"
+
 OS="$(uname -s)"
 
 # ---- per-OS capture setup -------------------------------------------------------------------------
@@ -82,7 +87,8 @@ if [ "$OS" = "Darwin" ]; then
 elif [ "$OS" = "Linux" ]; then
     export DISPLAY="${DISPLAY:-:99}"
     if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
-        Xvfb "$DISPLAY" -screen 0 1100x900x24 -nolisten tcp >/tmp/hop-xvfb.log 2>&1 &
+        # Virtual display larger than the window, so the (undecorated, top-left-mapped) window never clips.
+        Xvfb "$DISPLAY" -screen 0 1920x1200x24 -nolisten tcp >/tmp/hop-xvfb.log 2>&1 &
         XVFB_PID=$!
         trap '[ -n "${XVFB_PID:-}" ] && kill "$XVFB_PID" 2>/dev/null || true' EXIT
         for _ in $(seq 1 40); do xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break; sleep 0.25; done
@@ -92,16 +98,32 @@ elif [ "$OS" = "Linux" ]; then
     export QT_QPA_PLATFORM=xcb QT_OPENGL=software LIBGL_ALWAYS_SOFTWARE=1
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/hop-xdg}"; mkdir -p "$XDG_RUNTIME_DIR"
 
+    # The largest top-level window owned by a pid (the app's main window) — via xdotool + _NET_WM_PID.
+    largest_window_for_pid() {
+        local pid="$1" wid best=0 chosen="" WIDTH HEIGHT area
+        for wid in $(xdotool search --pid "$pid" 2>/dev/null); do
+            WIDTH=""; HEIGHT=""
+            eval "$(xdotool getwindowgeometry --shell "$wid" 2>/dev/null)"   # sets WIDTH / HEIGHT / ...
+            case "${WIDTH:-x}${HEIGHT:-x}" in *[!0-9]*) continue;; esac
+            area=$(( WIDTH * HEIGHT ))
+            if [ "$area" -gt "$best" ]; then best="$area"; chosen="$wid"; fi
+        done
+        echo "$chosen"
+    }
+
     capture_one() {  # <exe> <playground> <outfile>
         local exe="$1" pg="$2" out="$3"
         HOP_PLAYGROUND_ID="$pg" "$BIN/$exe" >/dev/null 2>&1 &
-        local pid=$!
-        sleep 4   # give the window time to map + draw (no WM; we capture the root)
-        # ImageMagick 6 uses `import`/`convert`; IM7 uses `magick import`/`magick`. Try both, then xwd.
-        import -display "$DISPLAY" -window root "$out" 2>/dev/null \
-            || magick import -display "$DISPLAY" -window root "$out" 2>/dev/null \
-            || { xwd -root -display "$DISPLAY" -silent 2>/dev/null | convert xwd:- "$out" 2>/dev/null; } \
-            || { xwd -root -display "$DISPLAY" -silent 2>/dev/null | magick xwd:- "$out" 2>/dev/null; }
+        local pid=$! wid=""
+        for _ in $(seq 1 40); do sleep 0.25; wid="$(largest_window_for_pid "$pid")"; [ -n "$wid" ] && break; done
+        sleep 1.5   # let it finish drawing
+        if [ -n "$wid" ]; then
+            # Capture JUST the app window (ImageMagick 6 `import` / IM7 `magick import`).
+            import -window "$wid" "$out" 2>/dev/null || magick import -window "$wid" "$out" 2>/dev/null
+        else
+            # Fallback: whole virtual display.
+            import -window root "$out" 2>/dev/null || magick import -window root "$out" 2>/dev/null
+        fi
         kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
         [ -s "$out" ]
     }

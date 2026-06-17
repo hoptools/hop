@@ -104,7 +104,9 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
         let window = hop_window_new(appPointer.raw)!
         context.toolkit.window = window
         hop_window_set_title(window, context.title)
-        hop_window_set_default_size(window, 820, 760)
+        // Honor HOP_WINDOW_SIZE (uniform screenshot size) for the primary window; default 820×760.
+        let requested = hopRequestedWindowSize()
+        hop_window_set_default_size(window, Int32(requested?.width ?? 820), Int32(requested?.height ?? 760))
 
         // An absolute-positioning GtkFixed fills the window; the layout engine sizes/positions the
         // mounted root within it.

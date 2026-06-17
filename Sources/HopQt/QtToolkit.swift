@@ -1038,6 +1038,8 @@ public final class QtToolkit: AppToolkit {
         installQtMainExecutor()
         let window = hopqt_window_new(title)!
         self.window = window
+        // Honor HOP_WINDOW_SIZE (uniform screenshot size) for the primary window.
+        if let size = hopRequestedWindowSize() { hopqt_widget_resize(window, Int32(size.width), Int32(size.height)) }
 
         // An absolute-positioning central widget fills the window; the layout engine sizes/positions the
         // mounted root within it, and reports resizes so the runtime can re-lay-out.

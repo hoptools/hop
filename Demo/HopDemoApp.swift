@@ -13,6 +13,19 @@ import SwiftUI
 #else
 import HopUI
 #endif
+import Foundation  // ProcessInfo (HOP_WINDOW_SIZE)
+
+#if HOPUI_TOOLKIT_SWIFTUI
+/// The native SwiftUI window's initial size, honoring HOP_WINDOW_SIZE (uniform screenshot size); 820×760
+/// otherwise. Mirrors the HopUI backends' `hopRequestedWindowSize()` so every toolkit opens the same size.
+private var demoWindowSize: CGSize {
+    if let raw = ProcessInfo.processInfo.environment["HOP_WINDOW_SIZE"] {
+        let p = raw.lowercased().split(separator: "x")
+        if p.count == 2, let w = Double(p[0]), let h = Double(p[1]), w > 0, h > 0 { return CGSize(width: w, height: h) }
+    }
+    return CGSize(width: 820, height: 760)
+}
+#endif
 
 #if HOPUI_TOOLKIT_SWIFTUI
 @main
@@ -27,6 +40,9 @@ struct HopDemoApp: App {
             ContentView()
                 .environment(model)
         }
+        #if HOPUI_TOOLKIT_SWIFTUI
+        .defaultSize(width: demoWindowSize.width, height: demoWindowSize.height)
+        #endif
         .commands {
             CommandMenu("Appearance") {
                 Button("Toggle Light / Dark") { model.toggleColorScheme() }

@@ -1267,15 +1267,18 @@ public final class AppKitToolkit: AppToolkit {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
 
+        // Honor HOP_WINDOW_SIZE (uniform screenshot size) for the primary window; default 820×760.
+        let requested = hopRequestedWindowSize()
+        let winW = CGFloat(requested?.width ?? 820), winH = CGFloat(requested?.height ?? 760)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 820, height: 760),
+            contentRect: NSRect(x: 0, y: 0, width: winW, height: winH),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = title
         // A flipped content view so the layout engine's top-left origin maps directly to AppKit frames.
-        let container = FlippedView(frame: NSRect(x: 0, y: 0, width: 820, height: 760))
+        let container = FlippedView(frame: NSRect(x: 0, y: 0, width: winW, height: winH))
         window.contentView = container
         self.window = window
 

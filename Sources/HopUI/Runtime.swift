@@ -3,6 +3,17 @@
 
 import HopGraph
 import Observation
+import Foundation  // ProcessInfo (HOP_WINDOW_SIZE)
+
+/// The primary window's initial size requested via `HOP_WINDOW_SIZE=WIDTHxHEIGHT` (e.g. `1280x800`), or
+/// nil when unset/malformed. Used to make CI/marketing screenshots a uniform size across every backend;
+/// each toolkit's `run` honors it when creating its primary window.
+public func hopRequestedWindowSize() -> (width: Double, height: Double)? {
+    guard let raw = ProcessInfo.processInfo.environment["HOP_WINDOW_SIZE"] else { return nil }
+    let parts = raw.lowercased().split(separator: "x")
+    guard parts.count == 2, let w = Double(parts[0]), let h = Double(parts[1]), w > 0, h > 0 else { return nil }
+    return (w, h)
+}
 
 /// Boots a HopUI ``App``: enumerates its scenes, registers the `openWindow` action, and runs the
 /// primary `WindowGroup` window through the given toolkit's main loop.
