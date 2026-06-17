@@ -56,12 +56,45 @@ function Capture-Screen($path) {
     $g.Dispose(); $bmp.Dispose()
 }
 
+# The WinUI demo is a framework-dependent, *unpackaged* Windows App SDK app, so launching it needs two
+# things the build doesn't provide on its own:
+#   1. hop-demo-winui.exe statically imports Microsoft.WindowsAppRuntime.Bootstrap.dll. setup-winui.ps1
+#      stages that DLL into .winui/, but it isn't next to the freshly-built exe, so the loader fails with
+#      "Microsoft.WindowsAppRuntime.Bootstrap.dll was not found". Copy it next to the exe (searched first).
+#   2. At startup the CWinUI shim calls MddBootstrapInitialize2(0x00010006, …) to load the *installed*
+#      Windows App Runtime 1.6 framework; with OnNoMatch_ShowUI it pops an install dialog if it's absent.
+#      Install the 1.6 runtime so the bootstrapper succeeds and the real UI renders.
+function Ensure-WinUIRuntime($bin) {
+    $boot = "Microsoft.WindowsAppRuntime.Bootstrap.dll"
+    $src = Join-Path (Get-Location) ".winui\$boot"
+    if (Test-Path $src) {
+        Copy-Item -Force $src (Join-Path $bin $boot)
+        Write-Host "WinUI: copied $boot next to the demo exe"
+    } else {
+        Write-Host "WinUI: WARNING $src not found - run scripts/setup-winui.ps1 first"
+    }
+
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+    # Stable-channel redistributable; minVersion is 0 in the shim so any installed 1.6.x satisfies it.
+    $url = "https://aka.ms/windowsappsdk/1.6/latest/windowsappruntimeinstall-$arch.exe"
+    $dst = Join-Path $env:TEMP "windowsappruntimeinstall-$arch.exe"
+    Write-Host "WinUI: ensuring Windows App Runtime 1.6 ($arch) via $url"
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing
+        & $dst --quiet
+        Write-Host "WinUI: runtime installer exit code $LASTEXITCODE"
+    } catch {
+        Write-Host "WinUI: WARNING failed to install Windows App Runtime: $_"
+    }
+}
+
 $ok = 0; $bad = 0
 foreach ($tk in $Toolkits) {
     $exe = Exec-For $tk
     if (-not $exe) { Write-Host "unknown toolkit: $tk"; continue }
     $exePath = Join-Path $bin "$exe.exe"
     if (-not (Test-Path $exePath)) { Write-Host "skip ${tk}: $exePath not built"; continue }
+    if ($tk -eq "winui") { Ensure-WinUIRuntime $bin }
     foreach ($pg in $pgs) {
         $env:HOP_PLAYGROUND_ID = $pg
         $out = Join-Path $OutDir "$($tk)__$($pg).png"
