@@ -23,9 +23,9 @@ JOB_PLATFORM = {
     "screenshots-windows-winui": "Windows",
 }
 TOOLKIT_NAME = {"appkit": "AppKit", "swiftui": "SwiftUI", "gtk4": "GTK4", "qt": "Qt", "winui": "WinUI"}
-# Stable left-to-right order of the per-playground variants.
-VARIANT_ORDER = [("macOS", "appkit"), ("macOS", "swiftui"), ("macOS", "gtk4"), ("macOS", "qt"),
-                 ("Linux", "gtk4"), ("Linux", "qt"), ("Windows", "qt"), ("Windows", "winui")]
+# Stable left-to-right (then top-to-bottom, in the 2-col grid) order of the per-playground variants.
+VARIANT_ORDER = [("macOS", "swiftui"), ("macOS", "appkit"), ("macOS", "qt"), ("macOS", "gtk4"),
+                 ("Linux", "qt"), ("Linux", "gtk4"), ("Windows", "qt"), ("Windows", "winui")]
 
 
 def prettify(pg):
@@ -130,8 +130,10 @@ nav a { color:var(--muted); text-decoration:none; }
 nav a:hover { color:var(--fg); }
 section { padding:24px; border-top:1px solid var(--line); }
 h2 { margin:0 0 16px; font-size:18px; }
-.row { display:flex; flex-wrap:wrap; gap:18px; }
-figure { margin:0; width:380px; max-width:100%; background:var(--card); border:1px solid var(--line);
+/* Always two columns; each cell (and its screenshot) grows with the window. minmax(0,1fr) lets cells
+   shrink below the image's intrinsic width instead of overflowing the grid. */
+.row { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; }
+figure { margin:0; min-width:0; background:var(--card); border:1px solid var(--line);
          border-radius:10px; overflow:hidden; }
 figure img { display:block; width:100%; height:auto; background:#fff; }
 figcaption { padding:8px 12px; font-size:13px; color:var(--muted); }

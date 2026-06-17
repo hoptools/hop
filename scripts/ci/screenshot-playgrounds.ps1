@@ -72,6 +72,32 @@ public static class HopWin {
     delegate bool EnumWindowsProc(IntPtr h, IntPtr lp);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct DEVMODE {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+        public ushort dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+        public uint dmFields;
+        public int dmPositionX, dmPositionY; public uint dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+        public ushort dmLogPixels; public uint dmBitsPerPel, dmPelsWidth, dmPelsHeight;
+        public uint dmDisplayFlags, dmDisplayFrequency, dmICMMethod, dmICMIntent, dmMediaType;
+        public uint dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+    }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int EnumDisplaySettings(string dev, int mode, ref DEVMODE dm);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int ChangeDisplaySettings(ref DEVMODE dm, int flags);
+    // Enlarge the desktop so a 1280x800 window fits (runners default to 1024x768, which would clip a
+    // screen-region capture). Returns the ChangeDisplaySettings result (0 == DISP_CHANGE_SUCCESSFUL).
+    public static int SetResolution(int w, int h) {
+        DEVMODE dm = new DEVMODE();
+        dm.dmDeviceName = new string(' ', 32); dm.dmFormName = new string(' ', 32);
+        dm.dmSize = (ushort)Marshal.SizeOf(typeof(DEVMODE));
+        if (EnumDisplaySettings(null, -1, ref dm) == 0) return -999;   // ENUM_CURRENT_SETTINGS
+        dm.dmPelsWidth = (uint)w; dm.dmPelsHeight = (uint)h;
+        dm.dmFields = 0x80000 | 0x100000;                              // DM_PELSWIDTH | DM_PELSHEIGHT
+        return ChangeDisplaySettings(ref dm, 0);
+    }
+
     public static int[] WindowSize(IntPtr h) {
         RECT r;
         if (!GetWindowRect(h, out r)) return new int[] { 0, 0 };
@@ -106,17 +132,23 @@ public static class HopWin {
 # window is a single flat color (1), while any real page (the sidebar tree alone has dozens) blows past
 # the threshold. Cheap (early-exits) and far more reliable than a fixed sleep for "did it draw yet".
 function Test-Blank($bmp) {
+    # Sample the CONTENT area only — skip the top ~12% (title bar / window chrome) and a thin border — so a
+    # window that drew only its frame counts as blank too. A real page (sidebar + content) has dozens of
+    # colors here; an unrendered/empty window has ~1.
     $seen = @{}
-    $sx = [Math]::Max(1, [int]($bmp.Width / 24))
-    $sy = [Math]::Max(1, [int]($bmp.Height / 24))
-    for ($y = 0; $y -lt $bmp.Height; $y += $sy) {
-        for ($x = 0; $x -lt $bmp.Width; $x += $sx) {
+    $x0 = [int]($bmp.Width * 0.02); $y0 = [int]($bmp.Height * 0.12)
+    $x1 = $bmp.Width - $x0;         $y1 = $bmp.Height - [int]($bmp.Height * 0.02)
+    if ($x1 -le $x0 -or $y1 -le $y0) { return $true }
+    $sx = [Math]::Max(1, [int](($x1 - $x0) / 28))
+    $sy = [Math]::Max(1, [int](($y1 - $y0) / 28))
+    for ($y = $y0; $y -lt $y1; $y += $sy) {
+        for ($x = $x0; $x -lt $x1; $x += $sx) {
             $c = $bmp.GetPixel($x, $y)
             $seen[($c.R -shl 16) -bor ($c.G -shl 8) -bor $c.B] = $true
-            if ($seen.Count -ge 5) { return $false }   # enough variety -> real content
+            if ($seen.Count -ge 6) { return $false }   # enough variety -> real content
         }
     }
-    return $true   # < 5 distinct colors across the whole grid -> effectively blank
+    return $true   # < 6 distinct content colors -> effectively blank (or chrome-only)
 }
 
 # PrintWindow into a PowerShell-side bitmap (works even when the window is off-screen / larger than the
@@ -132,8 +164,9 @@ function Grab-PrintWindow([IntPtr]$hWnd) {
     return $bmp
 }
 
-# Copy the window's on-screen rectangle (clamped to the virtual screen) — a fallback for the rare window
-# whose composited content PrintWindow can't read; needs the window foregrounded + on-screen (done below).
+# Copy the window's on-screen rectangle (clamped to the virtual screen). This reads the real DWM-composited
+# pixels, so it captures Qt/WinUI content that PrintWindow can return blank for — the primary method below.
+# Needs the window foregrounded + on-screen (handled in Capture-Window; resolution bumped at startup).
 function Grab-ScreenRegion([IntPtr]$hWnd) {
     $r = [HopWin]::WindowRect($hWnd); $x = $r[0]; $y = $r[1]; $w = $r[2]; $h = $r[3]
     if ($w -le 0 -or $h -le 0) { return $null }
@@ -163,14 +196,17 @@ function Capture-Window([System.Diagnostics.Process]$proc, $path) {
     }
     if ($hWnd -eq [IntPtr]::Zero) { return $false }
 
+    [void][HopWin]::ShowWindow($hWnd, 9)            # SW_RESTORE (un-minimize if needed)
     [void][HopWin]::ShowWindow($hWnd, 5)            # SW_SHOW
     [void][HopWin]::SetWindowPos($hWnd, [IntPtr]::Zero, 0, 0, 0, 0, (0x0001 -bor 0x0040))  # HWND_TOP, NOSIZE|SHOWWINDOW
     [void][HopWin]::SetForegroundWindow($hWnd)
 
     for ($a = 0; $a -lt 20; $a++) {                 # up to ~12s of redraw attempts
         Start-Sleep -Milliseconds 600
-        # PrintWindow first (works off-screen / for composited content); screen-region only if it's blank.
-        foreach ($grab in 'Grab-PrintWindow', 'Grab-ScreenRegion') {
+        # Screen-region first — it reads the real DWM-composited pixels, which reliably captures Qt/WinUI
+        # content (PrintWindow returns blank for some composited windows); PrintWindow is the off-screen
+        # fallback. Either way we only keep a non-blank result.
+        foreach ($grab in 'Grab-ScreenRegion', 'Grab-PrintWindow') {
             $bmp = & $grab $hWnd
             if ($null -eq $bmp) { continue }
             $blank = Test-Blank $bmp
@@ -214,6 +250,12 @@ function Ensure-WinUIRuntime($bin) {
         Write-Host "WinUI: WARNING failed to install Windows App Runtime: $_"
     }
 }
+
+# Enlarge the desktop so the window fits fully on-screen for the screen-region capture (runners default to
+# 1024x768, which would clip a 1280x800 window). Best-effort: a non-zero result just means we capture the
+# clamped (still non-blank) portion.
+$res = [HopWin]::SetResolution(1920, 1080)
+Write-Host "Display resolution -> 1920x1080 (result $res; 0 = ok)"
 
 $ok = 0; $bad = 0
 foreach ($tk in $Toolkits) {
