@@ -131,6 +131,20 @@ public struct ContainerComponent: WidgetComponent {
     public let widgetKey: WidgetKey
     public let role: WidgetRole
     public init(_ key: WidgetKey, role: WidgetRole) { self.widgetKey = key; self.role = role }
+
+    /// A plain vertical stack — the common shape of HopUI's internal wrapper nodes (transparent
+    /// containers the framework inserts around content). `spacing`/`alignment` flow into the layout role.
+    public static func vstack(spacing: Double? = nil, alignment: Alignment = .center) -> ContainerComponent {
+        ContainerComponent(WidgetKey("vstack"), role: .stack(axis: .vertical, spacing: spacing, alignment: alignment))
+    }
+    /// A plain horizontal stack.
+    public static func hstack(spacing: Double? = nil, alignment: Alignment = .center) -> ContainerComponent {
+        ContainerComponent(WidgetKey("hstack"), role: .stack(axis: .horizontal, spacing: spacing, alignment: alignment))
+    }
+    /// A plain overlay (z-)stack.
+    public static func zstack(alignment: Alignment = .center) -> ContainerComponent {
+        ContainerComponent(WidgetKey("zstack"), role: .zstack(alignment: alignment))
+    }
 }
 
 // MARK: - Native composite components (role `.native`: the widget arranges its own internals)

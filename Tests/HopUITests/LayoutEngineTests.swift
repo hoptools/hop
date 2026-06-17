@@ -10,7 +10,7 @@ import Testing
 @MainActor @Suite struct LayoutEngineTests {
     /// A label's intrinsic size, matching the MockToolkit's measure: `text.count * 8 + 8` wide, 20 tall.
     private static func measure(_ node: RenderNode, _ proposal: ProposedViewSize) -> CGSize {
-        if node.kind == .label { return CGSize(width: Double((node.patch.text ?? "").count) * 8 + 8, height: 20) }
+        if node.component.widgetKey.rawValue == "label" { return CGSize(width: Double((node.patch.text ?? "").count) * 8 + 8, height: 20) }
         return proposal.resolved(.zero)
     }
 
@@ -24,13 +24,13 @@ import Testing
             setFrame: { node, rect in frames[node.id] = rect },
             sizeOf: { paneSizes[$0.id] ?? .zero })
 
-        let sidebar = RenderNode(id: "sidebar", kind: .vstack, children: [
-            RenderNode(id: "srow", kind: .label, patch: WidgetPatch(text: "Item")),
+        let sidebar = RenderNode(id: "sidebar", component: ContainerComponent.vstack(), children: [
+            RenderNode(id: "srow", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "Item")),
         ])
-        let detail = RenderNode(id: "detail", kind: .vstack, children: [
-            RenderNode(id: "dlabel", kind: .label, patch: WidgetPatch(text: "Detail")),
+        let detail = RenderNode(id: "detail", component: ContainerComponent.vstack(), children: [
+            RenderNode(id: "dlabel", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "Detail")),
         ])
-        let split = RenderNode(id: "split", kind: .splitView, children: [sidebar, detail])
+        let split = RenderNode(id: "split", component: SplitViewComponent(), children: [sidebar, detail])
 
         engine.place(split, CGRect(x: 0, y: 0, width: 800, height: 600))
 
@@ -52,13 +52,13 @@ import Testing
             setFrame: { node, rect in frames[node.id] = rect },
             sizeOf: { _ in CGSize(width: 400, height: 300) })  // single pane size
 
-        let pane = RenderNode(id: "pane", kind: .vstack, children: [
-            RenderNode(id: "row", kind: .hstack, patch: WidgetPatch(spacing: 0), children: [
-                RenderNode(id: "a", kind: .label, patch: WidgetPatch(text: "A")),
-                RenderNode(id: "b", kind: .label, patch: WidgetPatch(text: "B")),
+        let pane = RenderNode(id: "pane", component: ContainerComponent.vstack(), children: [
+            RenderNode(id: "row", component: ContainerComponent.hstack(spacing: 0), patch: WidgetPatch(spacing: 0), children: [
+                RenderNode(id: "a", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "A")),
+                RenderNode(id: "b", component: PrimitiveLeafComponent(WidgetKey("label")), patch: WidgetPatch(text: "B")),
             ]),
         ])
-        let split = RenderNode(id: "split", kind: .splitView, children: [pane])
+        let split = RenderNode(id: "split", component: SplitViewComponent(), children: [pane])
         engine.place(split, CGRect(x: 0, y: 0, width: 400, height: 300))
 
         // Inside the pane: a 0-spacing HStack lays "A" (16) then "B" (16) at x = 0 and 16.

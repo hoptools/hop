@@ -54,16 +54,17 @@ public struct ScrollView<Content: View>: View, PrimitiveView {
         defer { ScrollContextStore.current = saved }
 
         let childNodes = evaluate(content(), context.appending(0))
-        let content = childNodes.first ?? RenderNode(id: context.id + ".empty", kind: .vstack)
+        let content = childNodes.first ?? RenderNode(id: context.id + ".empty", component: ContainerComponent.vstack())
         // Wrap the content in a top-leading container that becomes the scroll's document/viewport child.
         // The native scroll viewports (NSScrollView / GtkViewport) pin their child at origin (0,0), so any
         // outer `.padding()` on `content` (which would otherwise offset the document view and be dropped)
         // is preserved here as an inset *within* this wrapper.
-        let child = RenderNode(id: context.id + ".content", kind: .zstack, children: [content],
+        let child = RenderNode(id: context.id + ".content", component: ContainerComponent.zstack(alignment: .topLeading), children: [content],
                                layout: LayoutInfo(alignment: .topLeading))
 
-        return RenderNode(id: context.id, kind: .scroll, children: [child],
+        return RenderNode(id: context.id,
                           component: ContainerComponent(WidgetKey("scroll"), role: .scroll(axis: axis)),
+                          children: [child],
                           layout: LayoutInfo(scrollAxis: axis),
                           onGeometry: { size in
                               if size != viewport { graph.setValue(size, for: viewportSource); GraphContext.scheduleFlush() }
@@ -139,9 +140,11 @@ private func makeLazyNode<Content: View>(_ context: RenderContext, axis: Axis, s
 
     // Non-ForEach content can't be virtualized by index; fall back to an eager stack (still correct).
     guard let forEach = contentView as? AnyForEach else {
-        let kind: WidgetKind = axis == .vertical ? .vstack : .hstack
         let children = evaluate(contentView, context.appending(0))
-        return RenderNode(id: context.id, kind: kind, patch: WidgetPatch(spacing: spacing),
+        let fallback = axis == .vertical
+            ? ContainerComponent.vstack(spacing: spacing, alignment: alignment)
+            : ContainerComponent.hstack(spacing: spacing, alignment: alignment)
+        return RenderNode(id: context.id, component: fallback, patch: WidgetPatch(spacing: spacing),
                           children: children, layout: LayoutInfo(alignment: alignment))
     }
 
@@ -180,10 +183,11 @@ private func makeLazyNode<Content: View>(_ context: RenderContext, axis: Axis, s
         }
     }
 
-    return RenderNode(id: context.id, kind: .lazyStack, children: rows,
+    return RenderNode(id: context.id,
                       component: ContainerComponent(WidgetKey("lazyStack"),
                           role: .lazyStack(LazyInfo(axis: axis, rowExtent: rowExtent, spacing: spacing, totalCount: count),
                                            alignment: alignment)),
+                      children: rows,
                       layout: LayoutInfo(alignment: alignment,
                                          lazy: LazyInfo(axis: axis, rowExtent: rowExtent,
                                                         spacing: spacing, totalCount: count)),

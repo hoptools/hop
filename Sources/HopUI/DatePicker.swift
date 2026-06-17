@@ -145,8 +145,8 @@ struct _DatePickerControl: View, PrimitiveView {
                                   components: components, style: style) { binding.wrappedValue = $0 }
         var patch = WidgetPatch()
         patch.accessibilityLabel = title   // cross-cutting; applied alongside the component
-        return RenderNode(id: context.id, kind: .datePicker, patch: patch,
-                          component: DatePickerComponent(spec: spec))
+        return RenderNode(id: context.id, component: DatePickerComponent(spec: spec),
+                          patch: patch)
     }
 }
 

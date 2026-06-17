@@ -22,7 +22,7 @@ struct _PreferredColorSchemeModifier<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let nodes = evaluate(content, context.appending(0))
-        var node = nodes.count == 1 ? nodes[0] : RenderNode(id: context.id, kind: .vstack, children: nodes)
+        var node = nodes.count == 1 ? nodes[0] : RenderNode(id: context.id, component: ContainerComponent.vstack(), children: nodes)
         // Attach as a preference, collected up the tree by `collectWindowPreferences` (outermost wins).
         var prefs = node.preferences ?? NodePreferences()
         prefs.preferredColorScheme = scheme

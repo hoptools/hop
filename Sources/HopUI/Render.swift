@@ -289,39 +289,12 @@ extension WidgetPatch {
 /// toolkit-agnostic intermediate representation the reconciler diffs.
 public struct RenderNode {
     public let id: String
-    public let kind: WidgetKind
     public var patch: WidgetPatch
     public var children: [RenderNode]
-    /// Primary action for interactive widgets (e.g. a button click). Not part of equality.
-    public var action: (@MainActor () -> Void)?
-    /// Text-change handler for editable widgets (e.g. a text field). Not part of equality.
-    public var onChange: (@MainActor (String) -> Void)?
-    /// Numeric-change handler for value widgets (e.g. a slider). Not part of equality.
-    public var onChangeDouble: (@MainActor (Double) -> Void)?
-    /// Boolean-change handler for `.toggle` widgets. Not part of equality.
-    public var onChangeBool: (@MainActor (Bool) -> Void)?
-    /// Lazy list configuration for `.list` nodes. Not part of equality.
-    public var list: ListSpec?
-    /// Vector-drawing configuration for `.shape` nodes. Not part of equality.
-    public var shape: ShapeSpec?
-    /// Drop-down contents for `.menu` nodes. Not part of equality.
-    public var menu: MenuContent?
-    /// Selection-popup configuration for `.picker` nodes. Not part of equality.
-    public var picker: PickerSpec?
-    /// Date/time configuration for `.datePicker` nodes. Not part of equality.
-    public var datePicker: DatePickerSpec?
-    /// Color configuration for `.colorPicker` nodes. Not part of equality.
-    public var colorPicker: ColorPickerSpec?
     /// File-open-panel presentation attached via `.fileImporter`. Not part of equality.
     public var fileImporter: FileImporterSpec?
     /// File-save-panel presentation attached via `.fileExporter`. Not part of equality.
     public var fileExporter: FileExporterSpec?
-    /// Tree configuration for `.outline`/`.sidebarOutline` nodes. Not part of equality.
-    public var outline: OutlineSpec?
-    /// Image configuration for `.image` nodes. Not part of equality.
-    public var image: ImageSpec?
-    /// Tab configuration for `.tabView` nodes. Not part of equality.
-    public var tabs: TabSpec?
     /// Preferences this node contributes up the tree (`.toolbar`/`.preferredColorScheme`/
     /// `.navigationTitle`/`.navigationDestination`). Collected by a tree walk. Not part of equality.
     public var preferences: NodePreferences?
@@ -353,7 +326,7 @@ public struct RenderNode {
     var compositeRef: CompositeNode?
     /// The open widget component — the sole description the reconciler and layout engine use (realize/update
     /// via the toolkit's component path, role via `component.role`, reuse-match via `component.widgetKey`).
-    /// Views pass one explicitly; internally-constructed nodes get one derived from `kind` (see the init).
+    /// Every node carries one (views and internal wrappers alike pass it explicitly).
     public var component: any WidgetComponent
 
     /// Reuse identity for the keyed child diff: the component's `widgetKey`. A child is reused across a
@@ -375,84 +348,22 @@ public struct RenderNode {
     /// "unstamped" — never skipped.
     var subtreeRevision: Int = 0
 
-    /// Derives a component for an internally-constructed node (wrappers, the nav bar, fallbacks) from its
-    /// kind/patch/handlers — a strangler bridge so every node has a component without rewriting those raw
-    /// construction sites. Removed when `WidgetKind` is deleted (those sites then pass a component directly).
-    static func derivedComponent(kind: WidgetKind, patch: WidgetPatch,
-                                 action: (@MainActor () -> Void)?, onChange: (@MainActor (String) -> Void)?,
-                                 onChangeDouble: (@MainActor (Double) -> Void)?, onChangeBool: (@MainActor (Bool) -> Void)?,
-                                 layout: LayoutInfo) -> any WidgetComponent {
-        switch kind {
-        case .vstack, .groupBox:
-            return ContainerComponent(WidgetKey(kind == .groupBox ? "groupBox" : "vstack"),
-                role: .stack(axis: .vertical, spacing: patch.spacing, alignment: layout.alignment ?? .center))
-        case .hstack:
-            return ContainerComponent(WidgetKey("hstack"),
-                role: .stack(axis: .horizontal, spacing: patch.spacing, alignment: layout.alignment ?? .center))
-        case .zstack:
-            return ContainerComponent(WidgetKey("zstack"), role: .zstack(alignment: layout.alignment ?? .center))
-        case .spacer:
-            return ContainerComponent(WidgetKey("spacer"), role: .spacer(minLength: layout.spacerMinLength))
-        case .scroll:
-            return ContainerComponent(WidgetKey("scroll"), role: .scroll(axis: layout.scrollAxis ?? .vertical))
-        case .geometry:
-            return ContainerComponent(WidgetKey("geometry"), role: .geometry)
-        case .lazyStack:
-            if let lazy = layout.lazy {
-                return ContainerComponent(WidgetKey("lazyStack"), role: .lazyStack(lazy, alignment: layout.alignment ?? .center))
-            }
-            return ContainerComponent(WidgetKey("vstack"), role: .stack(axis: .vertical, spacing: nil, alignment: layout.alignment ?? .center))
-        case .list, .sidebarList, .outline, .sidebarOutline, .splitView, .tabView:
-            return ContainerComponent(WidgetKey("\(kind)"), role: .native)
-        default:   // label / button / textField / secureField / slider / toggle / progress / separator / window
-            return PrimitiveLeafComponent(WidgetKey("\(kind)"), patch: patch, action: action,
-                onChange: onChange, onChangeDouble: onChangeDouble, onChangeBool: onChangeBool)
-        }
-    }
-
-    public init(id: String, kind: WidgetKind, patch: WidgetPatch = WidgetPatch(),
-                children: [RenderNode] = [], action: (@MainActor () -> Void)? = nil,
-                onChange: (@MainActor (String) -> Void)? = nil,
-                onChangeDouble: (@MainActor (Double) -> Void)? = nil,
-                onChangeBool: (@MainActor (Bool) -> Void)? = nil,
-                list: ListSpec? = nil, shape: ShapeSpec? = nil,
-                menu: MenuContent? = nil, picker: PickerSpec? = nil, datePicker: DatePickerSpec? = nil,
-                colorPicker: ColorPickerSpec? = nil,
+    public init(id: String, component: any WidgetComponent, patch: WidgetPatch = WidgetPatch(),
+                children: [RenderNode] = [],
                 fileImporter: FileImporterSpec? = nil, fileExporter: FileExporterSpec? = nil,
                 tag: AnyHashable? = nil,
-                outline: OutlineSpec? = nil, image: ImageSpec? = nil, tabs: TabSpec? = nil,
-                preferences: NodePreferences? = nil, component: (any WidgetComponent)? = nil,
+                preferences: NodePreferences? = nil,
                 layout: LayoutInfo = LayoutInfo(), onGeometry: (@MainActor (CGSize) -> Void)? = nil,
                 onScroll: (@MainActor (CGSize) -> Void)? = nil,
                 onRowExtent: (@MainActor (Double) -> Void)? = nil,
                 onContentOrigin: (@MainActor (Double) -> Void)? = nil) {
         self.id = id
-        self.kind = kind
+        self.component = component
         self.patch = patch
         self.children = children
-        self.action = action
-        self.onChange = onChange
-        self.onChangeDouble = onChangeDouble
-        self.onChangeBool = onChangeBool
-        self.list = list
-        self.shape = shape
-        self.menu = menu
-        self.picker = picker
-        self.datePicker = datePicker
-        self.colorPicker = colorPicker
         self.fileImporter = fileImporter
         self.fileExporter = fileExporter
-        self.outline = outline
-        self.image = image
-        self.tabs = tabs
         self.preferences = preferences
-        // Every node carries a component. Views pass one explicitly; the remaining internally-constructed
-        // nodes (wrappers, the nav bar, fallbacks) get one derived from their kind/patch/handlers here, so
-        // the reconciler and layout engine have a single (component) path. (The legacy `kind` is retained
-        // only as the derivation key + each backend's native-creation key until the final WidgetKind removal.)
-        self.component = component ?? RenderNode.derivedComponent(
-            kind: kind, patch: patch, action: action, onChange: onChange,
-            onChangeDouble: onChangeDouble, onChangeBool: onChangeBool, layout: layout)
         self.tag = tag
         self.layout = layout
         self.onGeometry = onGeometry
@@ -576,7 +487,7 @@ func evaluate(_ view: any View, _ context: RenderContext) -> [RenderNode] {
         return evaluate(view.body, context.appending(0))   // defensive: no view graph installed
     }
     let node = viewGraph.composite(for: view, id: context.id, context: context)
-    var ref = RenderNode(id: node.id, kind: .vstack)
+    var ref = RenderNode(id: node.id, component: ContainerComponent.vstack())
     ref.compositeRef = node
     return [ref]
 }

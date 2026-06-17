@@ -83,7 +83,7 @@ public struct _ShapeView: View, PrimitiveView {
         if resolved.fill == nil, resolved.stroke == nil {
             resolved.fill = currentEnvironment().foregroundColor ?? .black
         }
-        return RenderNode(id: context.id, kind: .shape, component: ShapeComponent(spec: resolved))
+        return RenderNode(id: context.id, component: ShapeComponent(spec: resolved))
     }
 }
 
@@ -144,7 +144,7 @@ struct _ShapeNodeModifier<Content: View>: View, PrimitiveView {
         // Resolve first: a `Shape` is a composite (its body is `_ShapeView`), so without resolving we'd get
         // a reference whose component isn't yet a ShapeComponent and the fill/stroke/transform would be lost.
         var node = evaluateResolved(content, context.appending(0)).first
-            ?? RenderNode(id: context.id, kind: .shape, component: ShapeComponent(spec: ShapeSpec(path: { _ in Path() })))
+            ?? RenderNode(id: context.id, component: ShapeComponent(spec: ShapeSpec(path: { _ in Path() })))
         if var shape = node.component as? ShapeComponent {
             modify(&shape.spec)
             node.component = shape

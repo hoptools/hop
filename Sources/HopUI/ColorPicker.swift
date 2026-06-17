@@ -69,8 +69,8 @@ struct _ColorPickerControl: View, PrimitiveView {
                              supportsOpacity: supportsOpacity) { binding.wrappedValue = $0 }
         var patch = WidgetPatch()
         patch.accessibilityLabel = title   // cross-cutting; applied alongside the component
-        return RenderNode(id: context.id, kind: .colorPicker, patch: patch,
-                          component: ColorPickerComponent(spec: spec))
+        return RenderNode(id: context.id, component: ColorPickerComponent(spec: spec),
+                          patch: patch)
     }
 }
 

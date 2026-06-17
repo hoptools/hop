@@ -14,7 +14,7 @@ struct _LayoutModifierView<Content: View>: View, PrimitiveView {
     var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, kind: .vstack)
+        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, component: ContainerComponent.vstack())
         node.layout.modifiers.append(modifier)
         return node
     }

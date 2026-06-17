@@ -65,20 +65,22 @@ public struct NavigationStack<Content: View>: View, PrimitiveView {
 
         var barChildren: [RenderNode] = []
         if showBack {
-            barChildren.append(RenderNode(id: context.id + "·back", kind: .button,
-                patch: WidgetPatch(title: "‹ Back"),
-                action: { var p = pathGet(); if !p.isEmpty { p.removeLast() }; pathSet(p) }))
+            barChildren.append(RenderNode(id: context.id + "·back",
+                component: PrimitiveLeafComponent(WidgetKey("button"),
+                    patch: WidgetPatch(title: "‹ Back"),
+                    action: { var p = pathGet(); if !p.isEmpty { p.removeLast() }; pathSet(p) })))
         }
-        barChildren.append(RenderNode(id: context.id + "·title", kind: .label,
-                                      patch: WidgetPatch(text: title ?? "")))
-        let bar = RenderNode(id: context.id + "·navbar", kind: .hstack, patch: WidgetPatch(spacing: 8),
-                             children: barChildren)
-        var body = bodyNodes.first ?? RenderNode(id: context.id + "·body", kind: .vstack)
+        barChildren.append(RenderNode(id: context.id + "·title",
+                                      component: PrimitiveLeafComponent(WidgetKey("label"),
+                                          patch: WidgetPatch(text: title ?? ""))))
+        let bar = RenderNode(id: context.id + "·navbar", component: ContainerComponent.hstack(spacing: 8),
+                             patch: WidgetPatch(spacing: 8), children: barChildren)
+        var body = bodyNodes.first ?? RenderNode(id: context.id + "·body", component: ContainerComponent.vstack())
         // The content area fills the space below the bar and centers its content — matching SwiftUI, where
         // navigation content is centered in the pane (a greedy fill via maxWidth/maxHeight: .infinity).
         body.layout.modifiers.append(.frame(FrameSpec(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)))
-        return RenderNode(id: context.id, kind: .vstack, patch: WidgetPatch(spacing: 12),
-                          children: [bar, body])
+        return RenderNode(id: context.id, component: ContainerComponent.vstack(spacing: 12),
+                          patch: WidgetPatch(spacing: 12), children: [bar, body])
     }
 }
 
@@ -102,8 +104,9 @@ public struct NavigationLink: View, PrimitiveView {
         // dependency, so this link re-resolves if the enclosing stack's push action changes.
         let push = currentEnvironment().navigationPush
         let value = self.value
-        return RenderNode(id: context.id, kind: .button, patch: WidgetPatch(title: title),
-                          action: { push?(value) })
+        return RenderNode(id: context.id,
+                          component: PrimitiveLeafComponent(WidgetKey("button"), patch: WidgetPatch(title: title),
+                              action: { push?(value) }))
     }
 }
 
@@ -150,7 +153,7 @@ struct _NavigationTitleModifier<Content: View>: View, PrimitiveView {
 /// wrapped so exactly one node is produced).
 @MainActor
 private func passthrough(_ nodes: [RenderNode], _ context: RenderContext) -> RenderNode {
-    nodes.count == 1 ? nodes[0] : RenderNode(id: context.id, kind: .vstack, children: nodes)
+    nodes.count == 1 ? nodes[0] : RenderNode(id: context.id, component: ContainerComponent.vstack(), children: nodes)
 }
 
 extension View {

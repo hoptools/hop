@@ -42,7 +42,7 @@ public struct Menu<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let entries = menuEntries(from: evaluateResolved(content, context.appending(0)))
-        return RenderNode(id: context.id, kind: .menu,
+        return RenderNode(id: context.id,
                           component: MenuComponent(content: MenuContent(label: label, entries: entries)))
     }
 }
@@ -60,12 +60,12 @@ public struct MenuComponent: WidgetComponent {
 func menuEntries(from nodes: [RenderNode]) -> [MenuEntry] {
     var entries: [MenuEntry] = []
     for node in nodes {
-        switch node.kind {
-        case .button:
+        switch node.component.widgetKey.rawValue {
+        case "button":
             entries.append(.button(title: node.effectivePatch.title ?? "", action: node.effectiveAction ?? {}))
-        case .separator:
+        case "separator":
             entries.append(.separator)
-        case .menu:
+        case "menu":
             entries.append(.submenu(title: node.effectiveMenu?.label ?? "", entries: node.effectiveMenu?.entries ?? []))
         default:
             break
@@ -81,7 +81,7 @@ public struct Divider: View, PrimitiveView {
     public typealias Body = Never
     public var body: Never { fatalError("Divider has no body") }
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .separator,
+        RenderNode(id: context.id,
                    component: PrimitiveLeafComponent(WidgetKey("separator")))
     }
 }
@@ -138,7 +138,7 @@ public struct Picker<SelectionValue: Hashable, Content: View>: View, PrimitiveVi
         // part of the component's `widgetKey`, so changing the style recreates the widget (a `.menu` popup
         // and a `.segmented` control are different native widgets, not reconfigurations of each other).
         let style = currentEnvironment().pickerStyle
-        return RenderNode(id: context.id, kind: .picker, component: PickerComponent(style: style, spec: spec))
+        return RenderNode(id: context.id, component: PickerComponent(style: style, spec: spec))
     }
 }
 
@@ -180,7 +180,7 @@ struct _TaggedView<Content: View>: View, PrimitiveView {
     var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, kind: .label)
+        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, component: PrimitiveLeafComponent(WidgetKey("label")))
         node.tag = tag
         return node
     }

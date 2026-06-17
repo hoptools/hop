@@ -14,7 +14,7 @@ public struct Text: View, PrimitiveView {
         // .foregroundStyle on an ancestor), baking it into the node so the toolkit can apply it.
         // Reading through the graph records a dependency, so this body re-runs when its styling changes.
         let environment = currentEnvironment()
-        return RenderNode(id: context.id, kind: .label,
+        return RenderNode(id: context.id,
                           component: PrimitiveLeafComponent(WidgetKey("label"),
                               patch: WidgetPatch(text: content,
                                                  foregroundColor: environment.foregroundColor,
@@ -36,7 +36,7 @@ public struct Button: View, PrimitiveView {
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .button,
+        RenderNode(id: context.id,
                    component: PrimitiveLeafComponent(WidgetKey("button"), patch: WidgetPatch(title: title), action: action))
     }
 }
@@ -57,7 +57,7 @@ public struct TextField: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = text
-        return RenderNode(id: context.id, kind: .textField,
+        return RenderNode(id: context.id,
                           component: PrimitiveLeafComponent(WidgetKey("textField"),
                               patch: WidgetPatch(value: text.wrappedValue, placeholder: placeholder),
                               onChange: { binding.wrappedValue = $0 }))
@@ -94,13 +94,13 @@ public struct NavigationSplitView<Sidebar: View, Detail: View>: View, PrimitiveV
         let sidebarChild = singleChild(evaluateResolved(sidebar, context.appending(0)), id: context.id + "·sidebar")
         SidebarColumnContext.active = savedSidebar
         let detailChild = singleChild(evaluate(detail, context.appending(1)), id: context.id + "·detail")
-        return RenderNode(id: context.id, kind: .splitView, children: [sidebarChild, detailChild],
-                          component: SplitViewComponent())
+        return RenderNode(id: context.id, component: SplitViewComponent(),
+                          children: [sidebarChild, detailChild])
     }
 
     /// A split pane must be exactly one widget; collapse multiple nodes into a vstack wrapper.
     private func singleChild(_ nodes: [RenderNode], id: String) -> RenderNode {
-        nodes.count == 1 ? nodes[0] : RenderNode(id: id, kind: .vstack, children: nodes)
+        nodes.count == 1 ? nodes[0] : RenderNode(id: id, component: ContainerComponent.vstack(), children: nodes)
     }
 }
 
@@ -167,12 +167,12 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
             // a runtime flag, selects the styling so the toolkit bakes it in at creation).
             let sidebar = SidebarColumnContext.active
             let spec = ListSpec(count: count, rowText: rowText, selectedIndex: selectedIndex(), onSelect: select)
-            return RenderNode(id: context.id, kind: sidebar ? .sidebarList : .list,
+            return RenderNode(id: context.id,
                               component: ListComponent(spec: spec, sidebar: sidebar))
         case let .hierarchical(content, selectedID, select):
             // The content is an OutlineGroup producing an outline component; inject selection into it.
             var node = evaluateResolved(content(), context.appending(0)).first
-                ?? RenderNode(id: context.id + "·outline", kind: .outline,
+                ?? RenderNode(id: context.id + "·outline",
                               component: OutlineComponent(spec: OutlineSpec(roots: []), sidebar: SidebarColumnContext.active))
             if var outline = node.component as? OutlineComponent {
                 outline.spec.selectedID = selectedID().map { AnyHashable($0) }
@@ -208,7 +208,7 @@ public struct Slider: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = value
-        return RenderNode(id: context.id, kind: .slider,
+        return RenderNode(id: context.id,
                           component: PrimitiveLeafComponent(WidgetKey("slider"),
                               patch: WidgetPatch(doubleValue: value.wrappedValue,
                                                  minValue: range.lowerBound, maxValue: range.upperBound),
@@ -231,10 +231,11 @@ public struct VStack<Content: View>: View, PrimitiveView {
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .vstack, patch: WidgetPatch(spacing: spacing),
-                   children: evaluate(content, context.appending(0)),
+        RenderNode(id: context.id,
                    component: ContainerComponent(WidgetKey("vstack"),
                        role: .stack(axis: .vertical, spacing: spacing, alignment: Alignment(horizontal: alignment, vertical: .center))),
+                   patch: WidgetPatch(spacing: spacing),
+                   children: evaluate(content, context.appending(0)),
                    layout: LayoutInfo(alignment: Alignment(horizontal: alignment, vertical: .center)))
     }
 }
@@ -254,10 +255,11 @@ public struct HStack<Content: View>: View, PrimitiveView {
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .hstack, patch: WidgetPatch(spacing: spacing),
-                   children: evaluate(content, context.appending(0)),
+        RenderNode(id: context.id,
                    component: ContainerComponent(WidgetKey("hstack"),
                        role: .stack(axis: .horizontal, spacing: spacing, alignment: Alignment(horizontal: .center, vertical: alignment))),
+                   patch: WidgetPatch(spacing: spacing),
+                   children: evaluate(content, context.appending(0)),
                    layout: LayoutInfo(alignment: Alignment(horizontal: .center, vertical: alignment)))
     }
 }
@@ -275,8 +277,9 @@ public struct ZStack<Content: View>: View, PrimitiveView {
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .zstack, children: evaluate(content, context.appending(0)),
+        RenderNode(id: context.id,
                    component: ContainerComponent(WidgetKey("zstack"), role: .zstack(alignment: alignment)),
+                   children: evaluate(content, context.appending(0)),
                    layout: LayoutInfo(alignment: alignment))
     }
 }
@@ -290,7 +293,7 @@ public struct Spacer: View, PrimitiveView {
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .spacer,
+        RenderNode(id: context.id,
                    component: ContainerComponent(WidgetKey("spacer"), role: .spacer(minLength: minLength ?? 0)),
                    layout: LayoutInfo(spacerMinLength: minLength ?? 0))
     }

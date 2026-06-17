@@ -73,7 +73,7 @@ struct _FileImporterModifier<Content: View>: View, PrimitiveView {
     typealias Body = Never
     var body: Never { fatalError() }
     func makeNode(_ context: RenderContext) -> RenderNode {
-        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, kind: .vstack)
+        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, component: ContainerComponent.vstack())
         node.fileImporter = spec
         return node
     }
@@ -85,7 +85,7 @@ struct _FileExporterModifier<Content: View>: View, PrimitiveView {
     typealias Body = Never
     var body: Never { fatalError() }
     func makeNode(_ context: RenderContext) -> RenderNode {
-        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, kind: .vstack)
+        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, component: ContainerComponent.vstack())
         node.fileExporter = spec
         return node
     }

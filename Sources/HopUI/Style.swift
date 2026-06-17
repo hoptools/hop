@@ -118,8 +118,8 @@ struct _BackgroundModifier<Content: View>: View, PrimitiveView {
         // covers any `.padding`/`.frame` applied before `.background`, matching SwiftUI (where `.background`
         // draws behind the view so far). A flat patch on the content node would only cover the inner content.
         let child = evaluate(content, context.appending(0)).first
-            ?? RenderNode(id: context.id + ".bg", kind: .vstack)
-        return RenderNode(id: context.id, kind: .zstack, patch: WidgetPatch(backgroundColor: color),
+            ?? RenderNode(id: context.id + ".bg", component: ContainerComponent.vstack())
+        return RenderNode(id: context.id, component: ContainerComponent.zstack(alignment: .center), patch: WidgetPatch(backgroundColor: color),
                           children: [child], layout: LayoutInfo(alignment: .center))
     }
 }

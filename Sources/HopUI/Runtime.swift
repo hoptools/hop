@@ -88,7 +88,7 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
         // Evaluate the root (emitting composite references), then resolve — re-running only the bodies
         // that were invalidated since the last pass.
         let resolved = resolveRenderTree(evaluate(rootView, rootContext), graph)
-        return resolved.first ?? RenderNode(id: rootContext.id, kind: .vstack)
+        return resolved.first ?? RenderNode(id: rootContext.id, component: ContainerComponent.vstack())
     }
 
     let reconciler = Reconciler(toolkit: toolkit)
@@ -155,7 +155,7 @@ func openSecondaryWindow<Toolkit: AppToolkit>(_ def: _WindowDef, toolkit: Toolki
     }
 
     let nodes = evaluateResolved(def.content(), RenderContext(path: [.index(0)]))
-    let root = nodes.first ?? RenderNode(id: "0", kind: .vstack)
+    let root = nodes.first ?? RenderNode(id: "0", component: ContainerComponent.vstack())
 
     toolkit.openWindow(title: def.title) { container in
         let reconciler = Reconciler(toolkit: toolkit)

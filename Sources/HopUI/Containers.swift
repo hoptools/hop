@@ -46,10 +46,10 @@ struct _CardBox<Content: View>: View, PrimitiveView {
     var body: Never { fatalError("_CardBox has no body") }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .groupBox,
-                   children: evaluate(content, context.appending(0)),
+        RenderNode(id: context.id,
                    component: ContainerComponent(WidgetKey("groupBox"),
                        role: .stack(axis: .vertical, spacing: nil, alignment: Alignment(horizontal: .leading, vertical: .center))),
+                   children: evaluate(content, context.appending(0)),
                    layout: LayoutInfo(alignment: Alignment(horizontal: .leading, vertical: .center)))
     }
 }
@@ -126,14 +126,15 @@ public struct TabView<Content: View>: View, PrimitiveView {
         // Each page is wrapped in a centering layer so the native page area lays its content out; all pages
         // stay mounted as children (the native widget shows `current`), so switching keeps page state.
         let wrapped = pages.enumerated().map { index, page in
-            RenderNode(id: context.id + "·page\(index)", kind: .zstack, children: [page],
+            RenderNode(id: context.id + "·page\(index)", component: ContainerComponent.zstack(alignment: .center), children: [page],
                        layout: LayoutInfo(alignment: .center))
         }
-        return RenderNode(id: context.id, kind: .tabView, children: wrapped,
+        return RenderNode(id: context.id,
                           component: TabViewComponent(spec: TabSpec(titles: titles, selectedIndex: current, onSelect: { index in
                               graph.setValue(index, for: selSource)
                               GraphContext.scheduleFlush()
-                          })))
+                          })),
+                          children: wrapped)
     }
 }
 
@@ -155,7 +156,7 @@ struct _TabItemModifier<Content: View, Label: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         var node = evaluate(content, context.appending(0)).first
-            ?? RenderNode(id: context.id, kind: .vstack)
+            ?? RenderNode(id: context.id, component: ContainerComponent.vstack())
         node.tabLabel = firstText(in: evaluateResolved(label, context.appending(1))) ?? node.tabLabel
         return node
     }

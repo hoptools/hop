@@ -25,17 +25,17 @@ public struct ToolbarHost<Content: View, Bar: View>: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         var items: [ToolbarItemSpec] = []
         for node in evaluateResolved(bar, context.appending(1)) {
-            switch node.kind {
-            case .button:
+            switch node.component.widgetKey.rawValue {
+            case "button":
                 items.append(ToolbarItemSpec(kind: .button(title: node.effectivePatch.title ?? "", action: node.effectiveAction ?? {})))
-            case .label:
+            case "label":
                 items.append(ToolbarItemSpec(kind: .text(node.effectivePatch.text ?? "")))
             default:
                 break
             }
         }
 
-        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, kind: .vstack)
+        var node = evaluate(content, context.appending(0)).first ?? RenderNode(id: context.id, component: ContainerComponent.vstack())
         var prefs = node.preferences ?? NodePreferences()
         prefs.toolbar = (prefs.toolbar ?? []) + items
         node.preferences = prefs

@@ -43,7 +43,7 @@ public struct OutlineGroup<Data, ID, Content>: View, PrimitiveView
         // In a NavigationSplitView's leading column, render as a source-list sidebar tree; the widgetKey —
         // not a runtime flag — selects the styling so the toolkit bakes it in at creation.
         let sidebar = SidebarColumnContext.active
-        return RenderNode(id: context.id, kind: sidebar ? .sidebarOutline : .outline,
+        return RenderNode(id: context.id,
                           component: OutlineComponent(spec: OutlineSpec(roots: buildRoots()), sidebar: sidebar))
     }
 }
@@ -98,14 +98,16 @@ public struct DisclosureGroup<Content: View>: View, PrimitiveView {
             }
         }
 
-        let header = RenderNode(id: context.id + "·hdr", kind: .button,
-                                patch: WidgetPatch(title: (expanded ? "▾  " : "▸  ") + title),
-                                action: toggle)
+        let header = RenderNode(id: context.id + "·hdr",
+                                component: PrimitiveLeafComponent(WidgetKey("button"),
+                                    patch: WidgetPatch(title: (expanded ? "▾  " : "▸  ") + title),
+                                    action: toggle))
         var children = [header]
         if expanded {
             children += evaluate(content, context.appending(1))
         }
-        return RenderNode(id: context.id, kind: .vstack,
+        return RenderNode(id: context.id,
+                          component: ContainerComponent.vstack(spacing: 6, alignment: Alignment(horizontal: .leading, vertical: .center)),
                           patch: WidgetPatch(spacing: 6),
                           children: children,
                           layout: LayoutInfo(alignment: Alignment(horizontal: .leading, vertical: .center)))

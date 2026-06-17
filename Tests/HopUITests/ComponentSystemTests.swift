@@ -44,7 +44,7 @@ private struct SelfHostedComponent: WidgetComponent {
     typealias Body = Never
     var body: Never { fatalError() }
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id, kind: .vstack, component: SelfHostedComponent())
+        RenderNode(id: context.id, component: SelfHostedComponent())
     }
 }
 

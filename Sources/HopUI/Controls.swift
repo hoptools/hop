@@ -46,7 +46,7 @@ struct _ToggleControl: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = isOn
-        return RenderNode(id: context.id, kind: .toggle,
+        return RenderNode(id: context.id,
                           component: PrimitiveLeafComponent(WidgetKey("toggle"),
                               patch: WidgetPatch(boolValue: isOn.wrappedValue),
                               onChangeBool: { binding.wrappedValue = $0 }))
@@ -108,7 +108,7 @@ public struct SecureField: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = text
-        return RenderNode(id: context.id, kind: .secureField,
+        return RenderNode(id: context.id,
                           component: PrimitiveLeafComponent(WidgetKey("secureField"),
                               patch: WidgetPatch(value: text.wrappedValue, placeholder: placeholder),
                               onChange: { binding.wrappedValue = $0 }))

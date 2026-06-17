@@ -28,7 +28,7 @@ struct _AccessibilityModifier<Content: View>: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let nodes = evaluate(content, context.appending(0))
-        var node = nodes.first ?? RenderNode(id: context.id, kind: .vstack, children: nodes)
+        var node = nodes.first ?? RenderNode(id: context.id, component: ContainerComponent.vstack(), children: nodes)
         apply(&node.patch)
         return node
     }
