@@ -1,6 +1,8 @@
 // Copyright 2026
 // SPDX-License-Identifier: MPL-2.0
 
+import Foundation
+
 // The public entry point: load the config, resolve a target, pick the backend, and run the pipeline for a
 // command. `hoppack`'s subcommands are thin wrappers over `assemble()` / `run()` / `package()`. The
 // pipelines are assembled here, so adding a stage (signing between assemble and package, a lint stage at
@@ -20,12 +22,17 @@ public struct HopPackager: Sendable {
     ///   - configuration: debug or release.
     ///   - verbose: echo the commands being run.
     public init(
-        packageDirectory: FilePath,
+        packageDirectory rawPackageDirectory: FilePath,
         configPath: FilePath? = nil,
         targetSpecifier: String? = nil,
         configuration: BuildConfiguration = .release,
         verbose: Bool = false
     ) throws {
+        // Resolve to an absolute path so every derived path — the work dir, the assembled app, the flatpak
+        // manifest and its `sources` dir, windeployqt's `{exe}` — is cwd-independent. Backends invoke tools
+        // with a working directory set, so cwd-relative paths would otherwise compound (…/.build/…/.build/…).
+        let packageDirectory = FilePath(FileManager.default.currentDirectoryPath)
+            .pushing(rawPackageDirectory).lexicallyNormalized()
         let logger = Logger(verbose: verbose)
         let configFile = configPath ?? packageDirectory.appending(HoppackConfig.defaultFileName)
         let config = try HoppackConfig.load(from: configFile)

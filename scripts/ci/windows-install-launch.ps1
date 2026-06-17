@@ -3,8 +3,8 @@
   Sign a hoppack-produced MSIX with a throwaway self-signed certificate, install it, and verify the app
   launches — the Windows half of the CI install smoke test. Exits nonzero (failing the job) on any failure.
 .PARAMETER Msix         Path to the .msix produced by `hoppack package`.
-.PARAMETER Publisher    Subject of the signing cert; MUST equal the package's Publisher (e.g. "CN=Skip").
-.PARAMETER IdentityName Package Identity Name from the manifest (e.g. dev.skip.hopdemo.qt).
+.PARAMETER Publisher    Subject of the signing cert; MUST equal the package's Publisher (e.g. "CN=Hop").
+.PARAMETER IdentityName Package Identity Name from the manifest (e.g. com.hoptools.hopdemo.qt).
 .PARAMETER Executable   The app's process name without extension (e.g. hop-demo-qt), used to confirm launch.
 .PARAMETER AppId        Application Id in the manifest (hoppack uses "App").
 #>
