@@ -54,25 +54,20 @@ Add-Type -AssemblyName System.Windows.Forms
 
 # Capture JUST a window (not the whole desktop): PrintWindow renders the window's own content to a
 # bitmap, so it works even when the window is larger than the runner's screen or partly off-screen.
-Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+# Only the Win32 P/Invoke lives in C# here — no System.Drawing types, so Add-Type doesn't need to
+# reference System.Drawing.Common (whose Bitmap/Graphics forwarding breaks `Add-Type -TypeDefinition`
+# on PowerShell 7 / .NET). The bitmap is built in PowerShell below, where the forward resolves fine.
+Add-Type -TypeDefinition @"
 using System;
-using System.Drawing;
 using System.Runtime.InteropServices;
 public static class HopWin {
-    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
-    public static Bitmap Capture(IntPtr hWnd) {
-        RECT r; if (!GetWindowRect(hWnd, out r)) return null;
-        int w = r.Right - r.Left, h = r.Bottom - r.Top;
-        if (w <= 0 || h <= 0) return null;
-        Bitmap bmp = new Bitmap(w, h);
-        using (Graphics g = Graphics.FromImage(bmp)) {
-            IntPtr hdc = g.GetHdc();
-            PrintWindow(hWnd, hdc, 2); // PW_RENDERFULLCONTENT - needed for GPU/DWM-composited windows
-            g.ReleaseHdc(hdc);
-        }
-        return bmp;
+    public static int[] WindowSize(IntPtr hWnd) {
+        RECT r;
+        if (!GetWindowRect(hWnd, out r)) return new int[] { 0, 0 };
+        return new int[] { r.Right - r.Left, r.Bottom - r.Top };
     }
 }
 "@
@@ -87,10 +82,17 @@ function Capture-Screen($path) {
     $g.Dispose(); $bmp.Dispose()
 }
 
-# Capture an app's main window by handle; returns $true on success.
+# Capture an app's main window by handle (PrintWindow into a PowerShell-side bitmap); $true on success.
 function Capture-Window([IntPtr]$hWnd, $path) {
-    $bmp = [HopWin]::Capture($hWnd)
-    if ($null -eq $bmp) { return $false }
+    $size = [HopWin]::WindowSize($hWnd)
+    $w = $size[0]; $h = $size[1]
+    if ($w -le 0 -or $h -le 0) { return $false }
+    $bmp = New-Object System.Drawing.Bitmap $w, $h
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $hdc = $g.GetHdc()
+    [void][HopWin]::PrintWindow($hWnd, $hdc, 2)   # PW_RENDERFULLCONTENT (GPU/DWM-composited windows)
+    $g.ReleaseHdc($hdc)
+    $g.Dispose()
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
     $bmp.Dispose()
     return $true
