@@ -40,7 +40,7 @@ jobs:
         run: scripts/ci/screenshot-playgrounds.sh ci-screenshots appkit swiftui gtk4 qt
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots-macos
           path: ci-screenshots
@@ -68,7 +68,7 @@ jobs:
         run: scripts/ci/screenshot-playgrounds.sh ci-screenshots gtk4
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots-linux-gtk
           path: ci-screenshots
@@ -98,7 +98,7 @@ jobs:
         run: scripts/ci/screenshot-playgrounds.sh ci-screenshots qt
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots-linux-qt
           path: ci-screenshots
@@ -123,8 +123,8 @@ jobs:
       - name: Install Swift toolchain
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.3.2-release
-          tag: 6.3.2-RELEASE
+          swift-version: swift-6.3.2-release
+          swift-build: 6.3.2-RELEASE
       # WinUI 3 has no C ABI, so HopWinUI talks to it through the CWinUI C++/WinRT shim (no projection
       # dependency). setup-winui.ps1 NuGet-restores the Windows App SDK + WebView2, runs the Windows SDK's
       # cppwinrt to generate the WinUI projection headers, and stages headers/import-libs/bootstrap into
@@ -144,7 +144,7 @@ jobs:
         run: ./scripts/ci/screenshot-playgrounds.ps1 -OutDir ci-screenshots -Toolkits winui
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots-windows-winui
           path: ci-screenshots
@@ -167,8 +167,8 @@ jobs:
       - name: Install Swift toolchain
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.3.2-release
-          tag: 6.3.2-RELEASE
+          swift-version: swift-6.3.2-release
+          swift-build: 6.3.2-RELEASE
       # The official Qt build for MSVC; install-qt-action exports QT_ROOT_DIR and puts the Qt DLLs on PATH
       # (needed at test-run time). Package.swift reads QT_ROOT for its Windows include/lib flags.
       # NOTE: Qt only ships the `win64_msvc2022_64` prebuilt binaries (matching the runner's MSVC 2022)
@@ -197,7 +197,7 @@ jobs:
         run: ./scripts/ci/screenshot-playgrounds.ps1 -OutDir ci-screenshots -Toolkits qt
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots-windows-qt
           path: ci-screenshots
@@ -222,7 +222,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Download all screenshot artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: screenshots-*
           path: artifacts
@@ -234,4 +234,4 @@ jobs:
           path: _site
       - name: Deploy to GitHub Pages
         id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

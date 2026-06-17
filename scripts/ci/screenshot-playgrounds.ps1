@@ -64,38 +64,123 @@ public static class HopWin {
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
-    public static int[] WindowSize(IntPtr hWnd) {
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    delegate bool EnumWindowsProc(IntPtr h, IntPtr lp);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
+
+    public static int[] WindowSize(IntPtr h) {
         RECT r;
-        if (!GetWindowRect(hWnd, out r)) return new int[] { 0, 0 };
+        if (!GetWindowRect(h, out r)) return new int[] { 0, 0 };
         return new int[] { r.Right - r.Left, r.Bottom - r.Top };
+    }
+    public static int[] WindowRect(IntPtr h) {
+        RECT r;
+        if (!GetWindowRect(h, out r)) return new int[] { 0, 0, 0, 0 };
+        return new int[] { r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top };
+    }
+    // The largest visible top-level window owned by pid — used when Process.MainWindowHandle is still 0
+    // (common right after launch, and for some toolkits' window types).
+    public static IntPtr FindMainWindow(uint pid) {
+        IntPtr best = IntPtr.Zero; int bestArea = -1;
+        EnumWindows((h, lp) => {
+            uint wp; GetWindowThreadProcessId(h, out wp);
+            if (wp == pid && IsWindowVisible(h)) {
+                RECT r;
+                if (GetWindowRect(h, out r)) {
+                    int a = (r.Right - r.Left) * (r.Bottom - r.Top);
+                    if (a > bestArea) { bestArea = a; best = h; }
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return best;
     }
 }
 "@
 
-# Whole-screen fallback when a window handle never appears.
-function Capture-Screen($path) {
-    $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    $g.Dispose(); $bmp.Dispose()
+# Is a captured bitmap effectively blank? Sample a coarse grid and count distinct colors: an unrendered
+# window is a single flat color (1), while any real page (the sidebar tree alone has dozens) blows past
+# the threshold. Cheap (early-exits) and far more reliable than a fixed sleep for "did it draw yet".
+function Test-Blank($bmp) {
+    $seen = @{}
+    $sx = [Math]::Max(1, [int]($bmp.Width / 24))
+    $sy = [Math]::Max(1, [int]($bmp.Height / 24))
+    for ($y = 0; $y -lt $bmp.Height; $y += $sy) {
+        for ($x = 0; $x -lt $bmp.Width; $x += $sx) {
+            $c = $bmp.GetPixel($x, $y)
+            $seen[($c.R -shl 16) -bor ($c.G -shl 8) -bor $c.B] = $true
+            if ($seen.Count -ge 5) { return $false }   # enough variety -> real content
+        }
+    }
+    return $true   # < 5 distinct colors across the whole grid -> effectively blank
 }
 
-# Capture an app's main window by handle (PrintWindow into a PowerShell-side bitmap); $true on success.
-function Capture-Window([IntPtr]$hWnd, $path) {
-    $size = [HopWin]::WindowSize($hWnd)
-    $w = $size[0]; $h = $size[1]
-    if ($w -le 0 -or $h -le 0) { return $false }
+# PrintWindow into a PowerShell-side bitmap (works even when the window is off-screen / larger than the
+# desktop). PW_RENDERFULLCONTENT (flag 2) captures DirectComposition/WinUI content too.
+function Grab-PrintWindow([IntPtr]$hWnd) {
+    $size = [HopWin]::WindowSize($hWnd); $w = $size[0]; $h = $size[1]
+    if ($w -le 0 -or $h -le 0) { return $null }
     $bmp = New-Object System.Drawing.Bitmap $w, $h
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $hdc = $g.GetHdc()
-    [void][HopWin]::PrintWindow($hWnd, $hdc, 2)   # PW_RENDERFULLCONTENT (GPU/DWM-composited windows)
-    $g.ReleaseHdc($hdc)
+    [void][HopWin]::PrintWindow($hWnd, $hdc, 2)
+    $g.ReleaseHdc($hdc); $g.Dispose()
+    return $bmp
+}
+
+# Copy the window's on-screen rectangle (clamped to the virtual screen) — a fallback for the rare window
+# whose composited content PrintWindow can't read; needs the window foregrounded + on-screen (done below).
+function Grab-ScreenRegion([IntPtr]$hWnd) {
+    $r = [HopWin]::WindowRect($hWnd); $x = $r[0]; $y = $r[1]; $w = $r[2]; $h = $r[3]
+    if ($w -le 0 -or $h -le 0) { return $null }
+    $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    if ($x -lt $vs.X) { $x = $vs.X }; if ($y -lt $vs.Y) { $y = $vs.Y }
+    $w = [Math]::Min($w, $vs.Right - $x); $h = [Math]::Min($h, $vs.Bottom - $y)
+    if ($w -le 0 -or $h -le 0) { return $null }
+    $bmp = New-Object System.Drawing.Bitmap $w, $h
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size $w, $h))
     $g.Dispose()
-    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-    $bmp.Dispose()
-    return $true
+    return $bmp
+}
+
+# Capture a launched app's main window, robustly: wait for the window (even if MainWindowHandle is slow to
+# populate), bring it to front at (0,0), then keep grabbing (PrintWindow, then screen-region) until the
+# result is non-blank. Saves only a non-blank shot — returns $false rather than ever writing an empty one.
+function Capture-Window([System.Diagnostics.Process]$proc, $path) {
+    $hWnd = [IntPtr]::Zero
+    for ($i = 0; $i -lt 60; $i++) {                 # up to ~15s for the window to appear
+        Start-Sleep -Milliseconds 250
+        if ($proc.HasExited) { return $false }
+        $proc.Refresh()
+        if ($proc.MainWindowHandle -ne [IntPtr]::Zero) { $hWnd = $proc.MainWindowHandle; break }
+        $h = [HopWin]::FindMainWindow([uint32]$proc.Id)
+        if ($h -ne [IntPtr]::Zero) { $hWnd = $h; break }
+    }
+    if ($hWnd -eq [IntPtr]::Zero) { return $false }
+
+    [void][HopWin]::ShowWindow($hWnd, 5)            # SW_SHOW
+    [void][HopWin]::SetWindowPos($hWnd, [IntPtr]::Zero, 0, 0, 0, 0, (0x0001 -bor 0x0040))  # HWND_TOP, NOSIZE|SHOWWINDOW
+    [void][HopWin]::SetForegroundWindow($hWnd)
+
+    for ($a = 0; $a -lt 20; $a++) {                 # up to ~12s of redraw attempts
+        Start-Sleep -Milliseconds 600
+        # PrintWindow first (works off-screen / for composited content); screen-region only if it's blank.
+        foreach ($grab in 'Grab-PrintWindow', 'Grab-ScreenRegion') {
+            $bmp = & $grab $hWnd
+            if ($null -eq $bmp) { continue }
+            $blank = Test-Blank $bmp
+            if (-not $blank) {
+                $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); return $true
+            }
+            $bmp.Dispose()
+        }
+    }
+    return $false                                   # never rendered content -> don't write a blank
 }
 
 # The WinUI demo is a framework-dependent, *unpackaged* Windows App SDK app, so launching it needs two
@@ -143,18 +228,8 @@ foreach ($tk in $Toolkits) {
         $proc = $null
         try {
             $proc = Start-Process -FilePath $exePath -PassThru -ErrorAction Stop
-            # Wait for the app's main window to appear, then capture just it (fall back to whole screen).
-            $hWnd = [IntPtr]::Zero
-            for ($i = 0; $i -lt 40; $i++) {
-                Start-Sleep -Milliseconds 250
-                $proc.Refresh()
-                if ($proc.MainWindowHandle -ne [IntPtr]::Zero) { $hWnd = $proc.MainWindowHandle; break }
-            }
-            Start-Sleep -Seconds 1   # let it finish drawing
-            $shot = $false
-            if ($hWnd -ne [IntPtr]::Zero) { $shot = Capture-Window $hWnd $out }
-            if (-not $shot) { Capture-Screen $out }
-            if (Test-Path $out) { Write-Host "  OK $tk / $pg"; $ok++ } else { Write-Host "  FAIL $tk / $pg"; $bad++ }
+            if (Capture-Window $proc $out) { Write-Host "  OK $tk / $pg"; $ok++ }
+            else { Write-Host "  FAIL (no non-blank window) $tk / $pg"; $bad++ }
         } catch {
             Write-Host "  FAIL $tk / $pg : $_"; $bad++
         } finally {

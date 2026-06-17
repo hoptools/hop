@@ -111,21 +111,28 @@ elif [ "$OS" = "Linux" ]; then
         echo "$chosen"
     }
 
+    # Capture window $1 to $2 (IM6 `import` / IM7 `magick import`); succeeds only if the result is non-blank
+    # (an unrendered window is a single flat color → ~1 unique color; any real page has hundreds).
+    grab_window() {  # <wid> <out>
+        import -window "$1" "$2" 2>/dev/null || magick import -window "$1" "$2" 2>/dev/null
+        [ -s "$2" ] || return 1
+        local k; k="$(identify -format '%k' "$2" 2>/dev/null || magick identify -format '%k' "$2" 2>/dev/null)"
+        case "$k" in ''|*[!0-9]*) return 1;; esac
+        [ "$k" -ge 5 ]
+    }
+
     capture_one() {  # <exe> <playground> <outfile>
         local exe="$1" pg="$2" out="$3"
         HOP_PLAYGROUND_ID="$pg" "$BIN/$exe" >/dev/null 2>&1 &
-        local pid=$! wid=""
+        local pid=$! wid="" ok=1
         for _ in $(seq 1 40); do sleep 0.25; wid="$(largest_window_for_pid "$pid")"; [ -n "$wid" ] && break; done
-        sleep 1.5   # let it finish drawing
         if [ -n "$wid" ]; then
-            # Capture JUST the app window (ImageMagick 6 `import` / IM7 `magick import`).
-            import -window "$wid" "$out" 2>/dev/null || magick import -window "$wid" "$out" 2>/dev/null
-        else
-            # Fallback: whole virtual display.
-            import -window root "$out" 2>/dev/null || magick import -window root "$out" 2>/dev/null
+            # Retry until the window has actually drawn content (not a blank/flat first frame).
+            for _ in $(seq 1 16); do sleep 0.6; if grab_window "$wid" "$out"; then ok=0; break; fi; done
         fi
         kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
-        [ -s "$out" ]
+        if [ "$ok" -ne 0 ]; then rm -f "$out"; return 1; fi   # never leave a blank behind
+        return 0
     }
 else
     echo "unsupported OS: $OS" >&2; exit 0
