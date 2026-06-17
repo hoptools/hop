@@ -282,6 +282,7 @@ public final class AppKitToolkit: AppToolkit {
     public func realize(_ component: any WidgetComponent) -> AppKitWidget {
         if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
         if let view = component.makeNative(Self.toolkitID) as? NSView { return AppKitWidget(view) }
+        assertionFailure("HopUI/AppKit: no renderer registered for WidgetKey \"\(component.widgetKey.rawValue)\", and the component self-hosts no NSView")
         return AppKitWidget(FlippedView())
     }
 
@@ -656,7 +657,9 @@ public final class AppKitToolkit: AppToolkit {
         case .window:
             return AppKitWidget(NSView())
         default:
-            // Unknown key (e.g. a self-hosting component that reached here without a renderer): a plain layer.
+            // Only registered renderers call this, with keys this switch knows — an unknown key is a bug
+            // (a missing registration / a typo). Trap in debug; degrade to a plain layer in release.
+            assertionFailure("HopUI/AppKit: makeNativeWidget has no native widget for key \"\(key.rawValue)\"")
             return AppKitWidget(FlippedView())
         }
     }

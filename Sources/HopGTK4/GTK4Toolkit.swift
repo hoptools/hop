@@ -365,6 +365,7 @@ public final class GTK4Toolkit: AppToolkit {
     public func realize(_ component: any WidgetComponent) -> GTK4Widget {
         if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
         if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return GTK4Widget(ptr) }
+        assertionFailure("HopUI/GTK4: no renderer registered for WidgetKey \"\(component.widgetKey.rawValue)\", and the component self-hosts no GtkWidget")
         return makeNativeWidget(.vstack)
     }
 
@@ -550,7 +551,9 @@ public final class GTK4Toolkit: AppToolkit {
         case .separator:
             widget = hop_separator_new(1)!  // a divider between stacked rows is a horizontal line
         default:
-            widget = hop_fixed_new()!  // unknown key (e.g. self-hosting component without a renderer): a plain layer
+            // Only registered renderers call this, with keys this switch knows — an unknown key is a bug.
+            assertionFailure("HopUI/GTK4: makeNativeWidget has no native widget for key \"\(key.rawValue)\"")
+            widget = hop_fixed_new()!  // degrade to a plain layer in release
         }
         // Take an owning reference so our handle stays valid across reparenting/removal.
         hop_object_ref_sink(widget)

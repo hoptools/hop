@@ -285,6 +285,7 @@ public final class QtToolkit: AppToolkit {
     public func realize(_ component: any WidgetComponent) -> QtWidget {
         if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
         if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return QtWidget(ptr) }
+        assertionFailure("HopUI/Qt: no renderer registered for WidgetKey \"\(component.widgetKey.rawValue)\", and the component self-hosts no QWidget")
         return makeNativeWidget(.vstack)
     }
 
@@ -542,8 +543,9 @@ public final class QtToolkit: AppToolkit {
             widget.flexibleWidth = true
             return widget
         default:
-            // Unknown key (e.g. a self-hosting component that reached here without a renderer): a plain layer.
-            let widget = QtWidget(hopqt_fixed_new()!)
+            // Only registered renderers call this, with keys this switch knows — an unknown key is a bug.
+            assertionFailure("HopUI/Qt: makeNativeWidget has no native widget for key \"\(key.rawValue)\"")
+            let widget = QtWidget(hopqt_fixed_new()!)  // degrade to a plain layer in release
             widget.isFixed = true
             return widget
         }

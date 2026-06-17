@@ -71,6 +71,8 @@ final class MockToolkit: AppToolkit {
         if let widget = component.makeNative(Self.toolkitID) as? MockWidget {
             widgets.append(widget); ops.append("make:selfhosted"); return widget   // decoupled, no registered renderer
         }
+        // A component with no registered renderer AND no self-hosted widget can't render — a test bug.
+        assertionFailure("MockToolkit: no renderer registered for WidgetKey \"\(component.widgetKey.rawValue)\", and the component self-hosts no MockWidget")
         let widget = MockWidget(kind: .vstack); widgets.append(widget); ops.append("make:placeholder"); return widget
     }
     func updateComponent(_ handle: MockWidget, _ component: any WidgetComponent) {
