@@ -1204,7 +1204,7 @@ public final class GTK4Toolkit: AppToolkit {
     public func run(title: String, onReady: @escaping @MainActor (GTK4Widget) -> Void) {
         // Route Swift Concurrency (Task/await on the main actor) onto GLib's loop before it starts.
         installGTK4MainExecutor()
-        let app = hop_app_new("dev.skip.hopui.demo")!
+        let app = hop_app_new("net.hoptools.hopui.demo")!
         self.app = app
         let context = GTK4RunContext(toolkit: self, title: title, onReady: onReady)
         _ = hop_connect_activate(app, gtk4ActivateCallback, Unmanaged.passRetained(context).toOpaque())

@@ -9,7 +9,7 @@ import Yams
 // layers that section over the common block (see `Metadata.merged(over:)`).
 //
 //   metadata:
-//     identifier: dev.skip.hopdemo
+//     identifier: net.hoptools.hopdemo
 //     version: 1.0.0
 //   macos-aarch64-appkit:
 //     title: HopUI Demo (AppKit)

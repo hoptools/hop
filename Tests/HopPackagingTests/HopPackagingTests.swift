@@ -29,7 +29,7 @@ import Testing
 @Suite struct ConfigTests {
     let yaml = """
         metadata:
-          identifier: dev.skip.demo
+          identifier: net.hoptools.demo
           version: "2.0"
           launchargs: ["--x"]
         macos-aarch64-appkit:
@@ -43,7 +43,7 @@ import Testing
 
     @Test func parsesCommonAndPlatformSections() throws {
         let config = try HoppackConfig.parse(yaml: yaml)
-        #expect(config.common.identifier == "dev.skip.demo")
+        #expect(config.common.identifier == "net.hoptools.demo")
         #expect(config.platforms.count == 2)
         #expect(config.platforms[PlatformTriple("macos-aarch64-appkit")!]?.title == "Demo AppKit")
         #expect(config.declaredTriples.map(\.key) == ["linux-x86_64-gtk4", "macos-aarch64-appkit"])
@@ -53,14 +53,14 @@ import Testing
         let config = try HoppackConfig.parse(yaml: yaml)
         let mac = try config.resolved(for: PlatformTriple("macos-aarch64-appkit")!, packageName: "pkg")
         #expect(mac.title == "Demo AppKit")
-        #expect(mac.identifier == "dev.skip.demo")   // inherited from common
+        #expect(mac.identifier == "net.hoptools.demo")   // inherited from common
         #expect(mac.version == "2.0")                // inherited from common
         #expect(mac.executable == "demo-appkit")
         #expect(mac.launchArgs == ["--x"])           // inherited from common
 
         let gtk = try config.resolved(for: PlatformTriple("linux-x86_64-gtk4")!, packageName: "pkg")
         #expect(gtk.version == "3.0")                // platform section overrides common
-        #expect(gtk.identifier == "dev.skip.demo")   // still inherits common
+        #expect(gtk.identifier == "net.hoptools.demo")   // still inherits common
     }
 
     @Test func appliesDefaultsForOmittedKeys() throws {

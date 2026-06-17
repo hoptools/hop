@@ -9,7 +9,7 @@
 #   hoppack package  --target linux-x86_64-gtk4
 
 metadata:
-  identifier: dev.skip.hopdemo
+  identifier: net.hoptools.hopdemo
   version: "1.0.0"
   build: "1"
   copyright: "© 2026"
@@ -68,7 +68,7 @@ linux-aarch64-qt:
 windows-x86_64-winui:
   title: HopUI Demo (WinUI)
   executable: hop-demo-winui
-  identifier: dev.skip.hopdemo.winui
+  identifier: net.hoptools.hopdemo.winui
   bundlelibraries:
     - .winui/runtime
   properties:
@@ -79,7 +79,7 @@ windows-x86_64-winui:
 windows-x86_64-qt:
   title: HopUI Demo (Qt)
   executable: hop-demo-qt
-  identifier: dev.skip.hopdemo.qt
+  identifier: net.hoptools.hopdemo.qt
   deploycommand: ["windeployqt", "--release", "--no-translations", "--compiler-runtime", "{exe}"]
   properties:
     publisher: "CN=Hop"

@@ -219,7 +219,7 @@ jobs:
           path: dist/linux-x86_64-gtk4.flatpak
           if-no-files-found: warn
       - name: Install & launch
-        run: scripts/ci/linux-install-launch.sh dist/linux-x86_64-gtk4.flatpak dev.skip.hopdemo
+        run: scripts/ci/linux-install-launch.sh dist/linux-x86_64-gtk4.flatpak
 
   linux-qt:
     name: Linux (Qt)
@@ -267,7 +267,7 @@ jobs:
           path: dist/linux-x86_64-qt.flatpak
           if-no-files-found: warn
       - name: Install & launch
-        run: scripts/ci/linux-install-launch.sh dist/linux-x86_64-qt.flatpak dev.skip.hopdemo.qt
+        run: scripts/ci/linux-install-launch.sh dist/linux-x86_64-qt.flatpak
 
   windows-winui:
     name: Windows (WinUI)
@@ -340,7 +340,7 @@ jobs:
           if-no-files-found: warn
       - name: Install & launch
         shell: pwsh
-        run: ./scripts/ci/windows-install-launch.ps1 -Msix dist/windows-x86_64-winui.msix -Publisher "CN=Skip" -IdentityName dev.skip.hopdemo.winui -Executable hop-demo-winui
+        run: ./scripts/ci/windows-install-launch.ps1 -Msix dist/windows-x86_64-winui.msix
 
   windows-qt:
     name: Windows (Qt)
@@ -415,7 +415,7 @@ jobs:
           if-no-files-found: warn
       - name: Install & launch
         shell: pwsh
-        run: ./scripts/ci/windows-install-launch.ps1 -Msix dist/windows-x86_64-qt.msix -Publisher "CN=Skip" -IdentityName dev.skip.hopdemo.qt -Executable hop-demo-qt
+        run: ./scripts/ci/windows-install-launch.ps1 -Msix dist/windows-x86_64-qt.msix
 
   # After every platform/toolkit job, collect their screenshot artifacts into one static gallery (each
   # playground shown side-by-side across backends) and publish it to GitHub Pages. Requires the repo's
