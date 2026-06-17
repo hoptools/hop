@@ -67,18 +67,40 @@ let selectedToolkit = ProcessInfo.processInfo.environment["HOP_TOOLKIT"]?.lowerc
 func toolkitEnabled(_ name: String) -> Bool { selectedToolkit == nil || selectedToolkit == name }
 
 // The reactive core + SwiftUI-mirroring API surface — zero toolkit dependencies, always included.
+// HopPackaging + the `hoppack` CLI are toolkit-independent (they orchestrate builds and produce native
+// app distributions), so they too are always included.
 var products: [Product] = [
     .library(name: "HopGraph", targets: ["HopGraph"]),
     .library(name: "HopUI", targets: ["HopUI"]),
+    .library(name: "HopPackaging", targets: ["HopPackaging"]),
+    .executable(name: "hoppack", targets: ["hoppack"]),
 ]
-// Package-level dependencies are added conditionally: only the WinUI toolkit (Windows-only) pulls in
-// the swift-winui WinRT/WinUI 3 projection package, so macOS/Linux builds never need to resolve it.
-var packageDependencies: [Package.Dependency] = []
+// Package-level dependencies. The WinUI toolkit (Windows-only) adds the swift-winui projection package
+// conditionally; HopPackaging's dependencies (process/path/YAML/arg-parsing) are cross-platform and always
+// resolved so the `hoppack` packaging tool builds on every host.
+var packageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+    .package(url: "https://github.com/jpsim/Yams", from: "5.1.0"),
+    .package(url: "https://github.com/apple/swift-system", from: "1.4.0"),
+    .package(url: "https://github.com/swiftlang/swift-subprocess", .upToNextMinor(from: "0.5.0")),
+]
 var targets: [Target] = [
     .target(name: "HopGraph"),
     .testTarget(name: "HopGraphTests", dependencies: ["HopGraph"]),
     .target(name: "HopUI", dependencies: ["HopGraph"], swiftSettings: uiIsolation),
     .testTarget(name: "HopUITests", dependencies: ["HopUI"]),
+    // The packaging engine: an async pipeline of Stages, per-platform backends, and an hoppack.yaml model.
+    .target(name: "HopPackaging", dependencies: [
+        .product(name: "Yams", package: "Yams"),
+        .product(name: "SystemPackage", package: "swift-system"),
+        .product(name: "Subprocess", package: "swift-subprocess"),
+    ]),
+    .testTarget(name: "HopPackagingTests", dependencies: ["HopPackaging"]),
+    // The `hoppack` command-line tool: assemble / run / package subcommands over HopPackaging.
+    .executableTarget(name: "hoppack", dependencies: [
+        "HopPackaging",
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
+    ]),
 ]
 
 if toolkitEnabled("gtk") {

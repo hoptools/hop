@@ -45,6 +45,18 @@ jobs:
           name: screenshots-macos-appkit
           path: ci-screenshots
           if-no-files-found: warn
+      # Assemble the app into an installable .dmg, upload it, then install + launch it to prove it runs.
+      - name: Package installer (macos-aarch64-appkit.dmg)
+        run: swift run hoppack package --target macos-aarch64-appkit --output dist/macos-aarch64-appkit.dmg
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-aarch64-appkit.dmg
+          path: dist/macos-aarch64-appkit.dmg
+          if-no-files-found: warn
+      - name: Install & launch
+        run: scripts/ci/macos-install-launch.sh dist/macos-aarch64-appkit.dmg
 
   macos-swiftui:
     name: macOS (SwiftUI reference)
@@ -71,6 +83,17 @@ jobs:
           name: screenshots-macos-swiftui
           path: ci-screenshots
           if-no-files-found: warn
+      - name: Package installer (macos-aarch64-swiftui.dmg)
+        run: swift run hoppack package --target macos-aarch64-swiftui --output dist/macos-aarch64-swiftui.dmg
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-aarch64-swiftui.dmg
+          path: dist/macos-aarch64-swiftui.dmg
+          if-no-files-found: warn
+      - name: Install & launch
+        run: scripts/ci/macos-install-launch.sh dist/macos-aarch64-swiftui.dmg
 
   macos-gtk:
     name: macOS (GTK4)
@@ -99,6 +122,17 @@ jobs:
           name: screenshots-macos-gtk
           path: ci-screenshots
           if-no-files-found: warn
+      - name: Package installer (macos-aarch64-gtk4.dmg)
+        run: swift run hoppack package --target macos-aarch64-gtk4 --output dist/macos-aarch64-gtk4.dmg
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-aarch64-gtk4.dmg
+          path: dist/macos-aarch64-gtk4.dmg
+          if-no-files-found: warn
+      - name: Install & launch
+        run: scripts/ci/macos-install-launch.sh dist/macos-aarch64-gtk4.dmg
 
   macos-qt:
     name: macOS (Qt)
@@ -127,20 +161,40 @@ jobs:
           name: screenshots-macos-qt
           path: ci-screenshots
           if-no-files-found: warn
+      - name: Package installer (macos-aarch64-qt.dmg)
+        run: swift run hoppack package --target macos-aarch64-qt --output dist/macos-aarch64-qt.dmg
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-aarch64-qt.dmg
+          path: dist/macos-aarch64-qt.dmg
+          if-no-files-found: warn
+      - name: Install & launch
+        run: scripts/ci/macos-install-launch.sh dist/macos-aarch64-qt.dmg
 
+  # The Linux jobs run directly on the runner (NOT in the swift container) so flatpak/flatpak-builder have the
+  # bubblewrap user-namespace privileges they need to build + install the flatpak. Swift is installed onto the
+  # host instead. The GTK4 flatpak runs on the GNOME runtime (which ships GTK4); the Swift runtime is bundled.
   linux-gtk:
     name: Linux (GTK4)
     runs-on: ubuntu-latest
-    container: swift:6.3.2
     env:
       HOP_TOOLKIT: gtk
     steps:
       - uses: actions/checkout@v6
-      - name: Install GTK4 (+ Xvfb/ImageMagick for screenshots)
+      - name: Install Swift 6.3.2
+        uses: swift-actions/setup-swift@main
+        with:
+          swift-version: "6.3.2"
+      - name: Install GTK4, flatpak (+ Xvfb/ImageMagick)
         run: |
-          apt-get update
-          apt-get install -y libgtk-4-dev pkg-config \
-            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev pkg-config \
+            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme \
+            flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//46 org.gnome.Sdk//46
       - name: Test (GTK4)
         run: swift test
       - name: Build (GTK4)
@@ -155,22 +209,40 @@ jobs:
           name: screenshots-linux-gtk
           path: ci-screenshots
           if-no-files-found: warn
+      - name: Package installer (linux-x86_64-gtk4.flatpak)
+        run: swift run hoppack package --target linux-x86_64-gtk4 --output dist/linux-x86_64-gtk4.flatpak
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-x86_64-gtk4.flatpak
+          path: dist/linux-x86_64-gtk4.flatpak
+          if-no-files-found: warn
+      - name: Install & launch
+        run: scripts/ci/linux-install-launch.sh dist/linux-x86_64-gtk4.flatpak dev.skip.hopdemo
 
   linux-qt:
     name: Linux (Qt)
     runs-on: ubuntu-latest
-    container: swift:6.3.2
     env:
       HOP_TOOLKIT: qt
     steps:
       - uses: actions/checkout@v6
+      - name: Install Swift 6.3.2
+        uses: swift-actions/setup-swift@main
+        with:
+          swift-version: "6.3.2"
       # Qt6 dev headers/libs land in the Debian multiarch paths Package.swift defaults to on Linux
       # (/usr/include/x86_64-linux-gnu/qt6, /usr/lib/x86_64-linux-gnu); override QT_ROOT for other layouts.
-      - name: Install Qt6 (+ Xvfb/ImageMagick for screenshots)
+      # The Qt flatpak runs on the KDE runtime (which ships Qt6); the Swift runtime is bundled.
+      - name: Install Qt6, flatpak (+ Xvfb/ImageMagick)
         run: |
-          apt-get update
-          apt-get install -y qt6-base-dev \
-            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev \
+            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0 \
+            flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
       - name: Test (Qt)
         run: swift test
       - name: Build (Qt)
@@ -185,6 +257,17 @@ jobs:
           name: screenshots-linux-qt
           path: ci-screenshots
           if-no-files-found: warn
+      - name: Package installer (linux-x86_64-qt.flatpak)
+        run: swift run hoppack package --target linux-x86_64-qt --output dist/linux-x86_64-qt.flatpak
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-x86_64-qt.flatpak
+          path: dist/linux-x86_64-qt.flatpak
+          if-no-files-found: warn
+      - name: Install & launch
+        run: scripts/ci/linux-install-launch.sh dist/linux-x86_64-qt.flatpak dev.skip.hopdemo.qt
 
   windows-winui:
     name: Windows (WinUI)
@@ -231,6 +314,33 @@ jobs:
           name: screenshots-windows-winui
           path: ci-screenshots
           if-no-files-found: warn
+      # makeappx + signtool live in the Windows SDK bin (not on PATH by default); add the newest to PATH.
+      - name: Add Windows SDK tools to PATH
+        shell: pwsh
+        run: |
+          $t = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          Add-Content $env:GITHUB_PATH (Split-Path $t.FullName)
+      # Stage the Windows App SDK runtime DLLs so hoppack bundles them into the MSIX (hoppack.yaml's
+      # windows-x86_64-winui bundlelibraries: [.winui/runtime]) — the app then runs without a runtime install.
+      - name: Stage Windows App SDK runtime (.winui/runtime)
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem .winui/packages -Directory -Filter "Microsoft.WindowsAppSDK.*" | Select-Object -First 1
+          New-Item -ItemType Directory -Force .winui/runtime | Out-Null
+          Copy-Item (Join-Path $pkg.FullName "runtimes/win-x64/native/*") .winui/runtime/ -Force -ErrorAction SilentlyContinue
+      - name: Package installer (windows-x86_64-winui.msix)
+        shell: pwsh
+        run: swift run hoppack package --target windows-x86_64-winui --output dist/windows-x86_64-winui.msix
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-x86_64-winui.msix
+          path: dist/windows-x86_64-winui.msix
+          if-no-files-found: warn
+      - name: Install & launch
+        shell: pwsh
+        run: ./scripts/ci/windows-install-launch.ps1 -Msix dist/windows-x86_64-winui.msix -Publisher "CN=Skip" -IdentityName dev.skip.hopdemo.winui -Executable hop-demo-winui
 
   windows-qt:
     name: Windows (Qt)
@@ -284,6 +394,28 @@ jobs:
           name: screenshots-windows-qt
           path: ci-screenshots
           if-no-files-found: warn
+      - name: Add Windows SDK tools to PATH
+        shell: pwsh
+        run: |
+          $t = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          Add-Content $env:GITHUB_PATH (Split-Path $t.FullName)
+      # hoppack runs windeployqt (on PATH via install-qt-action) to stage Qt's DLLs + plugins, and bundles
+      # the Swift runtime DLLs, so the MSIX is self-contained.
+      - name: Package installer (windows-x86_64-qt.msix)
+        shell: pwsh
+        env:
+          QT_ROOT: ${{ env.QT_ROOT_DIR }}
+        run: swift run hoppack package --target windows-x86_64-qt --output dist/windows-x86_64-qt.msix
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-x86_64-qt.msix
+          path: dist/windows-x86_64-qt.msix
+          if-no-files-found: warn
+      - name: Install & launch
+        shell: pwsh
+        run: ./scripts/ci/windows-install-launch.ps1 -Msix dist/windows-x86_64-qt.msix -Publisher "CN=Skip" -IdentityName dev.skip.hopdemo.qt -Executable hop-demo-qt
 
   # After every platform/toolkit job, collect their screenshot artifacts into one static gallery (each
   # playground shown side-by-side across backends) and publish it to GitHub Pages. Requires the repo's
