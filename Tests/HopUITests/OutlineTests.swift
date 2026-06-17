@@ -80,6 +80,62 @@ private struct OutlineSidebarView: View {
     }
 }
 
+private enum Pane: String, Hashable, CaseIterable { case slider, button, shapes, images }
+
+/// The sidebar idiom the Demo uses: `List(selection:) { Section { ForEach { row.tag() } } }`, which HopUI
+/// turns into a native sectioned list (a 2-level source-list outline: group headers + selectable rows).
+@MainActor
+private struct SectionedSidebarView: View {
+    @State var selection: Pane? = nil
+    var body: some View {
+        NavigationSplitView {
+            List(selection: $selection) {
+                Section("Controls") {
+                    ForEach([Pane.slider, Pane.button], id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                }
+                Section("Graphics") {
+                    ForEach([Pane.shapes, Pane.images], id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                }
+            }
+        } detail: {
+            Text(selection.map { "Selected \($0.rawValue)" } ?? "No selection")
+        }
+    }
+}
+
+@MainActor @Suite struct SectionedListTests {
+    @Test func testSectionedListBuildsHeadersAndSelectableLeaves() throws {
+        let toolkit = MockToolkit()
+        runHopApp(SectionedSidebarView(), toolkit: toolkit, title: "test")
+
+        // A selection-bound List of Sections renders as the native source-list outline.
+        let outline = try #require(toolkit.widgets.first { $0.kind == .sidebarOutline })
+        let spec = try #require(outline.outline)
+        // Each Section is a non-selectable group header over its selectable rows.
+        #expect(spec.roots.map(\.title) == ["Controls", "Graphics"])
+        #expect(spec.roots.allSatisfy { !$0.selectable })
+        #expect(spec.roots[0].children.map(\.title) == ["Slider", "Button"])
+        #expect(spec.roots[1].children.map(\.title) == ["Shapes", "Images"])
+        #expect(spec.roots.allSatisfy { $0.children.allSatisfy(\.selectable) })
+        // Rows are keyed by their `.tag(_:)` value (so selection matches the binding's type); headers are not.
+        #expect(spec.roots[0].children[0].id == AnyHashable(Pane.slider))
+        #expect((spec.roots[0].id.base as? Pane) == nil)
+        #expect(spec.selectedID == nil)
+        #expect(toolkit.liveLabels().contains("No selection"))
+
+        // Selecting a row flows its tag back through the binding into @State, reflected in the detail.
+        toolkit.clearOps()
+        outline.outline?.onSelect(AnyHashable(Pane.shapes))
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("Selected shapes"))
+        #expect(toolkit.makeCount == 0)  // a selection change rebuilds no widgets
+
+        // The new selection is reflected back down onto the outline spec.
+        let updated = try #require((toolkit.widgets.first { $0.kind == .sidebarOutline })?.outline)
+        #expect(updated.selectedID == AnyHashable(Pane.shapes))
+    }
+}
+
 @MainActor
 private struct DisclosureBoundView: View {
     @State var expanded = false

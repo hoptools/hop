@@ -85,6 +85,11 @@ void *hopqt_button_new(const char *text);
 void hopqt_button_set_text(void *button, const char *text);
 void hopqt_button_connect(void *button, hopqt_void_cb cb, void *user_data);
 
+// `.onTapGesture`: install an event filter on any widget that fires `cb` on a (count==1) mouse release
+// or (count>=2) double-click. Returns the filter object; pass it to hopqt_tap_remove to detach.
+void *hopqt_tap_install(void *widget, int count, hopqt_void_cb cb, void *user_data);
+void hopqt_tap_remove(void *widget, void *filter);
+
 // Text field
 void *hopqt_lineedit_new(const char *placeholder);
 void hopqt_lineedit_set_text(void *edit, const char *text);
@@ -216,7 +221,7 @@ void hopqt_list_set_sidebar(void *list, int sidebar);  // source-list/sidebar st
 void *hopqt_tree_new(void);
 void hopqt_tree_set_sidebar(void *tree, int sidebar);
 void hopqt_tree_set_rows(void *tree, int count, hopqt_row_cb title_cb, hopqt_row_cb key_cb,
-                         hopqt_intret_cb depth_cb, void *user_data);
+                         hopqt_intret_cb depth_cb, hopqt_intret_cb selectable_cb, void *user_data);
 void hopqt_tree_connect_selection(void *tree, hopqt_str_cb cb, void *user_data);
 char *hopqt_tree_selected_key(void *tree);  // malloc'd; Swift frees with free(). NULL if nothing selected.
 void hopqt_tree_select_key(void *tree, const char *key);  // NULL clears the selection

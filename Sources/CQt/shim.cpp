@@ -15,9 +15,11 @@
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QDateTimeEdit>
 #include <QtCore/QDateTime>
+#include <QtCore/QEvent>
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QFileDialog>
 #include <QtGui/QColor>
+#include <QtGui/QFont>
 #include <QtWidgets/QListView>
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QTreeWidgetItemIterator>
@@ -347,6 +349,34 @@ void hopqt_button_connect(void *button, hopqt_void_cb cb, void *user_data) {
     QObject::connect(b, &QPushButton::clicked, b, [cb, user_data]() {
         if (cb) cb(user_data);
     });
+}
+
+// `.onTapGesture`: a QObject event filter that fires the C callback on the Nth-equivalent click. eventFilter
+// is a plain virtual override, so no Q_OBJECT/moc is needed (consistent with the lambda-based connects).
+namespace {
+class HopTapFilter : public QObject {
+public:
+    int count; hopqt_void_cb cb; void *user_data;
+    HopTapFilter(int c, hopqt_void_cb f, void *d) : count(c), cb(f), user_data(d) {}
+    bool eventFilter(QObject *, QEvent *ev) override {
+        QEvent::Type want = (count >= 2) ? QEvent::MouseButtonDblClick : QEvent::MouseButtonRelease;
+        if (ev->type() == want && cb) cb(user_data);
+        return false;  // don't consume — let the widget handle it too
+    }
+};
+}
+
+void *hopqt_tap_install(void *widget, int count, hopqt_void_cb cb, void *user_data) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    HopTapFilter *filter = new HopTapFilter(count, cb, user_data);
+    w->installEventFilter(filter);
+    return filter;
+}
+
+void hopqt_tap_remove(void *widget, void *filter) {
+    if (!filter) return;
+    static_cast<QWidget *>(widget)->removeEventFilter(static_cast<HopTapFilter *>(filter));
+    static_cast<HopTapFilter *>(filter)->deleteLater();
 }
 
 void *hopqt_lineedit_new(const char *placeholder) {
@@ -892,10 +922,11 @@ void hopqt_tree_set_sidebar(void *tree, int sidebar) {
 }
 
 void hopqt_tree_set_rows(void *tree, int count, hopqt_row_cb title_cb, hopqt_row_cb key_cb,
-                         hopqt_intret_cb depth_cb, void *user_data) {
+                         hopqt_intret_cb depth_cb, hopqt_intret_cb selectable_cb, void *user_data) {
     QTreeWidget *t = static_cast<QTreeWidget *>(tree);
     QSignalBlocker block(t);  // don't fire selection signals while rebuilding
     t->clear();
+    bool anyHeader = false;
     QTreeWidgetItem *stack[64];
     for (int i = 0; i < 64; i++) stack[i] = nullptr;
     for (int i = 0; i < count; i++) {
@@ -904,9 +935,16 @@ void hopqt_tree_set_rows(void *tree, int count, hopqt_row_cb title_cb, hopqt_row
         if (depth > 62) depth = 62;
         char *title = title_cb ? title_cb(i, user_data) : nullptr;
         char *key = key_cb ? key_cb(i, user_data) : nullptr;
+        int selectable = selectable_cb ? selectable_cb(i, user_data) : 1;
         QTreeWidgetItem *item = new QTreeWidgetItem();
         item->setText(0, QString::fromUtf8(title ? title : ""));
         if (key) item->setData(0, Qt::UserRole, QString::fromUtf8(key));
+        if (!selectable) {
+            // Section header: make it unselectable and bold so the tree reads as a sectioned list.
+            item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
+            QFont f = item->font(0); f.setBold(true); item->setFont(0, f);
+            anyHeader = true;
+        }
         if (depth == 0 || stack[depth - 1] == nullptr) {
             t->addTopLevelItem(item);
         } else {
@@ -916,6 +954,7 @@ void hopqt_tree_set_rows(void *tree, int count, hopqt_row_cb title_cb, hopqt_row
         if (title) free(title);
         if (key) free(key);
     }
+    t->setRootIsDecorated(anyHeader ? false : true);  // sectioned list: drop the tree disclosure triangles
     t->expandAll();
 }
 

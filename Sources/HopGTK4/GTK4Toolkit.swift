@@ -26,6 +26,9 @@ public final class GTK4Widget {
     var exporterPresenting = false
     // Action boxes for a drop-down menu's items, retained so their C callbacks stay valid.
     var retainedBoxes: [GTK4ActionBox] = []
+    // For `.onTapGesture`: the retained callback box + the GtkGestureClick controller (so we can remove it).
+    var tapBox: GTK4ActionBox?
+    var tapGesture: UnsafeMutableRawPointer?
     init(_ widget: UnsafeMutableRawPointer) { self.widget = widget }
 }
 
@@ -52,6 +55,8 @@ private struct SendableCairo: @unchecked Sendable {
 /// The owning ``GTK4Widget`` retains this box, so we pass it unretained across the C boundary.
 final class GTK4ActionBox {
     var action: (@MainActor () -> Void)?
+    var tapAction: (@MainActor () -> Void)?   // `.onTapGesture`
+    var tapCount = 1
     var onChange: (@MainActor (String) -> Void)?
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
@@ -77,10 +82,13 @@ final class GTK4ActionBox {
     var onChangeColor: (@MainActor (Double, Double, Double, Double) -> Void)?
     /// Outline (tree) state: the pre-order flattened rows the C row callbacks read, a structure signature
     /// for rebuild detection, the last reflected selection key, and the key→selection callback.
-    var treeFlat: [(key: String, title: String, depth: Int)] = []
+    var treeFlat: [(key: String, title: String, depth: Int, selectable: Bool)] = []
     var treeSignature: String?
     var lastSelectedKey: String?
     var onSelectKey: (@MainActor (String?) -> Void)?
+    /// Keys of non-selectable group-header rows. `GtkSingleSelection` has no per-row selectability, so the
+    /// selection callback reverts a header click back to the last valid selection (see the callback).
+    var headerKeys: Set<String> = []
     /// Current shape to draw, read by the GtkDrawingArea draw callback (for `.shape` widgets).
     var shape: ShapeSpec?
     /// Layout frame size (from `.frame`) and the transform bleed offset, so the draw callback can paint
@@ -127,6 +135,13 @@ private let gtk4ClickedCallback: @convention(c) (UnsafeMutableRawPointer?, Unsaf
     guard let userData else { return }
     let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.action?() }
+}
+
+// GtkGestureClick "released" (`.onTapGesture`): fires the handler only on the Nth press (n_press == count).
+private let gtk4TapCallback: @convention(c) (UnsafeMutableRawPointer?, Int32, Double, Double, UnsafeMutableRawPointer?) -> Void = { _, nPress, _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { if Int(nPress) == box.tapCount { box.tapAction?() } }
 }
 
 private let gtk4ChangedCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { entry, userData in
@@ -244,6 +259,11 @@ private let gtk4TreeDepthCallback: @convention(c) (UInt32, UnsafeMutableRawPoint
     let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
     return MainActor.assumeIsolated { Int32(box.treeFlat.indices.contains(Int(position)) ? box.treeFlat[Int(position)].depth : 0) }
 }
+private let gtk4TreeSelectableCallback: @convention(c) (UInt32, UnsafeMutableRawPointer?) -> Int32 = { position, userData in
+    guard let userData else { return 1 }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    return MainActor.assumeIsolated { (box.treeFlat.indices.contains(Int(position)) ? box.treeFlat[Int(position)].selectable : true) ? 1 : 0 }
+}
 
 // Tree selection (notify::selected): read the selected row's key and report it. user_data is the handle.
 private let gtk4TreeSelectionCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, _, userData in
@@ -252,6 +272,12 @@ private let gtk4TreeSelectionCallback: @convention(c) (UnsafeMutableRawPointer?,
     let key: String? = hop_tree_get_selected_key(handle.widget).map { let s = String(cString: $0); free($0); return s }
     MainActor.assumeIsolated {
         guard let box = handle.actionBox else { return }
+        // A non-selectable group header was clicked: GtkSingleSelection can't refuse a row, so revert to
+        // the last valid selection (re-fires this callback once with that key, absorbed by the guard below).
+        if let key, box.headerKeys.contains(key) {
+            hop_tree_select_key(handle.widget, box.lastSelectedKey)
+            return
+        }
         if box.lastSelectedKey != key {
             box.lastSelectedKey = key
             box.onSelectKey?(key)
@@ -769,16 +795,18 @@ public final class GTK4Toolkit: AppToolkit {
         // id to preserve the binding's selection type (the List does `id.base as? SelectionValue`).
         let idByKey = Dictionary(flat.map { ($0.node.key, $0.node.id) }, uniquingKeysWith: { first, _ in first })
         box.onSelectKey = { key in spec.onSelect(key.flatMap { idByKey[$0] }) }
+        box.headerKeys = Set(flat.filter { !$0.node.selectable }.map { $0.node.key })
 
         // Rebuild the native tree only when the structure changes (not on every reconcile, which would
         // collapse expansion and re-trigger selection); the model + selection signal are recreated here.
         let signature = spec.structureSignature
         if box.treeSignature != signature {
             box.treeSignature = signature
-            box.treeFlat = flat.map { (key: $0.node.key, title: $0.node.title, depth: $0.depth) }
+            box.treeFlat = flat.map { (key: $0.node.key, title: $0.node.title, depth: $0.depth, selectable: $0.node.selectable) }
             let boxPtr = Unmanaged.passUnretained(box).toOpaque()
             hop_tree_set_rows(handle.widget, UInt32(flat.count),
-                              gtk4TreeTitleCallback, gtk4TreeKeyCallback, gtk4TreeDepthCallback, boxPtr)
+                              gtk4TreeTitleCallback, gtk4TreeKeyCallback, gtk4TreeDepthCallback,
+                              gtk4TreeSelectableCallback, boxPtr)
             _ = hop_tree_connect_selection(handle.widget, gtk4TreeSelectionCallback,
                                            Unmanaged.passUnretained(handle).toOpaque())
         }
@@ -1050,6 +1078,19 @@ public final class GTK4Toolkit: AppToolkit {
             hop_scrolled_window_connect_scroll(handle.widget, gtk4ScrollCallback, Unmanaged.passUnretained(handle).toOpaque())
             handle.scrollConnected = true
         }
+    }
+
+    public func setTapHandler(_ handle: GTK4Widget, _ spec: TapGestureSpec?) {
+        if let gesture = handle.tapGesture {
+            hop_tap_gesture_remove(handle.widget, gesture)
+            handle.tapGesture = nil; handle.tapBox = nil
+        }
+        guard let spec else { return }
+        let box = GTK4ActionBox()
+        box.tapAction = spec.action
+        box.tapCount = Swift.max(1, spec.count)
+        handle.tapBox = box   // retain so the C callback's user_data stays valid
+        handle.tapGesture = hop_tap_gesture_new(handle.widget, gtk4TapCallback, Unmanaged.passUnretained(box).toOpaque())
     }
 
     public func contentSize() -> CGSize {

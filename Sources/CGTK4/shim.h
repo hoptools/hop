@@ -243,6 +243,19 @@ static inline unsigned long hop_connect_clicked(void *button, hop_clicked_fn cb,
     return g_signal_connect_data(button, "clicked", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
 }
 
+// `.onTapGesture`: attach a GtkGestureClick to any widget. The callback gets the press count (1, 2, …)
+// so a count-N gesture fires only on the Nth release. Returns the controller (pass to remove below).
+typedef void (*hop_tap_fn)(void *gesture, int n_press, double x, double y, void *data);
+static inline void *hop_tap_gesture_new(void *widget, hop_tap_fn cb, void *data) {
+    GtkGesture *gesture = gtk_gesture_click_new();
+    g_signal_connect_data(gesture, "released", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+    gtk_widget_add_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(gesture));
+    return gesture;
+}
+static inline void hop_tap_gesture_remove(void *widget, void *gesture) {
+    if (gesture) gtk_widget_remove_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(gesture));
+}
+
 static inline void *hop_entry_new(void) {
     return gtk_entry_new();
 }
@@ -656,6 +669,12 @@ static inline void hop_tree_item_bind(GtkSignalListItemFactory *factory, GObject
     GtkWidget *label = gtk_tree_expander_get_child(expander);
     if (node) {
         gtk_label_set_text(GTK_LABEL(label), gtk_string_object_get_string(GTK_STRING_OBJECT(node)));
+        // Non-selectable rows are section headers: drop the disclosure triangle and dim the text so the
+        // list reads as a sectioned list (matching SwiftUI) rather than a collapsible tree.
+        gboolean header = g_object_get_data(node, "hop-header") != NULL;
+        gtk_tree_expander_set_hide_expander(expander, header);
+        if (header) gtk_widget_add_css_class(label, "dim-label");
+        else gtk_widget_remove_css_class(label, "dim-label");
         g_object_unref(node);
     }
 }
@@ -689,7 +708,7 @@ static inline void hop_tree_set_sidebar(void *sw, int sidebar) {
 }
 
 static inline void hop_tree_set_rows(void *sw, unsigned count, hop_row_fn title_cb, hop_row_fn key_cb,
-                                     hop_depth_fn depth_cb, void *user_data) {
+                                     hop_depth_fn depth_cb, hop_depth_fn selectable_cb, void *user_data) {
     GtkWidget *lv = gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(sw));
     GListStore *root = g_list_store_new(GTK_TYPE_STRING_OBJECT);
     // stack[d] = the GListStore that a node of depth d is appended into; stack[d+1] is the child store
@@ -702,8 +721,10 @@ static inline void hop_tree_set_rows(void *sw, unsigned count, hop_row_fn title_
         if (depth > 62) depth = 62;
         char *title = title_cb ? title_cb(i, user_data) : NULL;
         char *key = key_cb ? key_cb(i, user_data) : NULL;
+        int selectable = selectable_cb ? selectable_cb(i, user_data) : 1;
         GtkStringObject *obj = gtk_string_object_new(title ? title : "");
         if (key) g_object_set_data_full(G_OBJECT(obj), "hop-key", g_strdup(key), g_free);
+        if (!selectable) g_object_set_data(G_OBJECT(obj), "hop-header", GINT_TO_POINTER(1));  // section header
         GListStore *child_store = g_list_store_new(GTK_TYPE_STRING_OBJECT);
         g_object_set_data_full(G_OBJECT(obj), "hop-children", child_store, g_object_unref);
         g_list_store_append(stack[depth], G_OBJECT(obj));

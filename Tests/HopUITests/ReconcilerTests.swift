@@ -45,6 +45,8 @@ final class MockWidget {
     var hasProgress = false
     var frame: CGRect?  // set by the layout engine via setFrame
     var scrollHandler: (@MainActor (CGSize) -> Void)?  // wired for .scroll widgets; tests invoke to scroll
+    var tapHandler: (@MainActor () -> Void)?  // wired for `.onTapGesture`; tests invoke to simulate a tap
+    var tapCount = 0                          // the gesture's required tap count (0 = no tap handler)
     // Live child order, maintained by the toolkit's insert/move/remove so tests can assert ordering
     // and handle reuse (object identity) across reconciliation.
     var children: [MockWidget] = []
@@ -277,6 +279,7 @@ final class MockToolkit: AppToolkit {
     func setFrame(_ handle: MockWidget, _ rect: CGRect) { handle.frame = rect }
     func sizeOf(_ handle: MockWidget) -> CGSize { handle.frame?.size ?? .zero }
     func setScrollHandler(_ handle: MockWidget, _ handler: (@MainActor (CGSize) -> Void)?) { handle.scrollHandler = handler }
+    func setTapHandler(_ handle: MockWidget, _ spec: TapGestureSpec?) { handle.tapHandler = spec?.action; handle.tapCount = spec?.count ?? 0 }
     /// Identifying labels of widgets actually measured through the toolkit (cache misses), for asserting
     /// incremental layout: an unchanged subtree's leaves are NOT re-measured.
     private(set) var measuredLabels: [String] = []

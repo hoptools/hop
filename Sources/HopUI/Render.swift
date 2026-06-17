@@ -241,6 +241,9 @@ public struct RenderNode {
     /// For a `.scroll` node: called by the toolkit with the current scroll offset when the user scrolls,
     /// so virtualized content can re-materialize the visible window. Not part of equality.
     public var onScroll: (@MainActor (CGSize) -> Void)?
+    /// Tap-gesture handler attached via `.onTapGesture`; the toolkit installs a native tap recognizer on
+    /// this node's widget that invokes it. Not part of equality.
+    public var onTap: TapGestureSpec?
     /// For a `.lazyStack` node: called by the layout engine with a materialized row's measured extent, so
     /// the lazy stack can refine its (uniform) row-size estimate. Not part of equality.
     public var onRowExtent: (@MainActor (Double) -> Void)?
@@ -283,7 +286,7 @@ public struct RenderNode {
                 tag: AnyHashable? = nil,
                 preferences: NodePreferences? = nil,
                 layout: LayoutInfo = LayoutInfo(), onGeometry: (@MainActor (CGSize) -> Void)? = nil,
-                onScroll: (@MainActor (CGSize) -> Void)? = nil,
+                onScroll: (@MainActor (CGSize) -> Void)? = nil, onTap: TapGestureSpec? = nil,
                 onRowExtent: (@MainActor (Double) -> Void)? = nil,
                 onContentOrigin: (@MainActor (Double) -> Void)? = nil) {
         self.id = id
@@ -297,6 +300,7 @@ public struct RenderNode {
         self.layout = layout
         self.onGeometry = onGeometry
         self.onScroll = onScroll
+        self.onTap = onTap
         self.onRowExtent = onRowExtent
         self.onContentOrigin = onContentOrigin
     }
@@ -308,7 +312,7 @@ extension RenderNode {
     /// for the common case of a bare composite with no surrounding modifiers.
     var hasWrapperState: Bool {
         !layout.modifiers.isEmpty || preferences != nil || tag != nil || tabLabel != nil
-            || fileImporter != nil || fileExporter != nil || patch != WidgetPatch()
+            || fileImporter != nil || fileExporter != nil || onTap != nil || patch != WidgetPatch()
     }
 
     /// Overlay onto `self` the modifier state a wrapping modifier accumulated on a composite reference
@@ -323,6 +327,7 @@ extension RenderNode {
         if let tl = ref.tabLabel { tabLabel = tl }
         if let fi = ref.fileImporter { fileImporter = fi }
         if let fe = ref.fileExporter { fileExporter = fe }
+        if let ot = ref.onTap { onTap = ot }
         patch.overlay(ref.patch)
     }
 }

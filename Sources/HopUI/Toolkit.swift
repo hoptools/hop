@@ -42,6 +42,9 @@ public protocol RenderToolkit: AnyObject {
     func configure(_ handle: Handle, _ patch: WidgetPatch)
     /// Install the scroll handler on a `.scroll` widget (nil for non-scroll widgets — a no-op). Cross-cutting.
     func setScrollHandler(_ handle: Handle, _ handler: (@MainActor (CGSize) -> Void)?)
+    /// Install a tap-gesture recognizer on `handle` from `.onTapGesture` (nil removes it). Cross-cutting:
+    /// can wrap any widget. The toolkit fires `spec.action` after `spec.count` taps.
+    func setTapHandler(_ handle: Handle, _ spec: TapGestureSpec?)
     /// Drive a `.fileImporter` presentation attached to `handle` (cross-cutting; can wrap any widget): when
     /// `spec.isPresented` transitions true, show the native open panel, then call `onCompletion` + reset.
     func configureFileImporter(_ handle: Handle, _ spec: FileImporterSpec)

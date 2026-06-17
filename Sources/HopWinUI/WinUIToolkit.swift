@@ -52,6 +52,8 @@ public final class WinUIWidget {
     var scrollHandler: (@MainActor (CGSize) -> Void)?
     var onChangeDate: (@MainActor (Date) -> Void)?
     var onChangeColor: (@MainActor (HopUI.Color) -> Void)?
+    var tapAction: (@MainActor () -> Void)?   // `.onTapGesture`
+    var tapConnected = false                  // the Tapped/DoubleTapped event is wired at most once
 
     /// Suppresses change callbacks while reflecting a bound value programmatically.
     var suppress = false
@@ -107,6 +109,10 @@ private func widget(_ ud: UnsafeMutableRawPointer?) -> WinUIWidget? {
 private let cbAction: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
     guard let w = widget(ud) else { return }
     MainActor.assumeIsolated { if !w.suppress { w.action?() } }
+}
+private let cbTap: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
+    guard let w = widget(ud) else { return }
+    MainActor.assumeIsolated { w.tapAction?() }
 }
 private let cbString: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { s, ud in
     guard let w = widget(ud), let s else { return }
@@ -539,6 +545,16 @@ public final class WinUIToolkit: AppToolkit {
     }
 
     public func setScrollHandler(_ handle: WinUIWidget, _ handler: (@MainActor (CGSize) -> Void)?) { handle.scrollHandler = handler }
+
+    public func setTapHandler(_ handle: WinUIWidget, _ spec: TapGestureSpec?) {
+        handle.tapAction = spec?.action
+        // Wire the Tapped/DoubleTapped event once; later reconciles just update tapAction (a nil action
+        // makes the wired handler a no-op, so we never need to detach).
+        if let spec, !handle.tapConnected {
+            hopwinui_tap_connect(handle.handle, Int32(Swift.max(1, spec.count)), cbTap, unmanaged(handle))
+            handle.tapConnected = true
+        }
+    }
 
     // MARK: - Composite configuration
 

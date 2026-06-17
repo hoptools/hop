@@ -36,6 +36,9 @@ public final class AppKitWidget {
     var exporterPresenting = false
     // For a `.scroll` widget: the clip-view bounds-change observer driving the scroll handler.
     var scrollObserver: NSObjectProtocol?
+    // For `.onTapGesture`: the installed click recognizer + its retained target.
+    var tapRecognizer: NSClickGestureRecognizer?
+    var tapTarget: TapTarget?
     // For a `.list` widget: the (low-priority) preferred-width constraint, so a sidebar list can be narrower.
     var listPreferredWidth: NSLayoutConstraint?
     init(_ view: NSView) { self.view = view }
@@ -93,6 +96,12 @@ public final class HopImageView: NSImageView {
 
 /// Bridges Cocoa's target/action selector mechanism to a stored Swift closure.
 public final class ActionTrampoline: NSObject {
+    var action: (@MainActor () -> Void)?
+    @objc func fire() { action?() }
+}
+
+/// Target for an `.onTapGesture` `NSClickGestureRecognizer`.
+public final class TapTarget: NSObject {
     var action: (@MainActor () -> Void)?
     @objc func fire() { action?() }
 }
@@ -218,8 +227,15 @@ public final class AppKitOutlineController: NSObject, NSOutlineViewDataSource, N
     public func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         !((item as? Item)?.children.isEmpty ?? true)
     }
+    /// Non-selectable nodes are section headers: render them as source-list group rows (the idiomatic macOS
+    /// sidebar header — no disclosure triangle, gray caption — mirroring SwiftUI's `List { Section { … } }`).
+    public func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
+        !((item as? Item)?.node.selectable ?? true)
+    }
     public func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        let identifier = NSUserInterfaceItemIdentifier("HopOutlineCell")
+        let node = (item as? Item)?.node
+        let isHeader = !(node?.selectable ?? true)
+        let identifier = NSUserInterfaceItemIdentifier(isHeader ? "HopOutlineHeader" : "HopOutlineCell")
         let field: NSTextField
         if let reused = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTextField {
             field = reused
@@ -228,7 +244,11 @@ public final class AppKitOutlineController: NSObject, NSOutlineViewDataSource, N
             field.identifier = identifier
             field.lineBreakMode = .byTruncatingTail
         }
-        field.stringValue = (item as? Item)?.node.title ?? ""
+        // Section headers get the secondary-color caption look; rows use the standard label style.
+        field.font = isHeader ? .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+                              : .systemFont(ofSize: NSFont.systemFontSize)
+        field.textColor = isHeader ? .secondaryLabelColor : .labelColor
+        field.stringValue = node?.title ?? ""
         return field
     }
     public func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
@@ -986,6 +1006,21 @@ public final class AppKitToolkit: AppToolkit {
                 handler(CGSize(width: origin.x, height: origin.y))
             }
         }
+    }
+
+    public func setTapHandler(_ handle: AppKitWidget, _ spec: TapGestureSpec?) {
+        if let existing = handle.tapRecognizer {
+            handle.view.removeGestureRecognizer(existing)
+            handle.tapRecognizer = nil; handle.tapTarget = nil
+        }
+        guard let spec else { return }
+        let target = TapTarget()
+        target.action = spec.action
+        let recognizer = NSClickGestureRecognizer(target: target, action: #selector(TapTarget.fire))
+        recognizer.numberOfClicksRequired = Swift.max(1, spec.count)
+        handle.view.addGestureRecognizer(recognizer)
+        handle.tapRecognizer = recognizer
+        handle.tapTarget = target
     }
 
     public func contentSize() -> CGSize {

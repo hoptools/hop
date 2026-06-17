@@ -272,6 +272,15 @@ void hopwinui_button_connect(void* h, hopwinui_void_cb cb, void* ud) {
     b.Click([cb, ud](auto&&, auto&&) { if (cb) cb(ud); });
 }
 
+void hopwinui_tap_connect(void* h, int32_t count, hopwinui_void_cb cb, void* ud) {
+    auto e = elem(h);
+    if (count >= 2) {
+        e.DoubleTapped([cb, ud](auto&&, auto&&) { if (cb) cb(ud); });
+    } else {
+        e.Tapped([cb, ud](auto&&, auto&&) { if (cb) cb(ud); });
+    }
+}
+
 // ---------------------------------------------------------------------------------------------------
 // TextBox / PasswordBox
 // ---------------------------------------------------------------------------------------------------

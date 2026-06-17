@@ -70,13 +70,14 @@ nonisolated final class DemoModel: @unchecked Sendable {
 
 /// The playgrounds shown in the sidebar selector, modeled on skipapp-showcase. Each demonstrates one
 /// of the components HopUI implements so far. They are grouped into desktop UI categories by
-/// ``sidebarTree`` and presented through an ``OutlineGroup`` tree selector.
+/// ``sidebarSections`` and presented as a native sectioned list with group headers (``SidebarView``).
 enum Playground: String, CaseIterable, Hashable {
     case slider, button, toggle, stepper, datePicker, colorPicker, textField, secureField, progress
     case text, accessibility, label, link
     case shapes, images
     case layout, disclosure, groupBox, form, tabs
     case observable, menus, files
+    case gesture
 
     var title: String {
         switch self {
@@ -103,6 +104,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .observable: return "Observable"
         case .menus: return "Menus"
         case .files: return "Files"
+        case .gesture: return "Gestures"
         }
     }
 
@@ -117,49 +119,27 @@ enum Playground: String, CaseIterable, Hashable {
     }
 }
 
-/// One node in the sidebar's hierarchical selector: either a category header (with `children`) or a leaf
-/// that maps to a ``Playground``. `id` is a `String` so the whole tree selects against a single
-/// `Binding<String?>` — a category's id (`cat.*`) maps to no playground; a leaf's id is the playground's
-/// raw value. Drives the ``OutlineGroup`` tree in both HopUI and SwiftUI builds.
-struct SidebarItem: Identifiable, Hashable {
+/// One sidebar group: a section header and the playgrounds it contains. Rendered by ``SidebarView`` as a
+/// `Section` of a selection-bound `List`, which becomes a native sectioned list on every toolkit.
+struct SidebarSection: Identifiable, Hashable {
     let id: String
     let title: String
-    var children: [SidebarItem]? = nil
-
-    /// A leaf row for a playground.
-    init(_ playground: Playground) {
-        self.id = playground.rawValue
-        self.title = playground.title
-    }
-
-    /// A category header grouping child rows.
-    init(category id: String, _ title: String, _ children: [SidebarItem]) {
-        self.id = "cat.\(id)"
-        self.title = title
-        self.children = children
-    }
+    let items: [Playground]
 }
 
-/// The sidebar's tree of categories → playgrounds, organized into logical desktop UI groups.
-let sidebarTree: [SidebarItem] = [
-    SidebarItem(category: "controls", "Controls", [
-        SidebarItem(.slider), SidebarItem(.button), SidebarItem(.toggle), SidebarItem(.stepper),
-        SidebarItem(.datePicker), SidebarItem(.colorPicker), SidebarItem(.textField),
-        SidebarItem(.secureField), SidebarItem(.progress),
-    ]),
-    SidebarItem(category: "text", "Text & Accessibility", [
-        SidebarItem(.text), SidebarItem(.accessibility), SidebarItem(.label), SidebarItem(.link),
-    ]),
-    SidebarItem(category: "graphics", "Graphics", [
-        SidebarItem(.shapes), SidebarItem(.images),
-    ]),
-    SidebarItem(category: "containers", "Containers", [
-        SidebarItem(.layout), SidebarItem(.disclosure),
-        SidebarItem(.groupBox), SidebarItem(.form), SidebarItem(.tabs),
-    ]),
-    SidebarItem(category: "data", "Data & Menus", [
-        SidebarItem(.observable), SidebarItem(.menus), SidebarItem(.files),
-    ]),
+/// The sidebar's categories → playgrounds, organized into logical desktop UI groups.
+let sidebarSections: [SidebarSection] = [
+    SidebarSection(id: "controls", title: "Controls",
+                   items: [.slider, .button, .toggle, .stepper, .datePicker, .colorPicker,
+                           .textField, .secureField, .progress, .gesture]),
+    SidebarSection(id: "text", title: "Text & Accessibility",
+                   items: [.text, .accessibility, .label, .link]),
+    SidebarSection(id: "graphics", title: "Graphics",
+                   items: [.shapes, .images]),
+    SidebarSection(id: "containers", title: "Containers",
+                   items: [.layout, .disclosure, .groupBox, .form, .tabs]),
+    SidebarSection(id: "data", title: "Data & Menus",
+                   items: [.observable, .menus, .files]),
 ]
 
 // `hopTask` runs async work on the toolkit's run loop. The HopUI build gets it from `import HopUI`;
@@ -172,6 +152,30 @@ let sidebarTree: [SidebarItem] = [
 enum Flavor: String, CaseIterable, Hashable {
     case vanilla, chocolate, strawberry, mint
     var label: String { rawValue.capitalized }
+}
+
+/// The Demo's sidebar: a native sectioned list — one `Section` (idiomatic group header) per category and a
+/// selectable row per playground, with native single selection driving the detail. The one source compiles
+/// against both HopUI and Apple's SwiftUI (HopUI renders it via the native source-list / outline widget).
+private struct SidebarView: View {
+    @Binding var selection: Playground?
+    @Binding var navPath: [String]
+
+    var body: some View {
+        // Wrap the selection so picking a row also pops any pushed detail. Using a binding (rather than
+        // `.onChange`) keeps the one source compiling identically on HopUI and SwiftUI.
+        let bound = Binding<Playground?>(get: { selection }, set: { selection = $0; navPath = [] })
+        List(selection: bound) {
+            ForEach(sidebarSections) { section in
+                Section(section.title) {
+                    ForEach(section.items, id: \.self) { playground in
+                        Text(playground.title).tag(playground)
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 240)
+    }
 }
 
 /// A showcase shared by every toolkit (AppKit, GTK4, Qt, native SwiftUI). The sidebar `List` is a
@@ -197,17 +201,7 @@ public struct ContentView: View {
 
     public var body: some View {
         NavigationSplitView {
-            // A hierarchical OutlineGroup tree selector (native NSOutlineView / GtkTreeListModel /
-            // QTreeWidget). Selection binds to the node id string: a leaf's id is a Playground raw value;
-            // a category header maps to no playground (placeholder detail).
-            List(selection: Binding<String?>(
-                get: { selection?.rawValue },
-                set: { selection = $0.flatMap(Playground.init(rawValue:)); navPath = [] }
-            )) {
-                OutlineGroup(sidebarTree, children: \.children) { item in
-                    Text(item.title)
-                }
-            }
+            SidebarView(selection: $selection, navPath: $navPath)
         } detail: {
             NavigationStack(path: $navPath) {
                 detail
@@ -271,6 +265,8 @@ public struct ContentView: View {
                 TabsPlayground()
             } else if selection == .files {
                 FilePlayground()
+            } else if selection == .gesture {
+                GesturePlayground()
             } else {
                 LayoutPlayground()
             }
@@ -792,6 +788,30 @@ struct MenuPlayground: View {
             }
             Text("Your order: \(quantity) × \(flavor.label)")
         }
+    }
+}
+
+/// Demonstrates `.onTapGesture`. Tapping the first box increments a counter and flips its color; the
+/// second responds only to a double-tap. Each tap mutates `@State`, which re-renders the counts — the same
+/// reactive path a `Button` uses, but driven by a native tap recognizer on every toolkit.
+struct GesturePlayground: View {
+    @State private var taps = 0
+    @State private var doubleTaps = 0
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Single taps: \(taps) — tap the big box (it counts taps and flips colour)")
+            RoundedRectangle(cornerRadius: 16)
+                .fill(taps % 2 == 0 ? Color.blue : Color.green)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onTapGesture { taps += 1 }
+            Text("Double taps: \(doubleTaps) — double-tap the strip below")
+            RoundedRectangle(cornerRadius: 16)
+                .fill(doubleTaps % 2 == 0 ? Color.orange : Color.purple)
+                .frame(maxWidth: .infinity, minHeight: 90, maxHeight: 90)
+                .onTapGesture(count: 2) { doubleTaps += 1 }
+        }
+        .padding(24)
     }
 }
 

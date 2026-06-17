@@ -86,6 +86,9 @@ void hopwinui_textblock_set_font(void* h, double size, const char* family_or_nul
 void hopwinui_button_set_text(void* h, const char* utf8);
 void hopwinui_button_connect(void* h, hopwinui_void_cb cb, void* user_data);
 
+// `.onTapGesture`: wire any UIElement's Tapped (count==1) or DoubleTapped (count>=2) event to `cb`.
+void hopwinui_tap_connect(void* h, int32_t count, hopwinui_void_cb cb, void* user_data);
+
 // MARK: TextBox / PasswordBox
 char* hopwinui_textbox_text(void* h);  // malloc'd UTF-8; caller frees
 void hopwinui_textbox_set_text(void* h, const char* utf8);

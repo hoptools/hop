@@ -34,6 +34,9 @@ public final class QtWidget {
     var lastFrame: CGRect?  // last frame applied by setFrame; skip redundant geometry calls (keeps scroll momentum)
     // Action boxes for a drop-down menu's items, retained so their C callbacks stay valid.
     var retainedBoxes: [QtActionBox] = []
+    // For `.onTapGesture`: the retained callback box + the installed event filter (so we can remove it).
+    var tapBox: QtActionBox?
+    var tapFilter: UnsafeMutableRawPointer?
     init(_ ptr: UnsafeMutableRawPointer) { self.ptr = ptr }
 }
 
@@ -65,11 +68,15 @@ final class QtActionBox {
     /// Outline (tree) state: the flattened rows the C row callbacks read, a structure signature for
     /// rebuild detection, the last reflected selection key, whether the selection signal is wired, and the
     /// key→selection callback.
-    var treeFlat: [(key: String, title: String, depth: Int)] = []
+    var treeFlat: [(key: String, title: String, depth: Int, selectable: Bool)] = []
     var treeSignature: String?
     var lastSelectedKey: String?
     var treeConnected = false
     var onSelectKey: (@MainActor (String?) -> Void)?
+    /// Keys of non-selectable group-header rows, plus the owning QTreeWidget pointer, so the selection
+    /// callback can revert a header click back to the last valid selection.
+    var headerKeys: Set<String> = []
+    var treePtr: UnsafeMutableRawPointer?
     /// Current shape to draw, read by the QWidget paint callback (for `.shape` widgets).
     var shape: ShapeSpec?
     /// Layout frame size (from `.frame`) and the transform bleed offset, so the paint callback can paint
@@ -174,6 +181,11 @@ private let qtTreeDepthCallback: @convention(c) (Int32, UnsafeMutableRawPointer?
     let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
     return MainActor.assumeIsolated { Int32(box.treeFlat.indices.contains(Int(position)) ? box.treeFlat[Int(position)].depth : 0) }
 }
+private let qtTreeSelectableCallback: @convention(c) (Int32, UnsafeMutableRawPointer?) -> Int32 = { position, userData in
+    guard let userData else { return 1 }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    return MainActor.assumeIsolated { (box.treeFlat.indices.contains(Int(position)) ? box.treeFlat[Int(position)].selectable : true) ? 1 : 0 }
+}
 
 // QTreeWidget selection callback (currentItemChanged): reports the newly-selected row's key (or nil).
 private let qtTreeSelectionCallback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { cKey, userData in
@@ -181,6 +193,12 @@ private let qtTreeSelectionCallback: @convention(c) (UnsafePointer<CChar>?, Unsa
     let key: String? = cKey.map { String(cString: $0) }
     let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated {
+        // A non-selectable group header was clicked: revert to the last valid selection (via setCurrentItem,
+        // which doesn't re-fire itemClicked) rather than report the header.
+        if let key, box.headerKeys.contains(key), let tree = box.treePtr {
+            hopqt_tree_select_key(tree, box.lastSelectedKey)
+            return
+        }
         if box.lastSelectedKey != key {
             box.lastSelectedKey = key
             box.onSelectKey?(key)
@@ -695,16 +713,19 @@ public final class QtToolkit: AppToolkit {
         // id to preserve the binding's selection type (the List does `id.base as? SelectionValue`).
         let idByKey = Dictionary(flat.map { ($0.node.key, $0.node.id) }, uniquingKeysWith: { first, _ in first })
         box.onSelectKey = { key in spec.onSelect(key.flatMap { idByKey[$0] }) }
+        box.headerKeys = Set(flat.filter { !$0.node.selectable }.map { $0.node.key })
+        box.treePtr = handle.ptr
 
         // Rebuild the native tree only when the structure changes (the QTreeWidget is stable across
         // rebuilds, so the selection signal is connected just once).
         let signature = spec.structureSignature
         if box.treeSignature != signature {
             box.treeSignature = signature
-            box.treeFlat = flat.map { (key: $0.node.key, title: $0.node.title, depth: $0.depth) }
+            box.treeFlat = flat.map { (key: $0.node.key, title: $0.node.title, depth: $0.depth, selectable: $0.node.selectable) }
             let boxPtr = Unmanaged.passUnretained(box).toOpaque()
             hopqt_tree_set_rows(handle.ptr, Int32(flat.count),
-                                qtTreeTitleCallback, qtTreeKeyCallback, qtTreeDepthCallback, boxPtr)
+                                qtTreeTitleCallback, qtTreeKeyCallback, qtTreeDepthCallback,
+                                qtTreeSelectableCallback, boxPtr)
             if !box.treeConnected {
                 hopqt_tree_connect_selection(handle.ptr, qtTreeSelectionCallback, boxPtr)
                 box.treeConnected = true
@@ -949,6 +970,19 @@ public final class QtToolkit: AppToolkit {
             hopqt_scrollarea_connect_scroll(handle.ptr, qtScrollCallback, Unmanaged.passUnretained(handle).toOpaque())
             handle.scrollConnected = true
         }
+    }
+
+    public func setTapHandler(_ handle: QtWidget, _ spec: TapGestureSpec?) {
+        if let filter = handle.tapFilter {
+            hopqt_tap_remove(handle.ptr, filter)
+            handle.tapFilter = nil; handle.tapBox = nil
+        }
+        guard let spec else { return }
+        let box = QtActionBox()
+        box.action = spec.action
+        handle.tapBox = box   // retain so the C callback's user_data stays valid
+        handle.tapFilter = hopqt_tap_install(handle.ptr, Int32(Swift.max(1, spec.count)), qtClickCallback,
+                                             Unmanaged.passUnretained(box).toOpaque())
     }
 
     public func contentSize() -> CGSize {

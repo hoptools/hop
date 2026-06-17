@@ -10,10 +10,25 @@
 // leave @main off (each has its own main.swift that picks a toolkit and calls runApp).
 #if HOPUI_TOOLKIT_SWIFTUI
 import SwiftUI
+import AppKit  // NSApplication activation policy: promote the bare SwiftPM executable to a real foreground app
 #else
 import HopUI
 #endif
 import Foundation  // ProcessInfo (HOP_WINDOW_SIZE)
+
+#if HOPUI_TOOLKIT_SWIFTUI
+/// Without an `.app` bundle, a `swift run` SwiftUI executable launches as a background process: no menu
+/// bar, no key-window focus, no keyboard events. Forcing `.regular` activation policy (and activating)
+/// at launch makes it a normal foreground app — SwiftUI then installs its standard menu bar and routes
+/// key events. This mirrors what HopUI's AppKit `runApp` does (setActivationPolicy(.regular) + activate).
+final class DemoAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+#endif
 
 #if HOPUI_TOOLKIT_SWIFTUI
 /// The native SwiftUI window's initial size, honoring HOP_WINDOW_SIZE (uniform screenshot size); 820×760
@@ -31,6 +46,11 @@ private var demoWindowSize: CGSize {
 @main
 #endif
 struct HopDemoApp: App {
+    #if HOPUI_TOOLKIT_SWIFTUI
+    // Promotes the un-bundled executable to a foreground app (menu bar + keyboard focus) at launch.
+    @NSApplicationDelegateAdaptor(DemoAppDelegate.self) private var appDelegate
+    #endif
+
     // The app owns the shared model (so both ContentView and the Appearance menu command can reach it)
     // and injects it into the scene's environment.
     private let model = DemoModel()

@@ -170,8 +170,32 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
             return RenderNode(id: context.id,
                               component: ListComponent(spec: spec, sidebar: sidebar))
         case let .hierarchical(content, selectedID, select):
-            // The content is an OutlineGroup producing an outline component; inject selection into it.
-            var node = evaluateResolved(content(), context.appending(0)).first
+            let rootView = content()
+            var members: [any View] = []
+            listTopLevelMembers(rootView, into: &members)
+            // `List(selection:) { Section { … } }` — a native sectioned list: each Section becomes a
+            // non-selecting group header whose rows are selectable leaves keyed by their `.tag(_:)` value.
+            // Maps onto the same native source-list tree (`.sidebarOutline`) the OutlineGroup form uses.
+            if members.contains(where: { $0 is _ListSectionContent }) {
+                var roots: [OutlineSpec.Node] = []
+                for (index, member) in members.enumerated() {
+                    if let section = member as? _ListSectionContent {
+                        let leaves = listRowLeaves(section.listSectionContent, context.appending(index))
+                        roots.append(OutlineSpec.Node(
+                            id: AnyHashable("·section·\(index)·\(section.listSectionHeader ?? "")"),
+                            title: section.listSectionHeader ?? "", children: leaves, selectable: false))
+                    } else {
+                        roots += listRowLeaves(member, context.appending(index))  // ungrouped top-level rows
+                    }
+                }
+                let spec = OutlineSpec(roots: roots,
+                                       selectedID: selectedID().map { AnyHashable($0) },
+                                       onSelect: { anyID in select(anyID?.base as? SelectionValue) })
+                return RenderNode(id: context.id,
+                                  component: OutlineComponent(spec: spec, sidebar: SidebarColumnContext.active))
+            }
+            // Otherwise the content is an OutlineGroup producing an outline component; inject selection.
+            var node = evaluateResolved(rootView, context.appending(0)).first
                 ?? RenderNode(id: context.id + "·outline",
                               component: OutlineComponent(spec: OutlineSpec(roots: []), sidebar: SidebarColumnContext.active))
             if var outline = node.component as? OutlineComponent {
@@ -182,6 +206,38 @@ public struct List<SelectionValue, RowContent>: View, PrimitiveView
             return node
         }
     }
+}
+
+/// Decompose a selection-bound `List`'s content into its ordered top-level members, expanding the
+/// structural wrappers `evaluate` understands (tuples, `ForEach`, conditionals, id-views) but keeping each
+/// ``Section`` whole so the list can turn it into a group. Mirrors how SwiftUI reads `Section`s out of a
+/// `List`'s builder.
+@MainActor
+private func listTopLevelMembers(_ view: any View, into out: inout [any View]) {
+    if view is _ListSectionContent { out.append(view); return }
+    if let tuple = view as? AnyTupleView { for child in tuple.childViews { listTopLevelMembers(child, into: &out) }; return }
+    if let forEach = view as? AnyForEach { for element in forEach.forEachChildren() { listTopLevelMembers(element.view, into: &out) }; return }
+    if let conditional = view as? AnyConditionalContent { listTopLevelMembers(conditional.conditionalContent, into: &out); return }
+    if let idView = view as? AnyIDView { listTopLevelMembers(idView.idContent, into: &out); return }
+    if view is EmptyView { return }
+    out.append(view)
+}
+
+/// Turn a list-row subtree into selectable outline leaves: one per produced node, titled by its text and
+/// keyed by its `.tag(_:)` value (which the binding matches against its selection; falls back to position).
+@MainActor
+private func listRowLeaves(_ view: any View, _ context: RenderContext) -> [OutlineSpec.Node] {
+    var members: [any View] = []
+    listTopLevelMembers(view, into: &members)
+    var leaves: [OutlineSpec.Node] = []
+    for (i, member) in members.enumerated() {
+        for (j, node) in evaluateResolved(member, context.appending(i)).enumerated() {
+            let title = node.effectivePatch.text ?? node.effectivePatch.title ?? ""
+            let id = node.tag ?? AnyHashable("·row·\(i)·\(j)·\(title)")
+            leaves.append(OutlineSpec.Node(id: id, title: title, children: [], selectable: true))
+        }
+    }
+    return leaves
 }
 
 /// Ambient flag set while a ``NavigationSplitView`` evaluates its leading column, so a ``List`` there

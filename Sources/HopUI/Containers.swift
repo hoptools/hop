@@ -85,6 +85,19 @@ public struct Section<Content: View>: View {
     }
 }
 
+/// Internal hook letting a selection-bound ``List`` recognize a ``Section`` structurally — pulling its
+/// header and rows to build a native sectioned list (a 2-level outline: non-selecting group header over
+/// selectable row leaves) — rather than rendering ``Section``'s standalone carded body.
+protocol _ListSectionContent {
+    var listSectionHeader: String? { get }
+    var listSectionContent: any View { get }
+}
+
+extension Section: _ListSectionContent {
+    var listSectionHeader: String? { header }
+    var listSectionContent: any View { content }
+}
+
 // MARK: - Form
 
 /// A scrolling container that groups data-entry controls into sections. Mirrors SwiftUI's `Form`.

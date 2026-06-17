@@ -98,6 +98,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
     private func applyCrossCutting(_ handle: Toolkit.Handle, _ node: RenderNode) {
         if node.patch != WidgetPatch() { toolkit.configure(handle, node.patch) }
         toolkit.setScrollHandler(handle, node.onScroll)
+        toolkit.setTapHandler(handle, node.onTap)
         if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
         if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
     }
