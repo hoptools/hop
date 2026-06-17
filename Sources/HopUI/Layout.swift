@@ -131,9 +131,9 @@ public enum LayoutModifier: Equatable, Sendable {
     case frame(FrameSpec)
 }
 
-/// The engine-internal layout behavior for a node. Derived from the node's ``WidgetKind`` (so internally
-/// produced containers — Navigation bars, modifier wrappers — get stack/zstack layout automatically),
-/// parameterized by the extras in ``LayoutInfo`` (alignment, spacing, spacer length).
+/// The engine-internal layout behavior for a node. Derived from the node's ``WidgetComponent/role`` (so
+/// internally produced containers — Navigation bars, modifier wrappers — get stack/zstack layout
+/// automatically), parameterized by the extras in ``LayoutInfo`` (alignment, spacing, spacer length).
 enum LayoutRole {
     /// A leaf whose size is measured by the toolkit (text, button, slider, shape, …).
     case leaf
@@ -157,8 +157,8 @@ enum LayoutRole {
     case lazyStack(LazyInfo, alignment: Alignment)
 }
 
-/// Per-node layout metadata carried on a ``RenderNode``. The role itself is derived from the node's
-/// `WidgetKind`; this only carries the configurable extras a view's `makeNode` sets.
+/// Per-node layout metadata carried on a ``RenderNode``. The role itself comes from the node's
+/// ``WidgetComponent/role``; this only carries the configurable extras a view's `makeNode` sets.
 public struct LayoutInfo: Equatable, Sendable {
     /// Unary modifiers (padding, frame) wrapping the node, innermost first.
     public var modifiers: [LayoutModifier]

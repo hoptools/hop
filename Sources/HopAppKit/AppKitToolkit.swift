@@ -383,8 +383,7 @@ public final class AppKitToolkit: AppToolkit {
     }
 
     /// Simple leaf widgets (Text/Button/TextField/SecureField/Slider/Toggle/Progress/Divider) — all
-    /// "native widget + patch + handler". One delegating renderer per key (mapping to the legacy kind for
-    /// now); the native creation inlines here when `WidgetKind` is removed.
+    /// "native widget + patch + handler". One renderer per key; `makeNativeWidget(key)` creates the widget.
     private func registerLeafComponents() {
         let leaves: [String] = [
             "label", "button", "textField", "secureField",

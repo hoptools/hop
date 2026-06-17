@@ -1,76 +1,6 @@
 // Copyright 2026
 // SPDX-License-Identifier: MPL-2.0
 
-/// The kinds of native widget a ``RenderNode`` can map to. The toolkit translates each to a
-/// concrete toolkit widget (GtkBox/NSStackView, GtkLabel/NSTextField, GtkButton/NSButton, …).
-public enum WidgetKind: Equatable {
-    case window
-    case vstack
-    case hstack
-    case label
-    case button
-    case textField
-    case slider
-    case list
-    /// A `List` in the leading (sidebar) column of a ``NavigationSplitView``: rendered as a macOS-style
-    /// source list / sidebar (inset rounded selection, sidebar material). Styling is baked in at widget
-    /// creation so it never reloads a live table (which would clobber the bound selection).
-    case sidebarList
-    /// A two-pane navigation split (sidebar + detail), backed by a native split widget.
-    case splitView
-    /// A custom-drawn vector shape, rendered via the toolkit's native 2D drawing API
-    /// (CoreGraphics / Cairo / QPainter). Carries a ``ShapeSpec`` instead of child widgets.
-    case shape
-    /// A button that presents a drop-down of actions (``Menu``). Carries a ``MenuContent``.
-    case menu
-    /// A drop-down for choosing one value from a set (``Picker``). Carries a ``PickerSpec``.
-    case picker
-    /// A date/time chooser (``DatePicker``), backed by the toolkit's native control (NSDatePicker /
-    /// GtkCalendar+spin / QDateTimeEdit). Carries a ``DatePickerSpec``.
-    case datePicker
-    /// A color chooser (``ColorPicker``), backed by the toolkit's native control (NSColorWell /
-    /// GtkColorButton / a QColorDialog button). Carries a ``ColorPickerSpec``.
-    case colorPicker
-    /// A separator line (``Divider``), or a separator entry within a menu.
-    case separator
-    /// A progress bar (``ProgressView``): determinate (a fraction) or indeterminate (animated).
-    case progress
-    /// An overlapping container (``ZStack``); a plain absolute-positioning layer.
-    case zstack
-    /// A flexible gap (``Spacer``); an empty (invisible) widget sized by the layout engine.
-    case spacer
-    /// A scrollable viewport (``ScrollView``) wrapping engine-laid-out content.
-    case scroll
-    /// A ``GeometryReader``: an absolute-positioning layer that reports its laid-out size back to its
-    /// content closure (via a graph source), so content can depend on the available geometry.
-    case geometry
-    /// A virtualizing ``LazyVStack``/``LazyHStack``: an absolute-positioning layer holding only the
-    /// currently-visible window of rows (sized to the full content extent so it scrolls correctly).
-    case lazyStack
-    /// A hierarchical disclosure tree (``OutlineGroup`` / `List(_:children:)`), backed by a native tree
-    /// widget (NSOutlineView / GtkTreeListModel / QTreeWidget). Carries an ``OutlineSpec``.
-    case outline
-    /// An `.outline` in a `NavigationSplitView`'s leading column — rendered as a source-list sidebar tree.
-    case sidebarOutline
-    /// A raster/symbol image (``Image``), backed by a native image widget (NSImageView / GtkPicture /
-    /// QLabel+QPixmap). Carries an ``ImageSpec``.
-    case image
-    /// A boolean on/off control (``Toggle``), backed by a native switch (NSSwitch / GtkSwitch / QCheckBox).
-    /// Carries `patch.boolValue` and reports changes via `onChangeBool`.
-    case toggle
-    /// A masked text entry (``SecureField``): like `.textField` but the characters are hidden
-    /// (NSSecureTextField / GtkEntry with visibility off / QLineEdit in password mode).
-    case secureField
-    /// A bordered, rounded "card" container (``GroupBox`` / ``Section`` / ``Form`` grouping), drawn by the
-    /// toolkit (NSView layer / GTK `.card` / QFrame stylesheet). Laid out as a vertical stack of its
-    /// content; the chrome is baked in at creation.
-    case groupBox
-    /// A tabbed container (``TabView``) backed by the toolkit's native tab widget (NSTabView /
-    /// GtkNotebook / QTabWidget). Each child is a page; ``TabSpec`` carries the tab titles, selection,
-    /// and the user-selection callback. A native composite (the widget lays out the selected page).
-    case tabView
-}
-
 /// How an ``Image`` scales to fill a frame larger or smaller than its natural size. Mirrors
 /// SwiftUI's `ContentMode`.
 public enum ContentMode: Equatable, Sendable {
@@ -334,9 +264,8 @@ public struct RenderNode {
     /// `widgetKey`) is correctly torn down and recreated rather than reconfigured.
     var reuseSignature: String { "c:\(component.widgetKey.rawValue)" }
 
-    /// The node's widget patch, reading through a migrated leaf component (whose patch now holds the
-    /// text/title/value) so content-inspecting primitives (Menu, Picker, Toolbar, OutlineGroup, List,
-    /// TabView) keep working during the migration regardless of whether a child is migrated yet.
+    /// The node's widget patch, read through its leaf component (whose patch holds the text/title/value),
+    /// so content-inspecting primitives (Menu, Picker, Toolbar, OutlineGroup, List, TabView) can read it.
     var effectivePatch: WidgetPatch { (component as? PrimitiveLeafComponent)?.patch ?? patch }
     /// The node's primary action, read through its leaf component (Button's action lives there).
     var effectiveAction: (@MainActor () -> Void)? { (component as? PrimitiveLeafComponent)?.action }

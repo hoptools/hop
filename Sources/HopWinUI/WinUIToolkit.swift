@@ -5,6 +5,19 @@ import CWinUI
 import HopUI
 import Foundation
 
+// NOTE: This WinUI backend predates the open component system (`WidgetComponent`) and was not migrated
+// during Phase 7 — it still dispatches on this enum and does NOT yet implement the component seam
+// (`realize`/`updateComponent`/`measureComponent`/`didInsertChildren`/`toolkitID`), so it does not build
+// on Windows as-is and needs a Windows-verified port onto the component registry (mirroring AppKit/GTK/Qt).
+// Until then, this module-private enum keeps the existing kind-based dispatch self-contained now that
+// HopUI's public `WidgetKind` has been removed.
+enum WidgetKind: Equatable {
+    case window, vstack, hstack, label, button, textField, slider
+    case list, sidebarList, splitView, shape, menu, picker, datePicker, colorPicker
+    case separator, progress, zstack, spacer, scroll, geometry, lazyStack
+    case outline, sidebarOutline, image, toggle, secureField, groupBox, tabView
+}
+
 // The WinUI 3 toolkit. WinUI/WinRT has no C ABI, so — like HopQt over CQt — this talks to WinUI through the
 // CWinUI C++/WinRT shim's pure-C surface (`hopwinui_*`); no WinRT type appears in Swift. Every container is
 // a `Canvas` (HopUI's layout engine owns all geometry, placing children absolutely via `setFrame`), and

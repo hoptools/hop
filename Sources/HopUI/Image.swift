@@ -130,9 +130,8 @@ public struct Image: View, PrimitiveView {
         if resolved.isTemplate, resolved.tint == nil {
             resolved.tint = currentEnvironment().foregroundColor
         }
-        // Migrated to the open component system: the node carries an `ImageComponent`; each backend's
-        // registered image renderer realizes it. (`kind: .image` is kept only as a harmless layout fallback
-        // during the strangler migration; the component path drives realize/update/measure.)
+        // The node carries an `ImageComponent`; each backend's registered image renderer realizes it
+        // and drives update/measure.
         return RenderNode(id: context.id, component: ImageComponent(spec: resolved))
     }
 

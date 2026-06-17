@@ -5,10 +5,8 @@
 // native widget; each backend renders it via an open registry (built-ins) or the component's own
 // self-hosted code (third-party packages), with no closed `WidgetKind` enum to extend. This is the
 // extensibility seam: external packages add widgets — even ones whose native implementation varies by
-// style — without modifying `hop`. (See the toolkit-extensibility plan.)
-//
-// Migration note (strangler): during the migration this lives alongside the legacy `WidgetKind` path.
-// A `RenderNode` carries a `component` once migrated; until then it uses `kind` + the per-kind specs.
+// style — without modifying `hop`. (See the toolkit-extensibility plan.) Every `RenderNode` carries a
+// `component`; the reconciler and layout engine describe a widget solely through it.
 
 /// Identifies a toolkit at runtime. String-backed so a future external toolkit gets its own id without
 /// editing `hop`. Each backend exposes its id via `RenderToolkit.toolkitID`.
@@ -87,9 +85,8 @@ public extension WidgetComponent {
 /// The component for HopUI's simple leaf widgets (Text, Button, TextField, SecureField, Slider, Toggle,
 /// ProgressView, Divider) — all of which are uniformly "a native widget + a ``WidgetPatch`` + an optional
 /// change handler". Each carries a distinct `widgetKey` (so the reconciler never reuses a Button as a
-/// Slider) and the backend's leaf renderer applies the patch + handlers. (During the strangler migration
-/// each backend's leaf renderer still delegates to the legacy `makeWidget(kind)`; the native code inlines
-/// here in the final sweep, when `WidgetKind` is removed.)
+/// Slider) and the backend's leaf renderer creates the native widget for that key and applies the
+/// patch + handlers.
 public struct PrimitiveLeafComponent: WidgetComponent {
     public let widgetKey: WidgetKey
     public let role: WidgetRole
