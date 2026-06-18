@@ -47,7 +47,7 @@ jobs:
           if-no-files-found: warn
       # Assemble the app into an installable .dmg, upload it, then install + launch it to prove it runs.
       - name: Package installer (hopdemo-macos-aarch64-appkit.dmg)
-        run: swift run hoppack package --target macos-aarch64-appkit --output dist/hopdemo-macos-aarch64-appkit.dmg
+        run: scripts/ci/package.sh macos-aarch64-appkit dist/hopdemo-macos-aarch64-appkit.dmg
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7
@@ -84,7 +84,7 @@ jobs:
           path: ci-screenshots
           if-no-files-found: warn
       - name: Package installer (hopdemo-macos-aarch64-swiftui.dmg)
-        run: swift run hoppack package --target macos-aarch64-swiftui --output dist/hopdemo-macos-aarch64-swiftui.dmg
+        run: scripts/ci/package.sh macos-aarch64-swiftui dist/hopdemo-macos-aarch64-swiftui.dmg
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7
@@ -123,7 +123,7 @@ jobs:
           path: ci-screenshots
           if-no-files-found: warn
       - name: Package installer (hopdemo-macos-aarch64-gtk4.dmg)
-        run: swift run hoppack package --target macos-aarch64-gtk4 --output dist/hopdemo-macos-aarch64-gtk4.dmg
+        run: scripts/ci/package.sh macos-aarch64-gtk4 dist/hopdemo-macos-aarch64-gtk4.dmg
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7
@@ -162,7 +162,7 @@ jobs:
           path: ci-screenshots
           if-no-files-found: warn
       - name: Package installer (hopdemo-macos-aarch64-qt.dmg)
-        run: swift run hoppack package --target macos-aarch64-qt --output dist/hopdemo-macos-aarch64-qt.dmg
+        run: scripts/ci/package.sh macos-aarch64-qt dist/hopdemo-macos-aarch64-qt.dmg
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7
@@ -210,7 +210,7 @@ jobs:
           path: ci-screenshots
           if-no-files-found: warn
       - name: Package installer (hopdemo-linux-x86_64-gtk4.flatpak)
-        run: swift run hoppack package --target linux-x86_64-gtk4 --output dist/hopdemo-linux-x86_64-gtk4.flatpak
+        run: scripts/ci/package.sh linux-x86_64-gtk4 dist/hopdemo-linux-x86_64-gtk4.flatpak
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7
@@ -258,7 +258,7 @@ jobs:
           path: ci-screenshots
           if-no-files-found: warn
       - name: Package installer (hopdemo-linux-x86_64-qt.flatpak)
-        run: swift run hoppack package --target linux-x86_64-qt --output dist/hopdemo-linux-x86_64-qt.flatpak
+        run: scripts/ci/package.sh linux-x86_64-qt dist/hopdemo-linux-x86_64-qt.flatpak
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7
@@ -330,7 +330,7 @@ jobs:
           Copy-Item (Join-Path $pkg.FullName "runtimes/win-x64/native/*") .winui/runtime/ -Force -ErrorAction SilentlyContinue
       - name: Package installer (hopdemo-windows-x86_64-winui.msix)
         shell: pwsh
-        run: swift run hoppack package --target windows-x86_64-winui --output dist/hopdemo-windows-x86_64-winui.msix
+        run: ./scripts/ci/package.ps1 -Target windows-x86_64-winui -Output dist/hopdemo-windows-x86_64-winui.msix
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7
@@ -406,7 +406,7 @@ jobs:
         shell: pwsh
         env:
           QT_ROOT: ${{ env.QT_ROOT_DIR }}
-        run: swift run hoppack package --target windows-x86_64-qt --output dist/hopdemo-windows-x86_64-qt.msix
+        run: ./scripts/ci/package.ps1 -Target windows-x86_64-qt -Output dist/hopdemo-windows-x86_64-qt.msix
       - name: Upload installer
         if: always()
         uses: actions/upload-artifact@v7

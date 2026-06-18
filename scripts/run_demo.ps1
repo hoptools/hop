@@ -32,11 +32,11 @@ if (-not (Test-Path (Join-Path $repo ".winui\cflags"))) {
 
 # 2. Build the WinUI toolkit + demo.
 Write-Host "Building hop-demo-winui ..." -ForegroundColor Cyan
-swift build --product hop-demo-winui
+swift build --package-path Demos/Apps/Showcase --product hop-demo-winui
 if ($LASTEXITCODE -ne 0) { throw "swift build failed" }
 
 # 3. Locate the build output + executable.
-$binPath = (swift build --product hop-demo-winui --show-bin-path).Trim()
+$binPath = (swift build --package-path Demos/Apps/Showcase --product hop-demo-winui --show-bin-path).Trim()
 $exe = Join-Path $binPath "hop-demo-winui.exe"
 if (-not (Test-Path $exe)) { throw "demo executable not found at $exe" }
 

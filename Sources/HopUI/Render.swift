@@ -361,10 +361,26 @@ struct RenderContext {
     func appendingBranch(_ branch: Int) -> RenderContext { RenderContext(path: path + [.branch(branch)]) }
 }
 
-/// A view that produces a ``RenderNode`` directly rather than via a `body`.
+/// A view that produces a ``RenderNode`` directly rather than via a `body`. Internal — built-in views
+/// (Text, Button, …) conform to it. The public extensibility seam is ``HopRepresentable``.
 @MainActor
 protocol PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode
+}
+
+/// The public seam for **external packages** to add a new native widget — HopUI's cross-toolkit analog of
+/// SwiftUI's `NSViewRepresentable`. Conform a `View` to it and return a ``WidgetComponent`` describing the
+/// widget; HopUI builds the render node (giving it identity) and each backend realizes the component via
+/// its registered renderer or the component's self-hosted `makeNative`. The package never touches
+/// `RenderContext`, render nodes, or backend `Handle`s. (See the toolkit-extensibility plan.)
+@MainActor
+public protocol HopRepresentable: View where Body == Never {
+    /// The toolkit-agnostic description of this view's native widget (a custom ``WidgetComponent``).
+    var component: any WidgetComponent { get }
+}
+
+public extension HopRepresentable {
+    var body: Never { fatalError("a HopRepresentable produces a component, not a body") }
 }
 
 /// Recursively evaluate a view into render nodes, reading any `@State` it touches (which records
@@ -372,6 +388,10 @@ protocol PrimitiveView {
 func evaluate(_ view: any View, _ context: RenderContext) -> [RenderNode] {
     if let primitive = view as? PrimitiveView {
         return [primitive.makeNode(context)]
+    }
+    // External widgets (a `HopRepresentable`) supply only their component; HopUI assigns identity here.
+    if let representable = view as? any HopRepresentable {
+        return [RenderNode(id: context.id, component: representable.component)]
     }
     if let forEach = view as? AnyForEach {
         // Each element gets explicit, position-independent identity from its key, so reordering the

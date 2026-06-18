@@ -18,7 +18,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 | `HopAppKit` | AppKit toolkit (macOS only). |
 | `CQt` / `HopQt` | C++ shim over Qt6 (pure-C surface) + Qt toolkit (macOS, via Homebrew Qt). |
 | `CWinUI` / `HopWinUI` | C++/WinRT shim over WinUI 3 (pure-C surface) + WinUI toolkit (Windows). |
-| `HopDemo` | Shared `ContentView` used by every toolkit demo. |
+| `Demos/Apps/Showcase` | The demo app — its own package (depends on the root package + `HopUIComboBox`). Shared `ContentView` drives every toolkit. |
+| `Demos/Components/HopUIComboBox` | A standalone, third-party component package adding a `ComboBox` view backed by each toolkit's native combo box — a demonstration of HopUI's toolkit extensibility. |
 
 ## Prerequisites
 
@@ -40,10 +41,13 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```bash
 swift test                              # core (HopGraph + HopUI) — no GTK/Qt required
-swift run hop-demo-gtk4                  # the GTK4 demo window
-swift run hop-demo-appkit                # the AppKit demo window (macOS)
-swift run hop-demo-qt                    # the Qt demo window (macOS, Homebrew Qt)
-HOP_TOOLKIT=winui swift run hop-demo-winui   # the WinUI 3 demo window (Windows)
+
+# The demo apps live in their own package (Demos/Apps/Showcase); build/run them there.
+scripts/run_demo.sh gtk4                 # the GTK4 demo window (also: appkit, qt, swiftui, all)
+swift run --package-path Demos/Apps/Showcase hop-demo-gtk4    # …or directly
+swift run --package-path Demos/Apps/Showcase hop-demo-appkit  # the AppKit demo window (macOS)
+swift run --package-path Demos/Apps/Showcase hop-demo-qt      # the Qt demo window (macOS, Homebrew Qt)
+HOP_TOOLKIT=winui swift run --package-path Demos/Apps/Showcase hop-demo-winui  # WinUI 3 (Windows)
 ```
 
 To *run* the WinUI demo, the Windows App Runtime bootstrap DLL must be next to the executable (or on

@@ -29,8 +29,11 @@ function Exec-For($tk) {
     }
 }
 
+# The demo apps live in their own package now (it depends on the root package + the HopUIComboBox component).
+$Showcase = "Demos/Apps/Showcase"
+
 # Playground ids = the cases of `enum Playground: String` in the shared demo ContentView.
-$content = Get-Content "Demo/ContentView.swift" -Raw
+$content = Get-Content "$Showcase/Shared/ContentView.swift" -Raw
 $block = [regex]::Match($content, 'enum Playground: String[\s\S]*?var title').Value
 $pgs = [regex]::Matches($block, '(?m)^\s*case (.+)$') |
     ForEach-Object { $_.Groups[1].Value -replace '//.*', '' } |
@@ -41,7 +44,9 @@ if (-not $pgs) { Write-Host "no playgrounds parsed"; exit 0 }
 Write-Host "Backends: $($Toolkits -join ', ')"
 Write-Host "Playgrounds ($($pgs.Count)): $($pgs -join ', ')"
 
-$bin = (swift build --show-bin-path).Trim()
+swift build --package-path $Showcase
+if ($LASTEXITCODE -ne 0) { Write-Host "Showcase build failed"; exit 0 }
+$bin = (swift build --package-path $Showcase --show-bin-path).Trim()
 Write-Host "Binaries: $bin"
 
 # Uniform window size for screenshots; the Qt/AppKit/native backends honor HOP_WINDOW_SIZE at window

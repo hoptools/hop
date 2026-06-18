@@ -1,0 +1,88 @@
+# hoppack.yaml — packaging manifest for the HopUI demo, consumed by the `hoppack` tool.
+#
+# Top-level `metadata:` holds keys common to every platform. Each platform section is named
+# "<os>-<arch>-<toolkit>" and overrides (or adds to) the common keys for that target. `hoppack`
+# auto-selects the section matching the current host, or you can choose one with `--target`.
+#
+#   hoppack assemble --target macos-aarch64-appkit
+#   hoppack run      --target macos-aarch64-swiftui
+#   hoppack package  --target linux-x86_64-gtk4
+
+metadata:
+  identifier: net.hoptools.hopdemo
+  appslug: hopdemo          # lowercase slug; names the distribution file <appslug>-<triple>.<ext>
+  version: "1.0.0"
+  build: "1"
+  copyright: "© 2026"
+  icon: Resources/hop-logo.png
+  categories:
+    - public.app-category.developer-tools
+  launchargs: []          # arguments forwarded to the app by `hoppack run`
+
+macos-aarch64-appkit:
+  title: HopUI Demo (AppKit)
+  executable: hop-demo-appkit
+
+macos-aarch64-swiftui:
+  title: HopUI Demo (SwiftUI)
+  executable: hop-demo-native
+
+macos-x86_64-appkit:
+  title: HopUI Demo (AppKit)
+  executable: hop-demo-appkit
+
+# HopUI also runs its GTK4 and Qt toolkits on macOS (they resolve their Homebrew dylibs at runtime), so
+# the demo can be packaged as a .dmg with those backends too.
+macos-aarch64-gtk4:
+  title: HopUI Demo (GTK4)
+  executable: hop-demo-gtk4
+
+macos-aarch64-qt:
+  title: HopUI Demo (Qt)
+  executable: hop-demo-qt
+
+# Linux sections package as flatpak. The Swift runtime is bundled into the app (flatpak runtimes don't ship
+# it); GTK4 uses the GNOME runtime and Qt the KDE runtime (which provide GTK4 / Qt6), selected automatically.
+linux-x86_64-gtk4:
+  title: HopUI Demo (GTK4)
+  executable: hop-demo-gtk4
+  properties: { bundleSwiftRuntime: "true" }
+
+linux-aarch64-gtk4:
+  title: HopUI Demo (GTK4)
+  executable: hop-demo-gtk4
+  properties: { bundleSwiftRuntime: "true" }
+
+linux-x86_64-qt:
+  title: HopUI Demo (Qt)
+  executable: hop-demo-qt
+  properties: { bundleSwiftRuntime: "true" }
+
+linux-aarch64-qt:
+  title: HopUI Demo (Qt)
+  executable: hop-demo-qt
+  properties: { bundleSwiftRuntime: "true" }
+
+# Windows sections package as MSIX. The Swift runtime DLLs are bundled so the app runs without a Swift
+# install; WinUI additionally bundles the Windows App SDK runtime (staged by CI into .winui/runtime), and
+# Qt runs windeployqt to stage its DLLs + plugins next to the executable.
+windows-x86_64-winui:
+  title: HopUI Demo (WinUI)
+  executable: hop-demo-winui
+  identifier: net.hoptools.hopdemo.winui
+  bundlelibraries:
+    - ../../../.winui/runtime
+  properties:
+    publisher: "CN=Hop"
+    publisherDisplayName: Hop
+    bundleSwiftRuntime: "true"
+
+windows-x86_64-qt:
+  title: HopUI Demo (Qt)
+  executable: hop-demo-qt
+  identifier: net.hoptools.hopdemo.qt
+  deploycommand: ["windeployqt", "--release", "--no-translations", "--compiler-runtime", "{exe}"]
+  properties:
+    publisher: "CN=Hop"
+    publisherDisplayName: Hop
+    bundleSwiftRuntime: "true"

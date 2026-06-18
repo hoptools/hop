@@ -21,6 +21,10 @@ usage() {
 
 [ $# -eq 1 ] || usage
 
+# The demo apps live in their own package now; build/run them there (it depends on the root package and on
+# the standalone HopUIComboBox component package).
+SHOWCASE="Demos/Apps/Showcase"
+
 # Map each paradigm to its SwiftPM executable target.
 exec_for() {
     case "$1" in
@@ -34,12 +38,12 @@ exec_for() {
 
 case "${1:-}" in
     gtk4|appkit|qt|swiftui)
-        exec swift run "$(exec_for "$1")"
+        exec swift run --package-path "$SHOWCASE" "$(exec_for "$1")"
         ;;
     all)
         echo "Building all demo executables…"
-        swift build
-        bin="$(swift build --show-bin-path)"
+        swift build --package-path "$SHOWCASE"
+        bin="$(swift build --package-path "$SHOWCASE" --show-bin-path)"
 
         pids=()
         for paradigm in gtk4 appkit qt swiftui; do

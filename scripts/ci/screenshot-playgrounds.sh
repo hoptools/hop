@@ -18,6 +18,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."   # repo root
 
+# The demo apps live in their own package (it depends on the root package + the HopUIComboBox component).
+SHOWCASE="Demos/Apps/Showcase"
+
 OUTDIR="${1:?usage: screenshot-playgrounds.sh <outdir> <toolkit...>}"; shift || true
 [ "$#" -gt 0 ] || { echo "no toolkits given" >&2; exit 2; }
 TOOLKITS=("$@")
@@ -36,7 +39,7 @@ exec_for() {
 
 # The playground ids = the cases of `enum Playground: String` in the shared demo ContentView.
 playgrounds() {
-    sed -n '/enum Playground: String/,/var title/p' Demo/ContentView.swift \
+    sed -n '/enum Playground: String/,/var title/p' "$SHOWCASE/Shared/ContentView.swift" \
         | grep -E '^[[:space:]]*case ' \
         | sed -E 's@//.*@@; s/^[[:space:]]*case //' \
         | tr ',' '\n' \
@@ -44,10 +47,11 @@ playgrounds() {
         | grep .
 }
 
-BIN="$(swift build --show-bin-path)"
+swift build --package-path "$SHOWCASE" >&2 || { echo "Showcase build failed" >&2; exit 0; }
+BIN="$(swift build --package-path "$SHOWCASE" --show-bin-path)"
 PGS=()
 while IFS= read -r p; do PGS+=("$p"); done < <(playgrounds)
-[ "${#PGS[@]}" -gt 0 ] || { echo "no playgrounds parsed from Demo/ContentView.swift" >&2; exit 2; }
+[ "${#PGS[@]}" -gt 0 ] || { echo "no playgrounds parsed from $SHOWCASE/Shared/ContentView.swift" >&2; exit 2; }
 echo "Backends: ${TOOLKITS[*]}"
 echo "Playgrounds (${#PGS[@]}): ${PGS[*]}"
 echo "Binaries:  $BIN"

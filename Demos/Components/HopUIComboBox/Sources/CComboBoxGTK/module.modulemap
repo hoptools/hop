@@ -1,0 +1,4 @@
+module CComboBoxGTK [system] {
+    umbrella header "shim.h"
+    export *
+}
