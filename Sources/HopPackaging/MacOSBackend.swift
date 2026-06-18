@@ -66,7 +66,7 @@ public struct MacOSBackend: PlatformBackend {
     public func packageApp(_ context: PackagingContext) async throws -> PackagingContext {
         var context = context
         let app = try context.requireAppArtifact(stage: "package")
-        let dmg = context.workDirectory.appending("\(context.metadata.title)-\(context.metadata.version).dmg")
+        let dmg = context.workDirectory.appending("\(context.metadata.appslug)-\(context.target.key).dmg")
         try FileOps.remove(dmg)
         try await context.runner.run("hdiutil", [
             "create",

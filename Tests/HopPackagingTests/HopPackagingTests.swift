@@ -73,6 +73,21 @@ import Testing
         #expect(m.launchArgs.isEmpty)
     }
 
+    @Test func resolvesAppslugFromCommonAndDefaultsFromTitle() throws {
+        let withSlug = try HoppackConfig.parse(yaml: """
+            metadata:
+              appslug: myslug
+            macos-aarch64-appkit:
+              executable: x
+            """).resolved(for: PlatformTriple("macos-aarch64-appkit")!, packageName: "pkg")
+        #expect(withSlug.appslug == "myslug")   // inherited from the common metadata block
+
+        // Absent appslug defaults to the title, lowercased and reduced to alphanumerics.
+        let defaulted = try HoppackConfig.parse(yaml: "macos-aarch64-appkit:\n  executable: x\n")
+            .resolved(for: PlatformTriple("macos-aarch64-appkit")!, packageName: "My App")
+        #expect(defaulted.appslug == "myapp")
+    }
+
     @Test func missingExecutableThrows() throws {
         let config = try HoppackConfig.parse(yaml: "metadata:\n  version: '1'\n")
         #expect(throws: PackagingError.self) {

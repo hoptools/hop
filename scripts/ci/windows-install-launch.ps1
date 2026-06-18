@@ -79,7 +79,7 @@ Write-Host "Launching $($pkg.PackageFamilyName)!$AppId"
 Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!$AppId"
 
 $launched = $false
-foreach ($_ in 1..30) {
+foreach ($attempt in 1..30) {
   if (Get-Process -Name $Executable -ErrorAction SilentlyContinue) { $launched = $true; break }
   Start-Sleep -Milliseconds 500
 }

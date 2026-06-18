@@ -64,7 +64,7 @@ public struct WindowsBackend: PlatformBackend {
         var context = context
         let appDir = try context.requireAppArtifact(stage: "package")
         let meta = context.metadata
-        let msix = context.workDirectory.appending("\(meta.title)-\(meta.version).msix")
+        let msix = context.workDirectory.appending("\(meta.appslug)-\(context.target.key).msix")
         try FileOps.remove(msix)
         // makeappx ships with the Windows SDK; pass /o to overwrite. Signing/notarization are future stages.
         try await context.runner.run("makeappx", [

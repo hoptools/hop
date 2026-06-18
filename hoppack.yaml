@@ -10,6 +10,7 @@
 
 metadata:
   identifier: net.hoptools.hopdemo
+  appslug: hopdemo          # lowercase slug; names the distribution file <appslug>-<triple>.<ext>
   version: "1.0.0"
   build: "1"
   copyright: "© 2026"

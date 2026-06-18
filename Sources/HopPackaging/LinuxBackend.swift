@@ -89,7 +89,7 @@ public struct LinuxBackend: PlatformBackend {
             buildDir.string, manifestPath.string,
         ], workingDirectory: context.workDirectory)
 
-        let bundle = context.workDirectory.appending("\(meta.title)-\(meta.version).flatpak")
+        let bundle = context.workDirectory.appending("\(meta.appslug)-\(context.target.key).flatpak")
         try FileOps.remove(bundle)
         try await context.runner.run("flatpak", [
             "build-bundle", repoDir.string, bundle.string, meta.identifier,

@@ -12,6 +12,8 @@ public struct Metadata: Sendable, Equatable, Decodable {
     public var title: String?
     /// Reverse-DNS application identifier (macOS CFBundleIdentifier, flatpak app-id, MSIX Identity name).
     public var identifier: String?
+    /// A short, lowercase slug used to name the generated distribution file (`<appslug>-<triple>.<ext>`).
+    public var appslug: String?
     /// Marketing version string, e.g. "1.2.0".
     public var version: String?
     /// Build number, e.g. "42".
@@ -42,7 +44,7 @@ public struct Metadata: Sendable, Equatable, Decodable {
     public var properties: [String: String]?
 
     enum CodingKeys: String, CodingKey {
-        case title, identifier, version, build, executable
+        case title, identifier, appslug, version, build, executable
         case launchArgs = "launchargs"
         case icon, categories, copyright
         case minimumOSVersion = "minosversion"
@@ -61,6 +63,7 @@ public struct Metadata: Sendable, Equatable, Decodable {
         var r = base
         if let title { r.title = title }
         if let identifier { r.identifier = identifier }
+        if let appslug { r.appslug = appslug }
         if let version { r.version = version }
         if let build { r.build = build }
         if let executable { r.executable = executable }
@@ -84,6 +87,8 @@ public struct Metadata: Sendable, Equatable, Decodable {
 public struct ResolvedMetadata: Sendable, Equatable {
     public let title: String
     public let identifier: String
+    /// Lowercase slug for naming the distribution file (`<appslug>-<triple>.<ext>`).
+    public let appslug: String
     public let version: String
     public let build: String
     public let executable: String
@@ -108,6 +113,9 @@ public struct ResolvedMetadata: Sendable, Equatable {
         self.executable = executable
         let slug = title.filter { $0.isLetter || $0.isNumber }
         self.identifier = m.identifier ?? "com.example.\(slug.isEmpty ? "app" : slug)"
+        // Default the slug from the title (lowercased, alphanumerics only) when not specified.
+        let lowerSlug = title.lowercased().filter { $0.isLetter || $0.isNumber }
+        self.appslug = m.appslug ?? (lowerSlug.isEmpty ? "app" : lowerSlug)
         self.version = m.version ?? "1.0.0"
         self.build = m.build ?? "1"
         self.launchArgs = m.launchArgs ?? []
