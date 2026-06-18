@@ -33,6 +33,8 @@ jobs:
       # AppKit is part of the macOS SDK, so no toolkit install is needed.
       - name: Test (AppKit)
         run: swift test
+      - name: Test hoppack packaging tool
+        run: swift test --package-path Tools/HopPackaging
       - name: Build (AppKit)
         run: swift build
       - name: Screenshot playgrounds (AppKit)
@@ -197,6 +199,8 @@ jobs:
           flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
       - name: Test (GTK4)
         run: swift test
+      - name: Test hoppack packaging tool
+        run: swift test --package-path Tools/HopPackaging
       - name: Build (GTK4)
         run: swift build
       - name: Screenshot playgrounds (GTK4)
@@ -301,6 +305,8 @@ jobs:
       # Runtime is needed at test time. `swift build` then compiles the CWinUI shim + HopWinUI + the demo.
       - name: Test (core)
         run: swift test
+      - name: Test hoppack packaging tool
+        run: swift test --package-path Tools/HopPackaging
       - name: Build (CWinUI shim + WinUI toolkit + demo)
         run: swift build
       - name: Screenshot playgrounds (WinUI)
