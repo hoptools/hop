@@ -19,7 +19,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."   # repo root
 
 # The demo apps live in their own package (it depends on the root package + the HopUIComboBox component).
-SHOWCASE="Demos/Apps/Showcase"
+SHOWCASE="Demos/Showcase"
 
 OUTDIR="${1:?usage: screenshot-playgrounds.sh <outdir> <toolkit...>}"; shift || true
 [ "$#" -gt 0 ] || { echo "no toolkits given" >&2; exit 2; }

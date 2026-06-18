@@ -20,6 +20,6 @@ $outDir = Split-Path -Parent $Output
 if ($outDir) { New-Item -ItemType Directory -Force $outDir | Out-Null }
 $outAbs = if ([System.IO.Path]::IsPathRooted($Output)) { $Output } else { Join-Path (Get-Location).Path $Output }
 
-Set-Location (Join-Path $root "Demos/Apps/Showcase")
+Set-Location (Join-Path $root "Demos/Showcase")
 & $hoppack package --target $Target --output $outAbs
 exit $LASTEXITCODE

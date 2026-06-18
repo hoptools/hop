@@ -189,10 +189,19 @@ jobs:
         uses: swift-actions/setup-swift@main
         with:
           swift-version: "6.3.2"
+      # Cache the downloaded .deb files so reruns don't re-fetch them. scripts/ci/apt-install.sh points apt's
+      # archive dir here (the default /var/cache/apt/archives is root-owned, which actions/cache can't restore
+      # into). The key busts when ci.yml's package list changes; restore-keys still seeds from the last cache
+      # so only the changed .debs download.
+      - name: Cache apt .deb downloads
+        uses: actions/cache@v5
+        with:
+          path: ~/apt-cache/archives/*.deb
+          key: apt-debs-linux-gtk-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-debs-linux-gtk-
       - name: Install GTK4, flatpak (+ Xvfb/ImageMagick)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev pkg-config \
+          scripts/ci/apt-install.sh libgtk-4-dev pkg-config \
             xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme \
             flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -239,10 +248,16 @@ jobs:
       # Qt6 dev headers/libs land in the Debian multiarch paths Package.swift defaults to on Linux
       # (/usr/include/x86_64-linux-gnu/qt6, /usr/lib/x86_64-linux-gnu); override QT_ROOT for other layouts.
       # The Qt flatpak runs on the KDE runtime (which ships Qt6); the Swift runtime is bundled.
+      # Cache the downloaded .deb files so reruns don't re-fetch them (see the GTK job for the mechanism).
+      - name: Cache apt .deb downloads
+        uses: actions/cache@v5
+        with:
+          path: ~/apt-cache/archives/*.deb
+          key: apt-debs-linux-qt-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-debs-linux-qt-
       - name: Install Qt6, flatpak (+ Xvfb/ImageMagick)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y qt6-base-dev \
+          scripts/ci/apt-install.sh qt6-base-dev \
             xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0 \
             flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo

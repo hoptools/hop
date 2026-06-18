@@ -18,5 +18,5 @@ HOPPACK="$(swift build --package-path "$TOOL" --product hoppack --show-bin-path)
 mkdir -p "$(dirname "$OUTPUT")"
 OUTABS="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
 
-cd Demos/Apps/Showcase
+cd Demos/Showcase
 exec "$HOPPACK" package --target "$TARGET" --output "$OUTABS"

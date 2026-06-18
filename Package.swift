@@ -170,5 +170,5 @@ let package = Package(
 )
 
 // The demo apps (every toolkit, plus the native-SwiftUI reference) live in their own package now —
-// Demos/Apps/Showcase — which depends on this package and on the standalone HopUIComboBox component
+// Demos/Showcase — which depends on this package and on the standalone HopUIComboBox component
 // package. See that package and scripts/run_demo.sh.

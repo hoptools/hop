@@ -23,7 +23,7 @@ usage() {
 
 # The demo apps live in their own package now; build/run them there (it depends on the root package and on
 # the standalone HopUIComboBox component package).
-SHOWCASE="Demos/Apps/Showcase"
+SHOWCASE="Demos/Showcase"
 
 # Map each paradigm to its SwiftPM executable target.
 exec_for() {

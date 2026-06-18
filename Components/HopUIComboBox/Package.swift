@@ -5,7 +5,7 @@ import Foundation
 // HopUIComboBox — a standalone, third-party HopUI component package. It adds a `ComboBox` view backed by
 // each toolkit's native combo box (NSComboBox / GtkComboBoxText / QComboBox / WinUI ComboBox) using ONLY
 // HopUI's public extensibility seams (`HopRepresentable` + `WidgetComponent.makeNative`), with no edits to
-// `hop`. It depends on the root `hop` package (for `HopUI`) at ../../../ and is consumed by the Showcase app.
+// `hop`. It depends on the root `hop` package (for `HopUI`) at ../../ and is consumed by the Showcase app.
 
 let uiIsolation: [SwiftSetting] = [.defaultIsolation(MainActor.self)]
 
@@ -81,7 +81,7 @@ if toolkitEnabled("winui") {
     products += [.library(name: "HopUIComboBoxWinUI", targets: ["HopUIComboBoxWinUI"])]
     // WinUI include/link flags come from the root package's `.winui/` staging (scripts/setup-winui.ps1).
     let winuiDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        .appendingPathComponent("../../../.winui").path
+        .appendingPathComponent("../../.winui").path
     func winuiFlags(_ file: String) -> [String] {
         guard let text = try? String(contentsOfFile: "\(winuiDir)/\(file)", encoding: .utf8) else { return [] }
         return text.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
@@ -101,7 +101,7 @@ let package = Package(
     name: "HopUIComboBox",
     platforms: [.macOS(.v15)],
     products: products,
-    dependencies: [.package(path: "../../../")],
+    dependencies: [.package(path: "../../")],
     targets: targets,
     swiftLanguageModes: [.v6],
     cxxLanguageStandard: .cxx20

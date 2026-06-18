@@ -30,7 +30,7 @@ function Exec-For($tk) {
 }
 
 # The demo apps live in their own package now (it depends on the root package + the HopUIComboBox component).
-$Showcase = "Demos/Apps/Showcase"
+$Showcase = "Demos/Showcase"
 
 # Playground ids = the cases of `enum Playground: String` in the shared demo ContentView.
 $content = Get-Content "$Showcase/Shared/ContentView.swift" -Raw

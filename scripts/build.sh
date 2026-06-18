@@ -12,4 +12,4 @@ echo "Building hoppack packaging tool…"
 swift build --package-path Tools/HopPackaging "$@"
 
 echo "Building Showcase demo apps…"
-swift build --package-path Demos/Apps/Showcase "$@"
+swift build --package-path Demos/Showcase "$@"

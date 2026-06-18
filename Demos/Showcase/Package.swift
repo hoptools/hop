@@ -4,8 +4,8 @@ import Foundation
 
 // The HopUI Showcase app — relocated out of the root `hop` package into its own package so it consumes
 // HopUI exactly like a real downstream app would: via package dependencies. It depends on the root `hop`
-// package (../../../) for HopUI + the toolkit backends, and on the standalone HopUIComboBox component
-// package (../../Components/HopUIComboBox) — demonstrating third-party toolkit extensibility.
+// package (../../) for HopUI + the toolkit backends, and on the standalone HopUIComboBox component
+// package (../Components/HopUIComboBox) — demonstrating third-party toolkit extensibility.
 //
 // One shared ContentView/HopDemoApp (in Shared/, symlinked into each target) compiles per toolkit with a
 // single HOPUI_TOOLKIT_* define, so the same SwiftUI-mirroring source drives every backend (and Apple's
@@ -51,7 +51,7 @@ if toolkitEnabled("qt") {
 }
 
 // HopUIComboBox is referenced by name only when a toolkit target depends on it; declare the dependency once.
-var dependencies: [Package.Dependency] = [.package(path: "../../../"), .package(path: "../../Components/HopUIComboBox")]
+var dependencies: [Package.Dependency] = [.package(path: "../../"), .package(path: "../../Components/HopUIComboBox")]
 
 let package = Package(
     name: "Showcase",

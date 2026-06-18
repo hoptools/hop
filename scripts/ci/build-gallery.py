@@ -77,7 +77,7 @@ def main():
     artifacts, outdir = pos[0], pos[1]
     title = opts.get("title", "HopUI — Playground Screenshots")
     subtitle = opts.get("subtitle", "")
-    source = opts.get("source", "Demos/Apps/Showcase/Shared/ContentView.swift")
+    source = opts.get("source", "Demos/Showcase/Shared/ContentView.swift")
 
     # Link back to the exact CI run (and commit) that produced these shots — from the Actions env vars,
     # overridable with --run-url for local testing.

@@ -10,7 +10,7 @@ import AppKit  // NSImage, to load the bundled demo image (SwiftUI has no plain-
 import UniformTypeIdentifiers  // UTType + FileDocument for the native build's .fileExporter
 #else
 import HopUI
-import HopUIComboBox   // a third-party HopUI component package (Demos/Components/HopUIComboBox)
+import HopUIComboBox   // a third-party HopUI component package (Components/HopUIComboBox)
 #endif
 import Observation  // @Observable — the same macro is used whether building against HopUI or SwiftUI
 import Foundation   // sin/cos for the star's points (same on either toolkit)
