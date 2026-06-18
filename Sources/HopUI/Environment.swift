@@ -21,22 +21,52 @@ import Observation
 /// The initializer is left non-isolated so the default `EnvironmentValues.openWindow` value can be
 /// constructed without main-actor isolation; only `callAsFunction` (which runs the handler) is
 /// main-actor isolated.
-public struct OpenWindowAction {
-    let handler: @MainActor (String) -> Void
+public nonisolated struct OpenWindowAction {
+    private let handler: (@MainActor (String) -> Void)?
+
+    /// The default no-op action. nonisolated so it can be the default value of the (nonisolated)
+    /// `EnvironmentValues.openWindow` without constructing a main-actor closure off the main actor.
+    public init() { handler = nil }
 
     init(handler: @escaping @MainActor (String) -> Void) { self.handler = handler }
 
-    @MainActor public func callAsFunction(id: String) { handler(id) }
+    @MainActor public func callAsFunction(id: String) { handler?(id) }
+}
+
+/// A key for accessing a custom environment value. Conform a type to this, then add a computed property
+/// to `EnvironmentValues` that reads/writes `self[YourKey.self]`, exactly like SwiftUI:
+///
+/// ```swift
+/// private struct GreetingKey: EnvironmentKey { static let defaultValue = "Hello" }
+/// extension EnvironmentValues {
+///     var greeting: String {
+///         get { self[GreetingKey.self] }
+///         set { self[GreetingKey.self] = newValue }
+///     }
+/// }
+/// ```
+///
+/// The value then flows through `@Environment(\.greeting)` and `.environment(\.greeting, _)` like any
+/// built-in value. Mirrors SwiftUI's `EnvironmentKey`.
+public protocol EnvironmentKey {
+    associatedtype Value
+    // nonisolated so a user's key (written without `@MainActor`, like SwiftUI) and the read subscript work
+    // from nonisolated contexts — e.g. `.environment(\.key, _)` forming a plain key path.
+    nonisolated static var defaultValue: Value { get }
 }
 
 /// A collection of environment values. Mirrors SwiftUI's `EnvironmentValues`: it carries key-path
-/// values (like `openWindow`) and `@Observable` reference objects keyed by their type.
-public struct EnvironmentValues {
+/// values (like `openWindow`), custom `EnvironmentKey` values (via `subscript(_:)`), and `@Observable`
+/// reference objects keyed by their type.
+///
+/// `nonisolated` (like `Color`/`Font`) so it — and user-written extension properties for custom keys —
+/// can be read and written off the main actor, e.g. when forming `.environment(\.key, _)` key paths.
+public nonisolated struct EnvironmentValues {
     public init() {}
 
     /// The action that opens a registered secondary window. The runtime installs a working action in
     /// `runApp`; the default is a no-op so reads outside a running app are harmless.
-    public var openWindow = OpenWindowAction(handler: { _ in })
+    public var openWindow = OpenWindowAction()
 
     /// The enclosing `NavigationStack`'s push action, installed by the stack while it evaluates its
     /// content so that a `NavigationLink` inside can append a value to the stack's path. `nil` outside
@@ -55,6 +85,17 @@ public struct EnvironmentValues {
     /// The presentation style for `Picker`s in this subtree, set via `.pickerStyle(_:)`. Read when a
     /// `Picker` builds its component, so it selects the native implementation (and is part of its widget key).
     public var pickerStyle: PickerStyle = .automatic
+
+    /// Custom values injected by `EnvironmentKey`, keyed by the key type. Accessed through ``subscript(_:)``
+    /// from the computed properties an extension adds for each key.
+    private var keyedValues: [ObjectIdentifier: StoredEnvironmentValue] = [:]
+
+    /// Reads or writes the value for a custom `EnvironmentKey`, falling back to the key's `defaultValue`
+    /// when nothing has been injected. Mirrors SwiftUI's `EnvironmentValues.subscript(_:)`.
+    public subscript<K: EnvironmentKey>(key: K.Type) -> K.Value {
+        get { (keyedValues[ObjectIdentifier(key)]?.value as? K.Value) ?? K.defaultValue }
+        set { keyedValues[ObjectIdentifier(key)] = StoredEnvironmentValue(newValue) }
+    }
 
     /// Objects injected via `.environment(_:)`, keyed by their dynamic type's identifier.
     private var objects: [ObjectIdentifier: Any] = [:]
@@ -79,12 +120,43 @@ public struct EnvironmentValues {
               colorScheme == other.colorScheme,
               pickerStyle == other.pickerStyle,
               (navigationPush == nil) == (other.navigationPush == nil),
+              keyedValues.count == other.keyedValues.count,
               objects.count == other.objects.count else { return false }
+        // Custom values compare by `==` when they're `Equatable` (the common case); a non-`Equatable`
+        // value compares as changed, so dependents recompute rather than risk stale memoization.
+        for (key, entry) in keyedValues {
+            guard let otherEntry = other.keyedValues[key], entry.equals(otherEntry) else { return false }
+        }
         for (key, value) in objects {
             guard let otherValue = other.objects[key],
                   (value as AnyObject) === (otherValue as AnyObject) else { return false }
         }
         return true
+    }
+}
+
+/// A custom environment value plus a type-erased equality, captured when the value is `Equatable`, so the
+/// environment's memoization comparison (``EnvironmentValues/sameEnvironment(as:)``) can detect changes.
+nonisolated struct StoredEnvironmentValue {
+    let value: Any
+    /// True when this entry's value equals `other`'s. A non-`Equatable` value always reports unequal.
+    let equals: (StoredEnvironmentValue) -> Bool
+
+    init<V>(_ value: V) {
+        self.value = value
+        if let equatable = value as? any Equatable {
+            self.equals = { equatable.isEqual(to: $0.value) }
+        } else {
+            self.equals = { _ in false }
+        }
+    }
+}
+
+private extension Equatable {
+    /// Compares `self` to a type-erased value: equal only when `other` is the same type and `==`.
+    nonisolated func isEqual(to other: Any) -> Bool {
+        guard let other = other as? Self else { return false }
+        return self == other
     }
 }
 

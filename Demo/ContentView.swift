@@ -84,7 +84,7 @@ enum Playground: String, CaseIterable, Hashable {
     case text, accessibility, label, link
     case shapes, images, color
     case layout, disclosure, groupBox, form, tabs
-    case observable, menus, files
+    case observable, environment, menus, files
     case gesture
 
     var title: String {
@@ -112,6 +112,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .form: return "Form"
         case .tabs: return "Tabs"
         case .observable: return "Observable"
+        case .environment: return "Environment"
         case .menus: return "Menus"
         case .files: return "Files"
         case .gesture: return "Gestures"
@@ -149,7 +150,7 @@ let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "containers", title: "Containers",
                    items: [.layout, .disclosure, .groupBox, .form, .tabs]),
     SidebarSection(id: "data", title: "Data & Menus",
-                   items: [.observable, .menus, .files]),
+                   items: [.observable, .environment, .menus, .files]),
 ]
 
 // `hopTask` runs async work on the toolkit's run loop. The HopUI build gets it from `import HopUI`;
@@ -257,6 +258,8 @@ public struct ContentView: View {
                 TextPlayground()
             } else if selection == .observable {
                 ObservablePlayground()
+            } else if selection == .environment {
+                EnvironmentPlayground()
             } else if selection == .accessibility {
                 AccessibilityPlayground()
             } else if selection == .shapes {
@@ -592,6 +595,95 @@ struct ObservablePlayground: View {
             }
             Text("Current appearance (via @Environment(\\.colorScheme)): \(colorScheme == .dark ? "dark" : "light")")
         }
+    }
+}
+
+// MARK: - Custom @Environment values (declared exactly like SwiftUI)
+
+/// A custom environment value: an `EnvironmentKey` with a default, plus an `EnvironmentValues` computed
+/// property that reads/writes `self[Key.self]`. This is the standard SwiftUI recipe and compiles
+/// unchanged against both HopUI and Apple's SwiftUI.
+private struct GreetingKey: EnvironmentKey {
+    static let defaultValue = "Hello, World"
+}
+
+/// A struct environment value, to show custom values aren't limited to primitives.
+struct AppTheme: Equatable {
+    var name: String
+    var accent: Color
+}
+private struct AppThemeKey: EnvironmentKey {
+    static let defaultValue = AppTheme(name: "Default", accent: .blue)
+}
+
+extension EnvironmentValues {
+    var greeting: String {
+        get { self[GreetingKey.self] }
+        set { self[GreetingKey.self] = newValue }
+    }
+    var appTheme: AppTheme {
+        get { self[AppThemeKey.self] }
+        set { self[AppThemeKey.self] = newValue }
+    }
+}
+
+/// Reads the custom `\.greeting` value — exactly like reading a built-in like `\.colorScheme`.
+private struct GreetingReader: View {
+    @Environment(\.greeting) private var greeting
+    var body: some View { Text("greeting = \"\(greeting)\"") }
+}
+
+/// Reads the custom struct `\.appTheme` value and uses it.
+private struct ThemeReader: View {
+    @Environment(\.appTheme) private var theme
+    var body: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 6).fill(theme.accent).frame(width: 28, height: 20)
+            Text("appTheme = \(theme.name)")
+        }
+    }
+}
+
+/// Demonstrates declaring and using *custom* `@Environment` values — default, injection, nested override,
+/// reactivity, and a struct value — all with the same API as SwiftUI's built-ins.
+struct EnvironmentPlayground: View {
+    @State private var greeting = "Bonjour"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Custom @Environment values").font(.title3).fontWeight(.semibold)
+            Text("Declared with EnvironmentKey + an EnvironmentValues extension — exactly like SwiftUI. Inject with .environment(\\.key, value); read with @Environment(\\.key).")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("No injection → the key's default value:")
+                GreetingReader()
+                Text("Injected, and reactive to this picker:")
+                GreetingReader().environment(\.greeting, greeting)
+                Picker("Greeting", selection: $greeting) {
+                    Text("Bonjour").tag("Bonjour")
+                    Text("Hej").tag("Hej")
+                    Text("Hola").tag("Hola")
+                    Text("こんにちは").tag("こんにちは")
+                }
+            }
+
+            Divider()
+
+            Text("Nesting — the nearest injection wins:").fontWeight(.semibold)
+            VStack(alignment: .leading, spacing: 6) {
+                GreetingReader()                                       // inherits the outer injection
+                GreetingReader().environment(\.greeting, "inner override")  // overrides it
+            }
+            .environment(\.greeting, "outer value")
+
+            Divider()
+
+            Text("A struct environment value:").fontWeight(.semibold)
+            ThemeReader()                                                            // default theme
+            ThemeReader().environment(\.appTheme, AppTheme(name: "Sunset", accent: .orange))
+        }
+        .padding(20)
     }
 }
 
