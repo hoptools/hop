@@ -8,20 +8,27 @@
 #
 #   Usage: build-gallery.py <artifacts_dir> <output_dir> [--title T] [--subtitle S] [--source PATH]
 #
-# <artifacts_dir> holds one subdirectory per downloaded artifact (screenshots-macos/, screenshots-linux-gtk/,
-# screenshots-windows-qt/, …), each containing <toolkit>__<playground>.png files. <output_dir> gets an
-# index.html plus an images/ folder.
+# <artifacts_dir> holds one subdirectory per downloaded artifact (screenshots-macos-appkit/,
+# screenshots-linux-gtk/, screenshots-windows-qt/, …), each containing <toolkit>__<playground>.png files.
+# <output_dir> gets an index.html plus an images/ folder.
 
 import sys, os, re, shutil, html
 
-# artifact (CI job) name -> human platform label
-JOB_PLATFORM = {
-    "screenshots-macos": "macOS",
-    "screenshots-linux-gtk": "Linux",
-    "screenshots-linux-qt": "Linux",
-    "screenshots-windows-qt": "Windows",
-    "screenshots-windows-winui": "Windows",
-}
+# Map a downloaded artifact's directory name to a human platform label. Artifacts are named
+# "screenshots-<os>-<toolkit>" — one per CI job (e.g. screenshots-macos-appkit, screenshots-linux-gtk,
+# screenshots-windows-qt). We DERIVE the platform from the <os> segment rather than listing every job:
+# the macOS job was split into four per-toolkit jobs (screenshots-macos-appkit/-swiftui/-gtk/-qt), and a
+# hardcoded "screenshots-macos" entry then matched none of them — orphaning the macOS shots into bogus
+# extra groups while the real macOS slots showed "missing". Deriving the OS keeps that from recurring.
+OS_LABEL = {"macos": "macOS", "linux": "Linux", "windows": "Windows"}
+
+
+def job_platform(job):
+    """Artifact dir name 'screenshots-<os>-<toolkit>' -> platform label (falls back to the raw name)."""
+    m = re.match(r"screenshots-([a-z]+)", job)
+    return OS_LABEL.get(m.group(1), job) if m else job
+
+
 TOOLKIT_NAME = {"appkit": "AppKit", "swiftui": "SwiftUI", "gtk4": "GTK4", "qt": "Qt", "winui": "WinUI"}
 # Stable left-to-right (then top-to-bottom, in the 2-col grid) order of the per-playground variants.
 VARIANT_ORDER = [("macOS", "swiftui"), ("macOS", "appkit"), ("macOS", "qt"), ("macOS", "gtk4"),
@@ -97,7 +104,7 @@ def main():
         jobpath = os.path.join(artifacts, job)
         if not os.path.isdir(jobpath):
             continue
-        platform = JOB_PLATFORM.get(job, job)
+        platform = job_platform(job)
         for fn in sorted(os.listdir(jobpath)):
             if not fn.endswith(".png") or "__" not in fn:
                 continue
@@ -126,7 +133,11 @@ h1 { margin:0 0 4px; font-size:24px; }
 .sub { color:var(--muted); }
 .sub a, footer a { color:var(--fg); text-decoration:none; }
 .sub a:hover, footer a:hover { text-decoration:underline; }
-nav { position:sticky; top:0; background:var(--bg); border-bottom:1px solid var(--line);
+/* The quick-jump nav sticks to the top while scrolling, so it needs a solid, opaque background and a
+   z-index above the screenshots — otherwise the links render straight over a screenshot and become
+   unreadable. The shadow separates the bar from the content scrolling underneath it. */
+nav { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line);
+      box-shadow:0 2px 10px rgba(0,0,0,.5);
       padding:10px 24px; display:flex; flex-wrap:wrap; gap:6px 12px; font-size:13px; }
 nav a { color:var(--muted); text-decoration:none; }
 nav a:hover { color:var(--fg); }
