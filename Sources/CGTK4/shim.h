@@ -224,13 +224,19 @@ static inline void hop_box_reorder(void *box, void *child, int index) {
 }
 
 static inline void *hop_label_new(const char *text) {
-    GtkWidget *l = gtk_label_new(text);
-    // Wrap like SwiftUI's Text: multi-line, word/char wrapping, top-leading aligned.
-    gtk_label_set_wrap(GTK_LABEL(l), TRUE);
-    gtk_label_set_wrap_mode(GTK_LABEL(l), PANGO_WRAP_WORD_CHAR);
-    gtk_label_set_xalign(GTK_LABEL(l), 0.0f);
-    gtk_widget_set_halign(l, GTK_ALIGN_START);
-    return l;
+    return gtk_label_new(text);
+}
+
+// Make a label wrap like SwiftUI's `Text`: multi-line, word/char wrapping, top-leading aligned. Applied
+// ONLY to HopUI `Text` leaves (the layout engine sizes those itself) — NOT to chrome labels such as
+// header-bar toolbar items, which must keep their natural single-line size or GTK squeezes a wrapping
+// label down to one character per line (e.g. a "GTK4" toolbar title wrapping to "G/T/K4").
+static inline void hop_label_set_wrapping(void *label) {
+    GtkLabel *l = GTK_LABEL(label);
+    gtk_label_set_wrap(l, TRUE);
+    gtk_label_set_wrap_mode(l, PANGO_WRAP_WORD_CHAR);
+    gtk_label_set_xalign(l, 0.0f);
+    gtk_widget_set_halign(GTK_WIDGET(l), GTK_ALIGN_START);
 }
 
 // Measure a wrapping label: when the proposed width is narrower than the natural (single-line) width,
@@ -1006,6 +1012,20 @@ static inline void hop_widget_set_size_request(void *w, int width, int height) {
 // neither lays out nor (with a non-clip default) clips its children — exactly what we want.
 static inline void *hop_fixed_new(void) {
     return gtk_fixed_new();
+}
+
+// The window's top-level content is wrapped in this scroller so the window can be resized SMALLER than
+// the currently laid-out content. A plain GtkFixed root reports its content's bounding box as its minimum
+// size, which GtkWindow adopts as the window minimum — so the window could only ever grow and refused to
+// shrink. A GtkScrolledWindow with EXTERNAL policy (no scrollbars drawn) and natural-size propagation
+// turned off reports a ZERO minimum, freeing the window to shrink; HopUI re-runs layout on every resize
+// and re-fills the new (smaller) viewport, so the content always fits exactly and never actually scrolls.
+static inline void *hop_root_scroller_new(void) {
+    GtkWidget *sw = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL);
+    gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(sw), FALSE);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(sw), FALSE);
+    return sw;
 }
 
 static inline int hop_is_fixed(void *w) {
