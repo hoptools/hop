@@ -14,6 +14,7 @@ public final class GTK4Widget {
     var isShape = false
     var isToggle = false
     var isImage = false
+    var isLabel = false   // a GtkLabel (Text) — measured with width-for-wrap
     var imageResizable = false
     var isProgress = false
     var isScroll = false  // a GtkScrolledWindow (its single child is the scrollable content)
@@ -292,6 +293,19 @@ private let gtk4PulseCallback: @convention(c) (UnsafeMutableRawPointer?) -> Int3
     return 1  // G_SOURCE_CONTINUE
 }
 
+// Button-group (Picker .segmented / .radioGroup) selection callback: the activated button's index.
+private let gtk4ButtonGroupCallback: @convention(c) (Int32, UnsafeMutableRawPointer?) -> Void = { index, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    let i = Int(index)
+    MainActor.assumeIsolated {
+        if box.lastSelected != i {
+            box.lastSelected = i
+            box.onSelect?(i)
+        }
+    }
+}
+
 // GtkDropDown selection callback (notify::selected): reports the newly-selected index for a Picker.
 private let gtk4DropDownCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { dropdown, _, userData in
     guard let dropdown, let userData else { return }
@@ -511,11 +525,11 @@ public final class GTK4Toolkit: AppToolkit {
         setBoolHandler(handle, leaf.onChangeBool)
     }
 
-    /// `Picker` renderers. All styles currently render as the native dropdown (GtkDropDown); segmented /
-    /// radioGroup keep their distinct keys (so the architecture + reconcile-recreate are exercised) and
-    /// get their own native widgets in the full migration. Functionally correct on every style today.
+    /// `Picker` renderers — each style is a distinct native widget under its own key (the reconciler
+    /// recreates the widget when the style changes). `.menu`/`.automatic` → GtkDropDown; `.segmented` → a
+    /// horizontal row of linked toggle buttons; `.radioGroup` → a vertical group of radio (check) buttons.
     private func registerPickerComponents() {
-        let renderer = ComponentRegistry<GTK4Widget>.Renderer(
+        let dropdown = ComponentRegistry<GTK4Widget>.Renderer(
             make: { [unowned self] component in
                 let handle = makeNativeWidget(.picker)
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
@@ -525,7 +539,49 @@ public final class GTK4Toolkit: AppToolkit {
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) })
-        for style in PickerStyle.allCases { components.register(renderer, for: .picker(style)) }
+        components.register(dropdown, for: .picker(.menu))
+        components.register(dropdown, for: .picker(.automatic))
+
+        for (style, horizontal, toggle) in [(PickerStyle.segmented, true, true), (PickerStyle.radioGroup, false, false)] {
+            components.register(.init(
+                make: { [unowned self] component in
+                    let handle = makeButtonGroup(horizontal: horizontal)
+                    if let spec = (component as? PickerComponent)?.spec { configureButtonGroupPicker(handle, spec, toggle: toggle) }
+                    return handle
+                },
+                update: { [unowned self] handle, component in
+                    if let spec = (component as? PickerComponent)?.spec { configureButtonGroupPicker(handle, spec, toggle: toggle) }
+                },
+                measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+            ), for: .picker(style))
+        }
+    }
+
+    /// Build a button-group picker widget (segmented = horizontal/linked toggle buttons; radio = vertical).
+    private func makeButtonGroup(horizontal: Bool) -> GTK4Widget {
+        let widget = hop_buttongroup_new(horizontal ? 1 : 0)!
+        hop_object_ref_sink(widget)
+        let handle = GTK4Widget(widget)
+        handle.actionBox = GTK4ActionBox()
+        return handle
+    }
+
+    /// Configure a segmented / radio-group picker: (re)populate when the options change, otherwise just
+    /// reflect the bound selection. `toggle` selects toggle-button (segmented) vs check-button (radio) items.
+    private func configureButtonGroupPicker(_ handle: GTK4Widget, _ spec: PickerSpec, toggle: Bool) {
+        guard let box = handle.actionBox else { return }
+        box.onSelect = { if let index = $0 { spec.onSelect(index) } }
+        let boxPtr = Unmanaged.passUnretained(box).toOpaque()
+        if box.pickerOptions != spec.options {
+            box.pickerOptions = spec.options
+            box.rowText = { spec.options[$0] }
+            hop_buttongroup_set_items(handle.widget, UInt32(spec.options.count), gtk4RowCallback,
+                                      Int32(spec.selectedIndex ?? -1), toggle ? 1 : 0, gtk4ButtonGroupCallback, boxPtr)
+            box.lastSelected = spec.selectedIndex
+        } else if box.lastSelected != spec.selectedIndex {
+            box.lastSelected = spec.selectedIndex
+            hop_buttongroup_set_selected(handle.widget, Int32(spec.selectedIndex ?? -1))
+        }
     }
 
     private func registerImageComponent() {
@@ -618,6 +674,8 @@ public final class GTK4Toolkit: AppToolkit {
             hop_drawing_area_set_draw_func(widget, gtk4DrawCallback, Unmanaged.passUnretained(box).toOpaque())
         } else if key == .image {
             handle.isImage = true
+        } else if key == .label {
+            handle.isLabel = true   // measured with width-for-wrap (GtkLabel wraps like SwiftUI Text)
         } else if key == .picker {
             // Selection signal is connected in configurePicker after the model is set.
             handle.actionBox = GTK4ActionBox()
@@ -1055,6 +1113,13 @@ public final class GTK4Toolkit: AppToolkit {
             hop_picture_natural_size(handle.widget, &iw, &ih)
             let natural = CGSize(width: Double(iw), height: Double(ih))
             return handle.imageResizable ? proposal.resolved(natural) : natural
+        }
+        // A label (Text) wraps to the proposed width: report the wrapped height, not the single-line width.
+        if handle.isLabel {
+            var lw: Int32 = 0, lh: Int32 = 0
+            let forWidth = (proposal.width?.isFinite == true) ? Int32(Swift.max(0, proposal.width!)) : -1
+            hop_label_measure(handle.widget, forWidth, &lw, &lh)
+            return CGSize(width: Double(lw), height: Double(lh))
         }
         var w: Int32 = 0, h: Int32 = 0
         hop_widget_measure(handle.widget, -1, &w, &h)  // natural/intrinsic size

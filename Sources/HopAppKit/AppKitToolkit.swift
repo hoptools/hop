@@ -544,7 +544,11 @@ public final class AppKitToolkit: AppToolkit {
             card.layer?.backgroundColor = NSColor.gray.withAlphaComponent(0.10).cgColor
             return AppKitWidget(card)
         case .label:
-            return AppKitWidget(HopLabel(labelWithString: ""))
+            let label = HopLabel(labelWithString: "")
+            // Wrap like SwiftUI's Text: multi-line, word-wrapping. `measure` sets preferredMaxLayoutWidth to
+            // the proposed width so the label reports the height needed at that width (not a single line).
+            configureLabelWrapping(label)
+            return AppKitWidget(label)
         case .textField:
             let field = NSTextField(string: "")
             field.isEditable = true
@@ -812,6 +816,8 @@ public final class AppKitToolkit: AppToolkit {
         }
         if (patch.font != nil || patch.fontWeight != nil), let label = handle.view as? NSTextField {
             label.font = Self.nsFont(patch.font, weight: patch.fontWeight, current: label.font)
+            // Setting the font can re-enable single-line mode; re-assert wrapping for HopUI labels.
+            if let hop = label as? HopLabel { configureLabelWrapping(hop) }
         }
         if let bg = patch.backgroundColor {
             if let label = handle.view as? NSTextField {
@@ -963,6 +969,19 @@ public final class AppKitToolkit: AppToolkit {
         if handle.view is NSTabView { handle.view.layoutSubtreeIfNeeded() }
     }
 
+    /// Configure a label to wrap like SwiftUI's Text. `usesSingleLineMode` must be false or it overrides
+    /// `maximumNumberOfLines`/`lineBreakMode` and the text stays on one (truncated) line — which is what
+    /// setting a font (`.fontWeight`) re-enables, so this is re-applied wherever the font changes + on measure.
+    private func configureLabelWrapping(_ label: NSTextField) {
+        label.usesSingleLineMode = false
+        label.maximumNumberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        label.cell?.usesSingleLineMode = false
+        label.cell?.wraps = true
+        label.cell?.isScrollable = false
+        (label.cell as? NSTextFieldCell)?.truncatesLastVisibleLine = false
+    }
+
     public func measure(_ handle: AppKitWidget, _ proposal: ProposedViewSize) -> CGSize {
         // Shapes are greedy: they fill whatever they're offered (default 100×100 when unspecified).
         if handle.view is HopShapeView { return proposal.resolved(CGSize(width: 100, height: 100)) }
@@ -970,6 +989,22 @@ public final class AppKitToolkit: AppToolkit {
         if let imageView = handle.view as? HopImageView {
             let natural = imageView.image?.size ?? CGSize(width: 24, height: 24)
             return imageView.isResizable ? proposal.resolved(natural) : natural
+        }
+        // A HopUI label (Text) wraps like SwiftUI's Text: report the height needed at the proposed width.
+        // Re-assert the wrap config here (every layout pass) because setting `.font`/`.fontWeight` resets it;
+        // preferredMaxLayoutWidth makes the wrapping label's intrinsic size account for line breaks (a nil
+        // proposal → 0 → its ideal single-line width).
+        if let label = handle.view as? HopLabel {
+            configureLabelWrapping(label)
+            // Size with the cell's OWN measurement so it matches what the label draws (font + text insets +
+            // wrapping), which boundingRect under-reports — that mismatch left the last word wrapping to a
+            // clipped 2nd line. A non-positive/absent proposal means "unspecified" → ideal single line.
+            let constrained = (proposal.width.map { $0 > 0 } ?? false)
+            let maxWidth: CGFloat = constrained ? proposal.width! : 100_000
+            label.preferredMaxLayoutWidth = constrained ? maxWidth : 0
+            let bounds = NSRect(x: 0, y: 0, width: maxWidth, height: .greatestFiniteMagnitude)
+            let size = (label.cell as? NSTextFieldCell)?.cellSize(forBounds: bounds) ?? label.intrinsicContentSize
+            return CGSize(width: ceil(size.width), height: ceil(size.height))
         }
         let fitting = handle.view.fittingSize
         // Flexible-width controls (text fields, sliders, progress bars) expand to the offered width.

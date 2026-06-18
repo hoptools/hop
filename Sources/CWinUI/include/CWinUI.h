@@ -126,6 +126,13 @@ int32_t hopwinui_combobox_selected(void* h);
 void hopwinui_combobox_set_selected(void* h, int32_t index);
 void hopwinui_combobox_connect(void* h, hopwinui_int_cb cb, void* user_data);
 
+// Button group (Picker .segmented / .radioGroup). horizontal=1 → segmented row; toggle=1 → ToggleButtons
+// (segmented), toggle=0 → RadioButtons. `cb` reports the checked button's index.
+void* hopwinui_buttongroup_new(int32_t horizontal);
+void hopwinui_buttongroup_set_items(void* h, const char* const* items_utf8, int32_t count, int32_t selected,
+                                    int32_t toggle, hopwinui_int_cb cb, void* user_data);
+void hopwinui_buttongroup_set_selected(void* h, int32_t index);
+
 // MARK: Image
 void hopwinui_image_set_file(void* h, const char* path_utf8);
 void hopwinui_image_set_stretch(void* h, int32_t mode);  // 0 none, 1 uniform, 2 uniformToFill, 3 fill

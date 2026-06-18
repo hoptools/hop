@@ -79,6 +79,8 @@ void hopqt_widget_make_card(void *widget);  // rounded/bordered/filled card chro
 // Label
 void *hopqt_label_new(const char *text);
 void hopqt_label_set_text(void *label, const char *text);
+// Wrapping-aware measure: constrained width + wrapped height when for_width < the single-line width.
+void hopqt_label_measure(void *label, int for_width, int *out_w, int *out_h);
 
 // Button
 void *hopqt_button_new(const char *text);
@@ -207,6 +209,13 @@ void hopqt_combo_set_items(void *combo, int count, hopqt_row_cb row_cb, void *us
 int hopqt_combo_selected(void *combo);
 void hopqt_combo_set_selected(void *combo, int index);
 void hopqt_combo_connect(void *combo, hopqt_int_cb cb, void *user_data);
+
+// Button group (Picker .segmented / .radioGroup). horizontal=1 → segmented; toggle=1 → checkable
+// push buttons (segmented), toggle=0 → radio buttons. `cb` reports the clicked button's index.
+void *hopqt_buttongroup_new(int horizontal);
+void hopqt_buttongroup_set_items(void *widget, int count, hopqt_row_cb row_cb, int selected, int toggle,
+                                 hopqt_int_cb cb, void *user_data);
+void hopqt_buttongroup_set_selected(void *widget, int index);
 
 // Lazy list (QListView + a custom QAbstractListModel that fetches rows on demand)
 void *hopqt_list_new(void);

@@ -20,6 +20,7 @@
 #include <QtWidgets/QFileDialog>
 #include <QtGui/QColor>
 #include <QtGui/QFont>
+#include <QtGui/QFontMetrics>
 #include <QtWidgets/QListView>
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QTreeWidgetItemIterator>
@@ -27,6 +28,9 @@
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
+#include <QtWidgets/QButtonGroup>
+#include <QtWidgets/QRadioButton>
+#include <QtWidgets/QBoxLayout>
 #include <QtWidgets/QProgressBar>
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QMainWindow>
@@ -329,11 +333,31 @@ void hopqt_widget_make_card(void *widget) {
 }
 
 void *hopqt_label_new(const char *text) {
-    return new QLabel(QString::fromUtf8(text));
+    QLabel *l = new QLabel(QString::fromUtf8(text));
+    l->setWordWrap(true);                              // wrap like SwiftUI's Text
+    l->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    return l;
 }
 
 void hopqt_label_set_text(void *label, const char *text) {
     static_cast<QLabel *>(label)->setText(QString::fromUtf8(text));
+}
+
+// Measure a wrapping label: when the proposed width is narrower than the single-line width, constrain to
+// it and report the wrapped height (heightForWidth); otherwise the natural single-line size. Returns the
+// CONSTRAINED width so the engine doesn't grow the row to the unwrapped text width.
+void hopqt_label_measure(void *label, int for_width, int *out_w, int *out_h) {
+    QLabel *l = static_cast<QLabel *>(label);
+    QFontMetrics fm(l->font());
+    int natw = fm.horizontalAdvance(l->text()) + 2;   // single-line width (plain text)
+    if (for_width > 0 && for_width < natw) {
+        int h = l->heightForWidth(for_width);          // wrapped height (valid because wordWrap is on)
+        *out_w = for_width;
+        *out_h = (h > 0) ? h : fm.height();
+    } else {
+        *out_w = natw;
+        *out_h = fm.height();
+    }
 }
 
 void *hopqt_button_new(const char *text) {
@@ -845,6 +869,62 @@ void hopqt_combo_connect(void *combo, hopqt_int_cb cb, void *user_data) {
     QComboBox *c = static_cast<QComboBox *>(combo);
     QObject::connect(c, QOverload<int>::of(&QComboBox::currentIndexChanged), c,
                      [cb, user_data](int index) { if (cb) cb(index, user_data); });
+}
+
+// --- Button group (Picker .segmented = checkable buttons in a row; .radioGroup = radio buttons) -------
+// A container QWidget holds an exclusive QButtonGroup (parented to it, so it lives/dies together) whose
+// buttons fill a horizontal (segmented) or vertical (radio) box layout. `idClicked` reports the selected
+// index — like the outline's itemClicked, it fires only on real user clicks, so programmatic selection
+// changes never feed back.
+
+void *hopqt_buttongroup_new(int horizontal) {
+    QWidget *w = new QWidget();
+    QBoxLayout *layout = horizontal ? static_cast<QBoxLayout *>(new QHBoxLayout(w))
+                                    : static_cast<QBoxLayout *>(new QVBoxLayout(w));
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(horizontal ? 0 : 4);
+    QButtonGroup *group = new QButtonGroup(w);  // findChild<QButtonGroup*>() recovers it later
+    group->setExclusive(true);
+    return w;
+}
+
+void hopqt_buttongroup_set_items(void *widget, int count, hopqt_row_cb row_cb, int selected, int toggle,
+                                 hopqt_int_cb cb, void *user_data) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    QButtonGroup *group = w->findChild<QButtonGroup *>();
+    QBoxLayout *layout = qobject_cast<QBoxLayout *>(w->layout());
+    if (!group || !layout) return;
+    for (QAbstractButton *b : group->buttons()) { group->removeButton(b); layout->removeWidget(b); b->deleteLater(); }
+    for (int i = 0; i < count; i++) {
+        char *s = row_cb ? row_cb(i, user_data) : nullptr;
+        QString label = QString::fromUtf8(s ? s : "");
+        if (s) free(s);
+        QAbstractButton *btn;
+        if (toggle) { QPushButton *pb = new QPushButton(label, w); pb->setCheckable(true); btn = pb; }
+        else        { btn = new QRadioButton(label, w); }
+        group->addButton(btn, i);
+        layout->addWidget(btn);
+        if (i == selected) btn->setChecked(true);
+    }
+    // Connect once to the (persistent) group; new buttons added on rebuild route through it too.
+    if (!w->property("hop-connected").toBool()) {
+        w->setProperty("hop-connected", true);
+        QObject::connect(group, &QButtonGroup::idClicked, w,
+                         [cb, user_data](int id) { if (cb) cb(id, user_data); });
+    }
+}
+
+void hopqt_buttongroup_set_selected(void *widget, int index) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    QButtonGroup *group = w->findChild<QButtonGroup *>();
+    if (!group) return;
+    if (QAbstractButton *btn = group->button(index)) {
+        btn->setChecked(true);  // exclusive group unchecks the others; idClicked doesn't fire programmatically
+    } else {
+        group->setExclusive(false);
+        for (QAbstractButton *b : group->buttons()) b->setChecked(false);
+        group->setExclusive(true);
+    }
 }
 
 void *hopqt_list_new(void) {

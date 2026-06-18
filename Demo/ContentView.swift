@@ -72,7 +72,7 @@ nonisolated final class DemoModel: @unchecked Sendable {
 /// of the components HopUI implements so far. They are grouped into desktop UI categories by
 /// ``sidebarSections`` and presented as a native sectioned list with group headers (``SidebarView``).
 enum Playground: String, CaseIterable, Hashable {
-    case slider, button, toggle, stepper, datePicker, colorPicker, textField, secureField, progress
+    case slider, button, toggle, stepper, picker, datePicker, colorPicker, textField, secureField, progress
     case text, accessibility, label, link
     case shapes, images
     case layout, disclosure, groupBox, form, tabs
@@ -85,6 +85,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .button: return "Buttons"
         case .toggle: return "Toggle"
         case .stepper: return "Stepper"
+        case .picker: return "Picker"
         case .datePicker: return "Date Picker"
         case .colorPicker: return "Color Picker"
         case .textField: return "Text Field"
@@ -130,7 +131,7 @@ struct SidebarSection: Identifiable, Hashable {
 /// The sidebar's categories → playgrounds, organized into logical desktop UI groups.
 let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "controls", title: "Controls",
-                   items: [.slider, .button, .toggle, .stepper, .datePicker, .colorPicker,
+                   items: [.slider, .button, .toggle, .stepper, .picker, .datePicker, .colorPicker,
                            .textField, .secureField, .progress, .gesture]),
     SidebarSection(id: "text", title: "Text & Accessibility",
                    items: [.text, .accessibility, .label, .link]),
@@ -229,6 +230,8 @@ public struct ContentView: View {
                 TogglePlayground(wifi: $wifiOn)   // Wi-Fi is shared with the Form; Notifications is local
             } else if selection == .stepper {
                 StepperPlayground()
+            } else if selection == .picker {
+                PickerPlayground()
             } else if selection == .datePicker {
                 DatePickerPlayground()
             } else if selection == .colorPicker {
@@ -413,6 +416,74 @@ struct StepperPlayground: View {
             Stepper("Quantity: \(quantity)", value: $quantity, in: 0 ... 10)
                 .frame(width: 260)
             Text("You picked \(quantity)")
+        }
+    }
+}
+
+/// Demonstrates `Picker` across all four styles (`.menu`, `.segmented`, `.radioGroup`, `.automatic`),
+/// different selection value types (enum + Int), `ForEach`-built and statically-tagged options, and a live
+/// readout of every binding. The same source compiles against HopUI and Apple's SwiftUI.
+struct PickerPlayground: View {
+    enum Fruit: String, CaseIterable, Identifiable, Hashable {
+        case apple, banana, cherry, dragonfruit
+        var id: String { rawValue }
+        var label: String { rawValue.capitalized }
+    }
+    enum Alignment: String, CaseIterable, Identifiable, Hashable {
+        case leading, center, trailing
+        var id: String { rawValue }
+        var label: String { rawValue.capitalized }
+    }
+
+    @State private var menuFruit: Fruit = .banana
+    @State private var segment: Alignment = .center
+    @State private var radioFruit: Fruit = .cherry
+    @State private var size: Int = 1
+
+    private let sizes = ["Small", "Medium", "Large", "Huge"]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Menu: \(menuFruit.label)  ·  Segmented: \(segment.label)  ·  Radio: \(radioFruit.label)  ·  Size: \(sizes[size])")
+                    .fontWeight(.semibold)
+
+                GroupBox("Menu (drop-down)") {
+                    Picker("Fruit", selection: $menuFruit) {
+                        ForEach(Fruit.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                GroupBox("Segmented") {
+                    Picker("Alignment", selection: $segment) {
+                        ForEach(Alignment.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                GroupBox("Radio group") {
+                    Picker("Fruit", selection: $radioFruit) {
+                        ForEach(Fruit.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.radioGroup)
+                }
+
+                GroupBox("Automatic (statically-tagged Int options)") {
+                    Picker("Size", selection: $size) {
+                        Text("Small").tag(0)
+                        Text("Medium").tag(1)
+                        Text("Large").tag(2)
+                        Text("Huge").tag(3)
+                    }
+                    .pickerStyle(.automatic)
+                }
+
+                Text("Pick options in any control above and watch the readout — each style is a different "
+                     + "native widget per toolkit (pop-up / segmented control / radio buttons).")
+                    .foregroundStyle(.gray)
+            }
+            .padding(24)
         }
     }
 }

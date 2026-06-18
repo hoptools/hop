@@ -344,14 +344,47 @@ public final class WinUIToolkit: AppToolkit {
         ), for: .image)
     }
 
-    /// `Picker` renderers. Every style currently renders as the native ComboBox; each style keeps a distinct
-    /// `WidgetKey` (so a style change recreates the widget) and shares one renderer.
+    /// `Picker` renderers — each style is a distinct native widget under its own key. `.menu`/`.automatic`
+    /// → ComboBox; `.segmented` → a horizontal row of ToggleButtons; `.radioGroup` → a column of
+    /// RadioButtons. The reconciler recreates the widget when the style changes.
     private func registerPickerComponents() {
-        let renderer = ComponentRegistry<WinUIWidget>.Renderer(
+        let combo = ComponentRegistry<WinUIWidget>.Renderer(
             make: { [unowned self] c in let h = makeWidget(.picker); if let s = (c as? PickerComponent)?.spec { configurePicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? PickerComponent)?.spec { configurePicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) })
-        for style in PickerStyle.allCases { components.register(renderer, for: .picker(style)) }
+        components.register(combo, for: .picker(.menu))
+        components.register(combo, for: .picker(.automatic))
+
+        for (style, horizontal, toggle) in [(PickerStyle.segmented, true, true), (PickerStyle.radioGroup, false, false)] {
+            components.register(.init(
+                make: { [unowned self] c in
+                    let w = WinUIWidget(hopwinui_buttongroup_new(horizontal ? 1 : 0), kind: .picker)
+                    if let s = (c as? PickerComponent)?.spec { configureButtonGroupPicker(w, s, toggle: toggle) }
+                    return w
+                },
+                update: { [unowned self] h, c in if let s = (c as? PickerComponent)?.spec { configureButtonGroupPicker(h, s, toggle: toggle) } },
+                measure: { [unowned self] h, _, p in measure(h, p) }
+            ), for: .picker(style))
+        }
+    }
+
+    /// Configure a segmented / radio-group picker: (re)populate when the options change, otherwise reflect
+    /// the bound selection. `toggle` selects ToggleButtons (segmented) vs RadioButtons (radio).
+    public func configureButtonGroupPicker(_ handle: WinUIWidget, _ spec: PickerSpec, toggle: Bool) {
+        handle.pickerOnSelect = spec.onSelect
+        if handle.pickerOptions != spec.options {
+            handle.pickerOptions = spec.options
+            handle.suppress = true
+            withCStrings(spec.options) {
+                hopwinui_buttongroup_set_items(handle.handle, $0, Int32(spec.options.count),
+                                               Int32(spec.selectedIndex ?? -1), toggle ? 1 : 0, cbComboSelect, unmanaged(handle))
+            }
+            handle.suppress = false
+        } else {
+            handle.suppress = true
+            hopwinui_buttongroup_set_selected(handle.handle, Int32(spec.selectedIndex ?? -1))
+            handle.suppress = false
+        }
     }
 
     // MARK: - Widget creation

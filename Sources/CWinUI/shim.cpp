@@ -349,6 +349,68 @@ void hopwinui_combobox_connect(void* h, hopwinui_int_cb cb, void* ud) {
     c.SelectionChanged([cb, ud](wf::IInspectable const& s, auto&&) { if (cb) cb(s.as<muxc::ComboBox>().SelectedIndex(), ud); });
 }
 
+// --- Button group (Picker .segmented = ToggleButtons in a row; .radioGroup = RadioButtons in a column) ---
+// A StackPanel of mutually-exclusive buttons; each button's Checked handler reports its index (the toolkit
+// suppresses the callback during programmatic changes). RadioButtons share a GroupName for exclusivity;
+// segmented ToggleButtons uncheck their siblings manually and re-check to keep exactly one selected.
+void* hopwinui_buttongroup_new(int32_t horizontal) {
+    muxc::StackPanel p;
+    p.Orientation(horizontal ? muxc::Orientation::Horizontal : muxc::Orientation::Vertical);
+    p.Spacing(horizontal ? 0 : 4);
+    return mk(p);
+}
+
+void hopwinui_buttongroup_set_items(void* h, const char* const* items, int32_t count, int32_t selected,
+                                    int32_t toggle, hopwinui_int_cb cb, void* ud) {
+    auto panel = as<muxc::StackPanel>(h); if (!panel) return;
+    panel.Children().Clear();
+    static int groupCounter = 0;
+    hstring groupName{ L"hopgrp" + std::to_wstring(groupCounter++) };  // unique per group → no cross-interference
+    for (int32_t i = 0; i < count; i++) {
+        hstring label = hs(items && items[i] ? items[i] : "");
+        if (toggle) {
+            muxc::Primitives::ToggleButton btn;
+            btn.Content(box_value(label));
+            btn.IsChecked(i == selected);
+            btn.Checked([cb, ud, i, panel](wf::IInspectable const& sender, auto&&) {
+                auto self = sender.as<muxc::Primitives::ToggleButton>();
+                for (auto const& child : panel.Children()) {
+                    auto other = child.try_as<muxc::Primitives::ToggleButton>();
+                    if (other && other != self) other.IsChecked(false);
+                }
+                if (cb) cb(i, ud);
+            });
+            btn.Unchecked([panel](wf::IInspectable const& sender, auto&&) {
+                bool any = false;
+                for (auto const& child : panel.Children()) {
+                    if (auto o = child.try_as<muxc::Primitives::ToggleButton>()) {
+                        auto v = o.IsChecked();
+                        if (v && v.Value()) { any = true; break; }
+                    }
+                }
+                if (!any) sender.as<muxc::Primitives::ToggleButton>().IsChecked(true);  // keep one selected
+            });
+            panel.Children().Append(btn);
+        } else {
+            muxc::RadioButton btn;
+            btn.Content(box_value(label));
+            btn.GroupName(groupName);
+            btn.IsChecked(i == selected);
+            btn.Checked([cb, ud, i](wf::IInspectable const&, auto&&) { if (cb) cb(i, ud); });
+            panel.Children().Append(btn);
+        }
+    }
+}
+
+void hopwinui_buttongroup_set_selected(void* h, int32_t index) {
+    auto panel = as<muxc::StackPanel>(h); if (!panel) return;
+    int32_t i = 0;
+    for (auto const& child : panel.Children()) {
+        if (auto tb = child.try_as<muxc::Primitives::ToggleButton>()) tb.IsChecked(i == index);
+        i++;
+    }
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Image
 // ---------------------------------------------------------------------------------------------------

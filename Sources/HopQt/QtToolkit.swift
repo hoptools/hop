@@ -25,6 +25,7 @@ public final class QtWidget {
     var isImage = false
     var imageResizable = false
     var isProgress = false
+    var isLabel = false   // a QLabel (Text) — measured with width-for-wrap
     var flexibleWidth = false  // text fields / sliders / progress bars fill the offered width (SwiftUI-like)
     // Guards re-entrant file-dialog presentation (a nested modal event loop can re-run a flush).
     var importerPresenting = false
@@ -215,6 +216,19 @@ private let qtTabCallback: @convention(c) (Int32, UnsafeMutableRawPointer?) -> V
         if box.lastTab != index {
             box.lastTab = index
             box.onSelectTab?(index)
+        }
+    }
+}
+
+// Button-group (Picker .segmented / .radioGroup) selection callback: the clicked button's index.
+private let qtButtonGroupCallback: @convention(c) (Int32, UnsafeMutableRawPointer?) -> Void = { value, userData in
+    guard let userData else { return }
+    let index = Int(value)
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated {
+        if box.lastSelected != index {
+            box.lastSelected = index
+            if index >= 0 { box.pickerOnSelect?(index) }
         }
     }
 }
@@ -421,11 +435,11 @@ public final class QtToolkit: AppToolkit {
         setBoolHandler(handle, leaf.onChangeBool)
     }
 
-    /// `Picker` renderers. All styles currently render as the native combo box (QComboBox); segmented /
-    /// radioGroup keep their distinct keys (exercising the architecture + reconcile-recreate) and get their
-    /// own native widgets in the full migration. Functionally correct on every style today.
+    /// `Picker` renderers — each style is a distinct native widget under its own key. `.menu`/`.automatic`
+    /// → QComboBox; `.segmented` → a horizontal row of checkable buttons; `.radioGroup` → a vertical group
+    /// of radio buttons. The reconciler recreates the widget when the style changes.
     private func registerPickerComponents() {
-        let renderer = ComponentRegistry<QtWidget>.Renderer(
+        let combo = ComponentRegistry<QtWidget>.Renderer(
             make: { [unowned self] component in
                 let handle = makeNativeWidget(.picker)
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
@@ -435,7 +449,41 @@ public final class QtToolkit: AppToolkit {
                 if let spec = (component as? PickerComponent)?.spec { configurePicker(handle, spec) }
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) })
-        for style in PickerStyle.allCases { components.register(renderer, for: .picker(style)) }
+        components.register(combo, for: .picker(.menu))
+        components.register(combo, for: .picker(.automatic))
+
+        for (style, horizontal, toggle) in [(PickerStyle.segmented, true, true), (PickerStyle.radioGroup, false, false)] {
+            components.register(.init(
+                make: { [unowned self] component in
+                    let handle = QtWidget(hopqt_buttongroup_new(horizontal ? 1 : 0)!)
+                    handle.actionBox = QtActionBox()
+                    if let spec = (component as? PickerComponent)?.spec { configureButtonGroupPicker(handle, spec, toggle: toggle) }
+                    return handle
+                },
+                update: { [unowned self] handle, component in
+                    if let spec = (component as? PickerComponent)?.spec { configureButtonGroupPicker(handle, spec, toggle: toggle) }
+                },
+                measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+            ), for: .picker(style))
+        }
+    }
+
+    /// Configure a segmented / radio-group picker: (re)populate when the options change, otherwise reflect
+    /// the bound selection. `toggle` selects checkable push buttons (segmented) vs radio buttons.
+    private func configureButtonGroupPicker(_ handle: QtWidget, _ spec: PickerSpec, toggle: Bool) {
+        guard let box = handle.actionBox else { return }
+        box.pickerOnSelect = spec.onSelect
+        let boxPtr = Unmanaged.passUnretained(box).toOpaque()
+        if box.pickerOptions != spec.options {
+            box.pickerOptions = spec.options
+            box.rowText = { spec.options[$0] }
+            hopqt_buttongroup_set_items(handle.ptr, Int32(spec.options.count), qtRowCallback,
+                                        Int32(spec.selectedIndex ?? -1), toggle ? 1 : 0, qtButtonGroupCallback, boxPtr)
+            box.lastSelected = spec.selectedIndex
+        } else if box.lastSelected != spec.selectedIndex {
+            box.lastSelected = spec.selectedIndex
+            hopqt_buttongroup_set_selected(handle.ptr, Int32(spec.selectedIndex ?? -1))
+        }
     }
 
     private func registerImageComponent() {
@@ -470,7 +518,9 @@ public final class QtToolkit: AppToolkit {
             widget.isScroll = true
             return widget
         case .label:
-            return QtWidget(hopqt_label_new("")!)
+            let widget = QtWidget(hopqt_label_new("")!)
+            widget.isLabel = true   // measured with width-for-wrap (QLabel wraps like SwiftUI Text)
+            return widget
         case .button:
             let widget = QtWidget(hopqt_button_new("")!)
             let box = QtActionBox()
@@ -947,6 +997,13 @@ public final class QtToolkit: AppToolkit {
             hopqt_image_natural_size(handle.ptr, &iw, &ih)
             let natural = CGSize(width: Double(iw), height: Double(ih))
             return handle.imageResizable ? proposal.resolved(natural) : natural
+        }
+        // A label (Text) wraps to the proposed width: report the wrapped height, not the single-line width.
+        if handle.isLabel {
+            var lw: Int32 = 0, lh: Int32 = 0
+            let forWidth = (proposal.width?.isFinite == true) ? Int32(Swift.max(0, proposal.width!)) : -1
+            hopqt_label_measure(handle.ptr, forWidth, &lw, &lh)
+            return CGSize(width: Double(lw), height: Double(lh))
         }
         var w: Int32 = 0, h: Int32 = 0
         hopqt_widget_size_hint(handle.ptr, &w, &h)

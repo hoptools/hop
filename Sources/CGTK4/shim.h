@@ -224,7 +224,29 @@ static inline void hop_box_reorder(void *box, void *child, int index) {
 }
 
 static inline void *hop_label_new(const char *text) {
-    return gtk_label_new(text);
+    GtkWidget *l = gtk_label_new(text);
+    // Wrap like SwiftUI's Text: multi-line, word/char wrapping, top-leading aligned.
+    gtk_label_set_wrap(GTK_LABEL(l), TRUE);
+    gtk_label_set_wrap_mode(GTK_LABEL(l), PANGO_WRAP_WORD_CHAR);
+    gtk_label_set_xalign(GTK_LABEL(l), 0.0f);
+    gtk_widget_set_halign(l, GTK_ALIGN_START);
+    return l;
+}
+
+// Measure a wrapping label: when the proposed width is narrower than the natural (single-line) width,
+// constrain to it and report the wrapped height; otherwise the natural single-line size. Unlike
+// hop_widget_measure (which always returns the natural width), this returns the CONSTRAINED width so the
+// engine doesn't grow the row to the unwrapped text width.
+static inline void hop_label_measure(void *w, int for_width, int *out_w, int *out_h) {
+    GtkWidget *widget = GTK_WIDGET(w);
+    gtk_widget_set_size_request(widget, -1, -1);
+    int minw = 0, natw = 0, minh = 0, nath = 0;
+    gtk_widget_measure(widget, GTK_ORIENTATION_HORIZONTAL, -1, &minw, &natw, NULL, NULL);
+    int width = natw, hw = natw;
+    if (for_width > 0 && for_width < natw) { width = (for_width < minw) ? minw : for_width; hw = width; }
+    gtk_widget_measure(widget, GTK_ORIENTATION_VERTICAL, hw, &minh, &nath, NULL, NULL);
+    *out_w = width;
+    *out_h = nath;
 }
 
 static inline void hop_label_set_text(void *label, const char *text) {
@@ -875,6 +897,83 @@ static inline void hop_dropdown_set_selected(void *dd, unsigned position) {
 
 static inline unsigned long hop_dropdown_connect_selection(void *dd, hop_notify_fn cb, void *user_data) {
     return g_signal_connect_data(dd, "notify::selected", G_CALLBACK(cb), user_data, NULL, (GConnectFlags)0);
+}
+
+// --- Button group (Picker .segmented = linked toggle buttons; .radioGroup = grouped check buttons) ---
+// A GtkBox holds mutually-exclusive buttons. Segmented uses GtkToggleButtons in a horizontal `.linked`
+// box (the idiomatic GTK segmented look); radioGroup uses GtkCheckButtons (rendered as radios) stacked
+// vertically. Each button carries its index + the Swift callback; a "hop-building" flag on the box
+// suppresses the signal while we (re)populate or set the selection programmatically.
+typedef void (*hop_index_fn)(int index, void *user_data);
+
+static inline void hop_buttongroup_toggled(GtkWidget *btn, gpointer data) {
+    (void)data;
+    gboolean active = GTK_IS_CHECK_BUTTON(btn) ? gtk_check_button_get_active(GTK_CHECK_BUTTON(btn))
+                                               : gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(btn));
+    if (!active) return;  // report only the button that turned ON
+    GtkWidget *box = gtk_widget_get_parent(btn);
+    if (box && g_object_get_data(G_OBJECT(box), "hop-building")) return;  // programmatic change
+    hop_index_fn cb = (hop_index_fn)g_object_get_data(G_OBJECT(btn), "hop-cb");
+    void *ud = g_object_get_data(G_OBJECT(btn), "hop-ud");
+    int idx = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(btn), "hop-idx"));
+    if (cb) cb(idx, ud);
+}
+
+// horizontal=1 → segmented (linked, equal-width); horizontal=0 → vertical radio group.
+static inline void *hop_buttongroup_new(int horizontal) {
+    GtkWidget *box = gtk_box_new(horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL,
+                                 horizontal ? 0 : 4);
+    if (horizontal) gtk_widget_add_css_class(box, "linked");
+    return box;
+}
+
+// (Re)populate the group: clear children, add `count` buttons (toggle=1 → GtkToggleButton, else
+// GtkCheckButton), group them mutually-exclusive, activate `selected`, and wire `cb` on each.
+static inline void hop_buttongroup_set_items(void *boxp, unsigned count, hop_row_fn label_cb,
+                                             int selected, int toggle, hop_index_fn cb, void *user_data) {
+    GtkWidget *box = GTK_WIDGET(boxp);
+    int horizontal = gtk_orientable_get_orientation(GTK_ORIENTABLE(box)) == GTK_ORIENTATION_HORIZONTAL;
+    g_object_set_data(G_OBJECT(box), "hop-building", GINT_TO_POINTER(1));
+    GtkWidget *child = gtk_widget_get_first_child(box);
+    while (child) { GtkWidget *next = gtk_widget_get_next_sibling(child); gtk_box_remove(GTK_BOX(box), child); child = next; }
+    GtkWidget *leader = NULL;
+    for (unsigned i = 0; i < count; i++) {
+        char *label = label_cb ? label_cb(i, user_data) : NULL;
+        GtkWidget *btn = toggle ? gtk_toggle_button_new_with_label(label ? label : "")
+                                : gtk_check_button_new_with_label(label ? label : "");
+        if (label) free(label);
+        if (toggle) {
+            if (leader) gtk_toggle_button_set_group(GTK_TOGGLE_BUTTON(btn), GTK_TOGGLE_BUTTON(leader));
+            else leader = btn;
+            if (horizontal) gtk_widget_set_hexpand(btn, TRUE);  // segments share the width equally
+        } else {
+            if (leader) gtk_check_button_set_group(GTK_CHECK_BUTTON(btn), GTK_CHECK_BUTTON(leader));
+            else leader = btn;
+        }
+        g_object_set_data(G_OBJECT(btn), "hop-cb", (gpointer)cb);
+        g_object_set_data(G_OBJECT(btn), "hop-ud", user_data);
+        g_object_set_data(G_OBJECT(btn), "hop-idx", GINT_TO_POINTER((int)i));
+        g_signal_connect(btn, "toggled", G_CALLBACK(hop_buttongroup_toggled), NULL);
+        gtk_box_append(GTK_BOX(box), btn);  // append before set_active so the "building" guard is reachable
+        if ((int)i == selected) {
+            if (toggle) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(btn), TRUE);
+            else gtk_check_button_set_active(GTK_CHECK_BUTTON(btn), TRUE);
+        }
+    }
+    g_object_set_data(G_OBJECT(box), "hop-building", NULL);
+}
+
+// Reflect the bound selection without re-firing the callback.
+static inline void hop_buttongroup_set_selected(void *boxp, int index) {
+    GtkWidget *box = GTK_WIDGET(boxp);
+    g_object_set_data(G_OBJECT(box), "hop-building", GINT_TO_POINTER(1));
+    int i = 0;
+    for (GtkWidget *c = gtk_widget_get_first_child(box); c; c = gtk_widget_get_next_sibling(c), i++) {
+        gboolean on = (i == index);
+        if (GTK_IS_CHECK_BUTTON(c)) gtk_check_button_set_active(GTK_CHECK_BUTTON(c), on);
+        else gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(c), on);
+    }
+    g_object_set_data(G_OBJECT(box), "hop-building", NULL);
 }
 
 // --- Custom drawing (GtkDrawingArea + Cairo) -------------------------------

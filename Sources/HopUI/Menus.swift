@@ -157,15 +157,17 @@ public extension WidgetKey {
 
 /// The open ``WidgetComponent`` for ``Picker``. The canonical example of style-driven implementation
 /// variance: `widgetKey` encodes the style, so each style dispatches to its own backend renderer and a
-/// style change tears down + recreates the native widget. `radioGroup` is a `.native` composite (a
-/// renderer-built group); the rest are `.leaf` controls. Selection lives in `@State`, so it survives the
-/// recreate. Public so backend picker renderers (separate modules) can read it.
+/// style change tears down + recreates the native widget. Every style is a `.leaf` — the renderer builds a
+/// single self-sizing native widget (pop-up / segmented control / radio-button group) with no HopUI child
+/// nodes, so it's measured by the renderer's natural size (a `.native` role would collapse to zero height
+/// in a stack, since that role is for fill-the-space composites the container gives a concrete proposal).
+/// Selection lives in `@State`, so it survives the recreate. Public so backend picker renderers can read it.
 public struct PickerComponent: WidgetComponent {
     public let style: PickerStyle
     public let spec: PickerSpec
     public init(style: PickerStyle, spec: PickerSpec) { self.style = style; self.spec = spec }
     public var widgetKey: WidgetKey { .picker(style) }
-    public var role: WidgetRole { style == .radioGroup ? .native : .leaf }
+    public var role: WidgetRole { .leaf }
 }
 
 extension View {

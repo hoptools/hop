@@ -9,6 +9,22 @@ import Testing
 // state, and that a decoupled, self-hosting component (the third-party extension case) renders with no
 // backend renderer registered. See the toolkit-extensibility plan + `Component.swift`.
 
+@MainActor @Suite struct PickerComponentRoleTests {
+    @Test func everyStyleIsALeafWithItsOwnWidgetKey() {
+        let spec = PickerSpec(title: "", options: ["a", "b"], selectedIndex: 0, onSelect: { _ in })
+        for style in PickerStyle.allCases {
+            let component = PickerComponent(style: style, spec: spec)
+            // All four styles must be `.leaf` (renderer builds one self-sizing native widget). A `.native`
+            // role collapses to zero height inside a stack — which is what broke the radio group's layout.
+            let isLeaf: Bool = { if case .leaf = component.role { return true } else { return false } }()
+            #expect(isLeaf, "\(style) picker should be a .leaf")
+            #expect(component.widgetKey == .picker(style))
+        }
+        // Each style is a distinct widget key, so a style change recreates the native widget.
+        #expect(Set(PickerStyle.allCases.map { WidgetKey.picker($0) }).count == PickerStyle.allCases.count)
+    }
+}
+
 // A Picker whose style and selection are driven by @State, so tests can flip both.
 @MainActor private struct StyledPickerView: View {
     @State var style: PickerStyle = .menu
