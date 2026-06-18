@@ -194,7 +194,7 @@ jobs:
             xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme \
             flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//46 org.gnome.Sdk//46
+          flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
       - name: Test (GTK4)
         run: swift test
       - name: Build (GTK4)
@@ -242,7 +242,7 @@ jobs:
             xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0 \
             flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.kde.Platform//6.7 org.kde.Sdk//6.7
+          flatpak install --user -y flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
       - name: Test (Qt)
         run: swift test
       - name: Build (Qt)

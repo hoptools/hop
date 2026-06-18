@@ -159,9 +159,10 @@ public struct LinuxBackend: PlatformBackend {
         }
     }
     private func defaultRuntimeVersion(for runtime: String) -> String {
-        if runtime.contains("gnome") { return "46" }
-        if runtime.contains("kde") { return "6.7" }
-        return "23.08"
+        // Current stable flatpak runtime branches (must match what CI installs in .github/workflows/ci.yml).
+        if runtime.contains("gnome") { return "50" }
+        if runtime.contains("kde") { return "6.9" }
+        return "25.08"
     }
     private func defaultSdk(for runtime: String) -> String {
         if runtime.contains("gnome") { return "org.gnome.Sdk" }
