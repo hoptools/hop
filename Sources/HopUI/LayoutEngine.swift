@@ -121,7 +121,22 @@ struct LayoutEngine {
         case .native:
             // The native widget (split view) positions its own panes; lay out each pane's CONTENT within
             // the pane's native size. (For List there are no engine-laid-out children.)
-            for child in node.children { layoutPaneContent(child, sizeOf(child)) }
+            //
+            // A NavigationSplitView is special: the detail must be laid out within the REMAINING width
+            // (split width − sidebar), capped against its native size — NOT purely `sizeOf(detail)`. The
+            // engine pins the detail content's size, which a backend may treat as the detail pane's minimum
+            // (e.g. GtkPaned + GtkFixed allocate a child its natural size); that makes the pane unable to
+            // shrink, so `sizeOf(detail)` stays stale-large and the content never re-fits a shrinking
+            // window. The sidebar doesn't resize, so its width is stable and `split − sidebar` is reliable.
+            if node.component.widgetKey == .splitView, node.children.count == 2 {
+                let sidebarSize = sizeOf(node.children[0])
+                layoutPaneContent(node.children[0], sidebarSize)
+                let detailNative = sizeOf(node.children[1])
+                let available = Swift.max(0, local.width - sidebarSize.width)
+                layoutPaneContent(node.children[1], CGSize(width: Swift.min(detailNative.width, available), height: detailNative.height))
+            } else {
+                for child in node.children { layoutPaneContent(child, sizeOf(child)) }
+            }
         case .scroll:
             // Report the viewport size back so a ScrollView's virtualized content knows its visible range.
             node.onGeometry?(local.size)

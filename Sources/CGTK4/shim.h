@@ -91,11 +91,16 @@ static inline void *hop_paned_new(void) {
 
 static inline void hop_paned_set_start(void *paned, void *child) {
     gtk_paned_set_start_child(GTK_PANED(paned), GTK_WIDGET(child));
+    gtk_paned_set_resize_start_child(GTK_PANED(paned), FALSE);  // sidebar keeps its width when the window resizes
+    gtk_paned_set_shrink_start_child(GTK_PANED(paned), FALSE);
 }
 
 static inline void hop_paned_set_end(void *paned, void *child) {
     gtk_paned_set_end_child(GTK_PANED(paned), GTK_WIDGET(child));
-}
+    gtk_paned_set_resize_end_child(GTK_PANED(paned), TRUE);   // detail takes the remaining width …
+    gtk_paned_set_shrink_end_child(GTK_PANED(paned), TRUE);   // … and may shrink below its content's request
+}                                                            //     (HopUI's engine pins that request), so the
+                                                             //     paned — and thus the window — can shrink.
 
 static inline void hop_paned_set_position(void *paned, int position) {
     gtk_paned_set_position(GTK_PANED(paned), position);
@@ -1014,18 +1019,88 @@ static inline void *hop_fixed_new(void) {
     return gtk_fixed_new();
 }
 
-// The window's top-level content is wrapped in this scroller so the window can be resized SMALLER than
-// the currently laid-out content. A plain GtkFixed root reports its content's bounding box as its minimum
-// size, which GtkWindow adopts as the window minimum — so the window could only ever grow and refused to
-// shrink. A GtkScrolledWindow with EXTERNAL policy (no scrollbars drawn) and natural-size propagation
-// turned off reports a ZERO minimum, freeing the window to shrink; HopUI re-runs layout on every resize
-// and re-fills the new (smaller) viewport, so the content always fits exactly and never actually scrolls.
-static inline void *hop_root_scroller_new(void) {
-    GtkWidget *sw = gtk_scrolled_window_new();
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL);
-    gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(sw), FALSE);
-    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(sw), FALSE);
-    return sw;
+// --- Root container: a GtkFixed driven by a custom GtkLayoutManager ----------------------------------
+//
+// The window's content is mounted into a GtkFixed whose layout manager is replaced with HopRootLayout —
+// the idiomatic GTK4 way to drive a foreign layout system. Using a real GtkFixed (rather than a bare
+// GtkWidget subclass) keeps the window fully functional on every backend — accessibility, snapshotting
+// and window sizing all behave normally — while the layout manager:
+//   • reports a ZERO minimum & natural, so GtkWindow imposes no minimum and honors its default/​user size
+//     (the window never ratchets to the content size, and resizes freely both ways);
+//   • on allocate (GTK's natural "the content area changed" hook, fired for every resize) re-runs HopUI's
+//     layout engine for the new size, then allocates its single child to fill.
+typedef void (*hop_relayout_fn)(void *user_data);
+
+static void hop_root_layout_measure(GtkLayoutManager *mgr, GtkWidget *widget, GtkOrientation orientation,
+                                    int for_size, int *minimum, int *natural,
+                                    int *minimum_baseline, int *natural_baseline) {
+    (void)mgr; (void)widget; (void)orientation; (void)for_size;
+    // No size preference of our own: the window size comes from gtk_window_set_default_size and the user,
+    // not the content (reporting the content's natural makes the window snap to it). Zero minimum lets the
+    // window shrink freely; the engine reflows the content to whatever size it is given.
+    *minimum = 0;
+    *natural = 0;
+    if (minimum_baseline) *minimum_baseline = -1;
+    if (natural_baseline) *natural_baseline = -1;
+}
+
+static void hop_root_layout_allocate(GtkLayoutManager *mgr, GtkWidget *widget,
+                                     int width, int height, int baseline) {
+    (void)mgr;
+    // GTK calls this for every resize. Ask the Swift side to re-run the layout engine for the new size
+    // (it defers to an idle tick — running the engine inline would set child size-requests during allocate
+    // and make GTK renegotiate the window to the content size), then allocate the single child to fill.
+    hop_relayout_fn fn = (hop_relayout_fn)g_object_get_data(G_OBJECT(widget), "hop-relayout-fn");
+    void *data = g_object_get_data(G_OBJECT(widget), "hop-relayout-data");
+    if (fn) fn(data);
+    GtkWidget *child = gtk_widget_get_first_child(widget);
+    if (child && gtk_widget_should_layout(child)) {
+        GtkAllocation alloc = { 0, 0, width, height };
+        gtk_widget_size_allocate(child, &alloc, baseline);
+    }
+}
+
+static void hop_root_layout_class_init(void *klass, void *data) {
+    (void)data;
+    GtkLayoutManagerClass *lc = GTK_LAYOUT_MANAGER_CLASS(klass);
+    lc->measure = hop_root_layout_measure;
+    lc->allocate = hop_root_layout_allocate;
+}
+
+static inline GType hop_root_layout_get_type(void) {
+    static gsize type_id = 0;
+    if (g_once_init_enter(&type_id)) {
+        GType t = g_type_from_name("HopRootLayout");  // idempotent across translation units in a process
+        if (t == 0) {
+            GTypeQuery q;
+            g_type_query(GTK_TYPE_LAYOUT_MANAGER, &q);
+            GTypeInfo info = { 0 };
+            info.class_size = (guint16)q.class_size;
+            info.instance_size = (guint16)q.instance_size;
+            info.class_init = (GClassInitFunc)hop_root_layout_class_init;
+            t = g_type_register_static(GTK_TYPE_LAYOUT_MANAGER, "HopRootLayout", &info, (GTypeFlags)0);
+        }
+        g_once_init_leave(&type_id, t);
+    }
+    return (GType)type_id;
+}
+
+// A GtkFixed whose layout manager is HopRootLayout. (We don't gtk_fixed_put into it — its single child is
+// set via hop_root_container_set_child; the engine's nested GtkFixeds remain ordinary.)
+static inline void *hop_root_container_new(void) {
+    GtkWidget *w = gtk_fixed_new();
+    gtk_widget_set_layout_manager(w, GTK_LAYOUT_MANAGER(g_object_new(hop_root_layout_get_type(), NULL)));
+    return w;
+}
+
+static inline void hop_root_container_set_child(void *container, void *child) {
+    gtk_widget_set_parent(GTK_WIDGET(child), GTK_WIDGET(container));
+}
+
+// Register the Swift callback HopRootLayout runs (deferred) when the container is allocated a new size.
+static inline void hop_root_container_set_relayout(void *container, hop_relayout_fn fn, void *data) {
+    g_object_set_data(G_OBJECT(container), "hop-relayout-fn", (void *)fn);
+    g_object_set_data(G_OBJECT(container), "hop-relayout-data", data);
 }
 
 static inline int hop_is_fixed(void *w) {

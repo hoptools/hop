@@ -117,21 +117,22 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
         let requested = hopRequestedWindowSize()
         hop_window_set_default_size(window, Int32(requested?.width ?? 820), Int32(requested?.height ?? 760))
 
-        // An absolute-positioning GtkFixed fills the window; the layout engine sizes/positions the
-        // mounted root within it. It is wrapped in a zero-minimum scroller (see `hop_root_scroller_new`)
-        // so the window can be resized SMALLER than the laid-out content — a bare GtkFixed root would pin
-        // the window's minimum to the content size, letting it only ever grow. The resize handler re-runs
-        // layout against the scroller's (shrinking) viewport, so the content keeps filling it exactly.
+        // An absolute-positioning GtkFixed is the mount point the layout engine sizes/positions the root
+        // within. It sits inside a root wrapper (`hop_root_container_new`) — a GtkFixed whose layout
+        // manager is HopRootLayout — which is the window's child. That layout manager reports a zero
+        // minimum (so GtkWindow imposes no minimum and the window resizes freely both ways) and, on every
+        // allocate (GTK's natural "the content area changed" hook), re-runs the layout engine for the new
+        // size and fills the mount point. The idiomatic way to drive a foreign layout system from GTK: no
+        // window min ratchet, no resize-signal polling.
         let container = hop_fixed_new()!
-        let scroller = hop_root_scroller_new()!
-        hop_scrolled_window_set_child(scroller, container)
-        hop_window_set_child(window, scroller)
+        let wrapper = hop_root_container_new()!
+        hop_root_container_set_child(wrapper, container)
+        hop_window_set_child(window, wrapper)
         context.toolkit.rootContainer = container
-        context.toolkit.rootViewport = scroller
+        context.toolkit.rootWrapper = wrapper
 
-        // Re-run layout whenever the window resizes.
         let toolkitPtr = Unmanaged.passUnretained(context.toolkit).toOpaque()
-        hop_window_connect_resize(window, gtk4ResizeCallback, toolkitPtr)
+        hop_root_container_set_relayout(wrapper, gtk4RelayoutCallback, toolkitPtr)
 
         context.onReady(GTK4Widget(container))
         hop_window_present(window)
@@ -342,16 +343,24 @@ private let gtk4DrawCallback: @convention(c) (UnsafeMutableRawPointer?, OpaquePo
     }
 }
 
-// Window resize (notify::default-width/height): re-run the layout engine. user_data is the toolkit.
-private let gtk4ResizeCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, _, userData in
+// Invoked from HopRootLayout's allocate (GTK's natural resize hook) to re-run the layout engine for the
+// new content size. Deferred to an idle tick rather than run inline: the engine sets child size-requests
+// (`gtk_widget_queue_resize`), and doing that *during* allocate makes GTK renegotiate the window to the
+// content's natural size. Running it just after the allocate settles keeps the window the size the user
+// chose and reflows the content within it.
+private let gtk4RelayoutCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { userData in
     guard let userData else { return }
     let toolkit = Unmanaged<GTK4Toolkit>.fromOpaque(userData).takeUnretainedValue()
-    // `notify::default-width/height` fires on the resize *intent*, before GTK propagates the new size to
-    // the content widget — so re-laying-out synchronously here reads the stale (pre-resize) viewport.
-    // Defer to an idle tick so the allocation has settled and `contentSize()` reflects the new size.
-    MainActor.assumeIsolated {
-        toolkit.scheduleOnMainThread { toolkit.relayoutHandler?() }
-    }
+    MainActor.assumeIsolated { toolkit.scheduleOnMainThread {
+        // Re-laying-out sets child size-requests, which queue a resize and call us again at the SAME size.
+        // Skip when the content area is unchanged to break that feedback loop. (Content changes relayout
+        // through a separate path; the engine now computes the split detail width, so one pass per size is
+        // enough — no need to re-run until native sizes settle.)
+        let size = toolkit.contentSize()
+        guard size != toolkit.lastResizeSize else { return }
+        toolkit.lastResizeSize = size
+        toolkit.relayoutHandler?()
+    } }
 }
 
 // Scrolled-window adjustment "value-changed": report the new offset so virtualized content re-materializes.
@@ -404,12 +413,14 @@ public final class GTK4Toolkit: AppToolkit {
     private var menuSignature: String?
     // Secondary windows (e.g. About) are kept here for the app's lifetime.
     private var secondaryWindows: [UnsafeMutableRawPointer] = []
-    // The root GtkFixed the layout engine fills; the engine pins its children's sizes (so its own size
-    // tracks the content). The VIEWPORT it sits in (`rootViewport`) is what gives the true content area.
+    // The mount-point GtkFixed the layout engine fills; the engine pins its children's sizes (so its own
+    // size tracks the content, not the window). The wrapper it sits in gives the true content area.
     var rootContainer: UnsafeMutableRawPointer?
-    // The zero-minimum scroller wrapping `rootContainer`; its allocated size is the layout root proposal
-    // (the GtkFixed itself is sized to the content, so it can't report the shrinking viewport size).
-    var rootViewport: UnsafeMutableRawPointer?
+    // The zero-minimum root wrapper (HopRootLayout) holding `rootContainer`; its allocated size is the
+    // layout root proposal (the mount-point GtkFixed is sized to the content, not the window content area).
+    var rootWrapper: UnsafeMutableRawPointer?
+    // The content size of the last resize-triggered relayout, to skip redundant re-layouts at the same size.
+    var lastResizeSize: CGSize?
     // Called by the runtime to re-run the layout engine when the window content size changes.
     var relayoutHandler: (@MainActor () -> Void)?
 
@@ -1139,9 +1150,12 @@ public final class GTK4Toolkit: AppToolkit {
         }
         var w: Int32 = 0, h: Int32 = 0
         hop_widget_measure(handle.widget, -1, &w, &h)  // natural/intrinsic size
-        // Flexible-width controls (text fields, sliders, progress bars) expand to the offered width.
+        // Flexible-width controls (text fields, sliders, progress bars) take EXACTLY the offered width —
+        // both growing and SHRINKING with it (SwiftUI-like). Clamping up to the natural width (the old
+        // `max(pw, natural)`) made them refuse to shrink below their natural size, so a shrinking window
+        // left them wider than it and truncated. GTK still honors each control's own intrinsic minimum.
         if handle.flexibleWidth, let pw = proposal.width, pw.isFinite {
-            return CGSize(width: Swift.max(pw, Double(w)), height: Double(h))
+            return CGSize(width: pw, height: Double(h))
         }
         return CGSize(width: Double(w), height: Double(h))
     }
@@ -1175,17 +1189,17 @@ public final class GTK4Toolkit: AppToolkit {
     }
 
     public func contentSize() -> CGSize {
-        // Read the VIEWPORT (the zero-minimum scroller), not the GtkFixed: the engine pins the GtkFixed to
-        // the content size, so only the viewport reflects the window shrinking below it.
-        guard let viewport = rootViewport ?? rootContainer else { return CGSize(width: 820, height: 760) }
+        // Read the WRAPPER (the window's actual content area), not the mount-point GtkFixed: the engine
+        // pins that GtkFixed to the content size, so only the wrapper reflects the window shrinking.
+        guard let wrapper = rootWrapper ?? rootContainer else { return CGSize(width: 820, height: 760) }
         var w: Int32 = 0, h: Int32 = 0
-        hop_widget_get_size(viewport, &w, &h)
+        hop_widget_get_size(wrapper, &w, &h)
         if w <= 0 || h <= 0 { return CGSize(width: 820, height: 760) }  // before first allocation
         return CGSize(width: Double(w), height: Double(h))
     }
 
     public func setRelayoutHandler(_ handler: @escaping @MainActor () -> Void) {
-        relayoutHandler = handler  // invoked by gtk4ResizeCallback on window resize
+        relayoutHandler = handler  // invoked by gtk4RelayoutCallback when HopRootLayout is allocated a new size
     }
 
     /// Render a ``ShapeSpec``'s frame-sized shape with Cairo (the native GTK4 vector API). The shape is
