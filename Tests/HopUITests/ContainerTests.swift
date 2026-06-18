@@ -13,6 +13,18 @@ import Testing
     }
 }
 
+@MainActor private struct TabSelectionHost: View {
+    enum TabID: String, Hashable { case one, two, three }
+    @State var selected: TabID = .two
+    var body: some View {
+        TabView(selection: $selected) {
+            Text("Page One").tabItem { Text("One") }.tag(TabID.one)
+            Text("Page Two").tabItem { Text("Two") }.tag(TabID.two)
+            Text("Page Three").tabItem { Text("Three") }.tag(TabID.three)
+        }
+    }
+}
+
 @MainActor @Suite struct ContainerTests {
     @Test func testGroupBoxWrapsTitledContentInACard() {
         let toolkit = MockToolkit()
@@ -59,5 +71,24 @@ import Testing
         let updated = try #require((toolkit.widgets.first { $0.kind == .tabView })?.tabSpec)
         #expect(updated.selectedIndex == 1)
         #expect(toolkit.makeCount == 0)  // pages were not rebuilt, just re-selected
+    }
+
+    @Test func testTabViewSelectionBindsToTagIdentifiers() throws {
+        let toolkit = MockToolkit()
+        runHopApp(TabSelectionHost(), toolkit: toolkit, title: "test")
+
+        // The active tab is the page whose `.tag(_:)` matches the bound selection (.two → index 1).
+        let spec = try #require((toolkit.widgets.first { $0.kind == .tabView })?.tabSpec)
+        #expect(spec.titles == ["One", "Two", "Three"])
+        #expect(spec.selectedIndex == 1)
+
+        // A user tab switch maps the new index back to its tag value and writes it to the binding, which
+        // re-renders with the matching selection.
+        toolkit.clearOps()
+        spec.onSelect(2)
+        toolkit.drainMainThread()
+        let updated = try #require((toolkit.widgets.first { $0.kind == .tabView })?.tabSpec)
+        #expect(updated.selectedIndex == 2)   // .three is now selected
+        #expect(toolkit.makeCount == 0)       // selection change re-uses the pages
     }
 }

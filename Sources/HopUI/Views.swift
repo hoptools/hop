@@ -17,7 +17,7 @@ public struct Text: View, PrimitiveView {
         return RenderNode(id: context.id,
                           component: PrimitiveLeafComponent(.label,
                               patch: WidgetPatch(text: content,
-                                                 foregroundColor: environment.foregroundColor,
+                                                 foregroundColor: environment.foregroundColor?.resolve(in: environment.colorScheme),
                                                  font: environment.font,
                                                  fontWeight: environment.fontWeightOverride)))
     }

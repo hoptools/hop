@@ -8,17 +8,59 @@
 
 /// A color, mirroring SwiftUI's `Color`. Components are 0...1. Toolkits convert to NSColor / GdkRGBA
 /// / QColor.
+///
+/// Besides concrete RGBA colors, `Color` carries SwiftUI's *adaptive content colors* — `.primary`,
+/// `.secondary`, `.tertiary`, `.quaternary` — whose actual value depends on `@Environment(\.colorScheme)`
+/// (black at decreasing prominence in light mode, white in dark). They're resolved to concrete RGBA via
+/// ``resolve(in:)`` where they're used (a `Text`'s foreground, a shape fill, a `.background`, …).
 public nonisolated struct Color: Equatable, Sendable {
     public var red: Double
     public var green: Double
     public var blue: Double
     public var opacity: Double
+    /// Set for an adaptive content color (`.primary`/`.secondary`/…) — the level whose RGBA depends on the
+    /// color scheme. nil for a concrete color. The stored red/green/blue/opacity hold the LIGHT-mode value,
+    /// so an adaptive color still renders sensibly if used before ``resolve(in:)``.
+    public var hierarchy: Hierarchy?
+
+    /// A content-color prominence level (SwiftUI's hierarchical styles). Its concrete color is the scheme's
+    /// label color (black in light, white in dark) at a decreasing opacity.
+    public enum Hierarchy: Equatable, Sendable, CaseIterable {
+        case primary, secondary, tertiary, quaternary
+
+        var opacity: Double {
+            switch self {
+            case .primary: return 1.0
+            case .secondary: return 0.5
+            case .tertiary: return 0.3
+            case .quaternary: return 0.18
+            }
+        }
+    }
 
     public init(red: Double, green: Double, blue: Double, opacity: Double = 1) {
         self.red = red
         self.green = green
         self.blue = blue
         self.opacity = opacity
+        self.hierarchy = nil
+    }
+
+    /// An adaptive content color at `hierarchy`. Stored RGBA is the light-mode value (black at the level's
+    /// opacity); ``resolve(in:)`` produces the scheme-specific value.
+    init(hierarchy: Hierarchy) {
+        self.red = 0
+        self.green = 0
+        self.blue = 0
+        self.opacity = hierarchy.opacity
+        self.hierarchy = hierarchy
+    }
+
+    /// Resolve an adaptive content color to a concrete RGBA for `scheme`; a concrete color returns itself.
+    public func resolve(in scheme: ColorScheme) -> Color {
+        guard let hierarchy else { return self }
+        let luminance: Double = (scheme == .dark) ? 1.0 : 0.0  // white label in dark, black in light
+        return Color(red: luminance, green: luminance, blue: luminance, opacity: hierarchy.opacity)
     }
 
     public static let red = Color(red: 1.0, green: 0.23, blue: 0.19)
@@ -37,6 +79,13 @@ public nonisolated struct Color: Equatable, Sendable {
     public static let black = Color(red: 0.0, green: 0.0, blue: 0.0)
     public static let white = Color(red: 1.0, green: 1.0, blue: 1.0)
     public static let clear = Color(red: 0.0, green: 0.0, blue: 0.0, opacity: 0.0)
+
+    // Adaptive content colors (mirroring SwiftUI). Black on light / white on dark, at decreasing
+    // prominence; resolved against `@Environment(\.colorScheme)` where they're used.
+    public static let primary = Color(hierarchy: .primary)
+    public static let secondary = Color(hierarchy: .secondary)
+    public static let tertiary = Color(hierarchy: .tertiary)
+    public static let quaternary = Color(hierarchy: .quaternary)
 
     /// `rgba(...)` form used by the GTK4 CSS and Qt stylesheet toolkits.
     public var cssRGBA: String {
@@ -119,7 +168,9 @@ struct _BackgroundModifier<Content: View>: View, PrimitiveView {
         // draws behind the view so far). A flat patch on the content node would only cover the inner content.
         let child = evaluate(content, context.appending(0)).first
             ?? RenderNode(id: context.id + ".bg", component: ContainerComponent.vstack())
-        return RenderNode(id: context.id, component: ContainerComponent.zstack(alignment: .center), patch: WidgetPatch(backgroundColor: color),
+        // Resolve an adaptive content color (`.primary`/`.secondary`/…) for the current scheme.
+        let resolved = color.resolve(in: currentEnvironment().colorScheme)
+        return RenderNode(id: context.id, component: ContainerComponent.zstack(alignment: .center), patch: WidgetPatch(backgroundColor: resolved),
                           children: [child], layout: LayoutInfo(alignment: .center))
     }
 }

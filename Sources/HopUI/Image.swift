@@ -126,10 +126,13 @@ public struct Image: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         var resolved = spec
+        let environment = currentEnvironment()
         // A template image / symbol tints with the inherited foreground color (default accent), like SwiftUI.
         if resolved.isTemplate, resolved.tint == nil {
-            resolved.tint = currentEnvironment().foregroundColor
+            resolved.tint = environment.foregroundColor
         }
+        // Resolve an adaptive content color (`.primary`/`.secondary`/…) for the current scheme.
+        resolved.tint = resolved.tint?.resolve(in: environment.colorScheme)
         // The node carries an `ImageComponent`; each backend's registered image renderer realizes it
         // and drives update/measure.
         return RenderNode(id: context.id, component: ImageComponent(spec: resolved))

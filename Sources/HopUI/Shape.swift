@@ -79,10 +79,14 @@ public struct _ShapeView: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         var resolved = spec
+        let scheme = currentEnvironment().colorScheme
         // A bare shape fills with the inherited foreground color (default black), like SwiftUI.
         if resolved.fill == nil, resolved.stroke == nil {
             resolved.fill = currentEnvironment().foregroundColor ?? .black
         }
+        // Resolve any adaptive content colors (`.primary`/`.secondary`/…) for the current scheme.
+        resolved.fill = resolved.fill?.resolve(in: scheme)
+        resolved.stroke = resolved.stroke?.resolve(in: scheme)
         return RenderNode(id: context.id, component: ShapeComponent(spec: resolved))
     }
 }

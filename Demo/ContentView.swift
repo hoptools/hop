@@ -62,10 +62,18 @@ nonisolated final class DemoModel: @unchecked Sendable {
     // Progress playground: fractions (0...1) driven by async tasks.
     var downloadProgress = 0.0
     var installProgress = 0.0
+    // Tabs playground: the active tab, bound into the TabView via its `.tag(_:)` identifiers.
+    var selectedTab: DemoTab = .browse
 
     func toggleColorScheme() {
         colorScheme = colorScheme == .dark ? .light : .dark
     }
+}
+
+/// Identifiers for the ``TabsPlayground`` tabs, used as each tab's `.tag(_:)` and stored in
+/// ``DemoModel/selectedTab`` so selection is shared, observable state.
+enum DemoTab: String, Hashable, CaseIterable {
+    case home, browse, settings
 }
 
 /// The playgrounds shown in the sidebar selector, modeled on skipapp-showcase. Each demonstrates one
@@ -74,7 +82,7 @@ nonisolated final class DemoModel: @unchecked Sendable {
 enum Playground: String, CaseIterable, Hashable {
     case slider, button, toggle, stepper, picker, datePicker, colorPicker, textField, secureField, progress
     case text, accessibility, label, link
-    case shapes, images
+    case shapes, images, color
     case layout, disclosure, groupBox, form, tabs
     case observable, menus, files
     case gesture
@@ -97,6 +105,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .link: return "Link"
         case .shapes: return "Shapes"
         case .images: return "Images"
+        case .color: return "Color"
         case .layout: return "Layout"
         case .disclosure: return "Disclosure"
         case .groupBox: return "GroupBox"
@@ -136,7 +145,7 @@ let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "text", title: "Text & Accessibility",
                    items: [.text, .accessibility, .label, .link]),
     SidebarSection(id: "graphics", title: "Graphics",
-                   items: [.shapes, .images]),
+                   items: [.shapes, .images, .color]),
     SidebarSection(id: "containers", title: "Containers",
                    items: [.layout, .disclosure, .groupBox, .form, .tabs]),
     SidebarSection(id: "data", title: "Data & Menus",
@@ -254,6 +263,8 @@ public struct ContentView: View {
                 ShapesPlayground()
             } else if selection == .images {
                 ImagePlayground()
+            } else if selection == .color {
+                ColorPlayground()
             } else if selection == .menus {
                 MenuPlayground()
             } else if selection == .progress {
@@ -699,6 +710,88 @@ struct ImagePlayground: View {
     }
 }
 
+/// A single named-color sample: a filled swatch with its name beneath.
+private struct ColorSwatch: View {
+    let name: String
+    let color: Color
+    var body: some View {
+        VStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 8).fill(color).frame(width: 64, height: 40)
+            Text(name).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// One entry in a color swatch grid.
+private struct DemoColor: Identifiable {
+    let name: String
+    let color: Color
+    var id: String { name }
+    init(_ name: String, _ color: Color) { self.name = name; self.color = color }
+}
+
+/// Demonstrates `Color`: SwiftUI's adaptive *content colors* (`.primary`/`.secondary`/`.tertiary`/
+/// `.quaternary`), which resolve against `@Environment(\.colorScheme)` — toggle Dark/Light in the top bar
+/// to watch them flip black↔white — plus the standard named palette.
+struct ColorPlayground: View {
+    private let namedRows: [[DemoColor]] = [
+        [DemoColor("red", .red), DemoColor("orange", .orange), DemoColor("yellow", .yellow),
+         DemoColor("green", .green), DemoColor("mint", .mint)],
+        [DemoColor("teal", .teal), DemoColor("cyan", .cyan), DemoColor("blue", .blue),
+         DemoColor("indigo", .indigo), DemoColor("purple", .purple)],
+        [DemoColor("pink", .pink), DemoColor("brown", .brown), DemoColor("gray", .gray),
+         DemoColor("black", .black), DemoColor("white", .white)],
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Adaptive content colors").font(.title3).fontWeight(.semibold)
+                Text("Black in light mode, white in dark, at decreasing prominence. Toggle Dark/Light in the top bar to watch them adapt.")
+                    .foregroundStyle(.secondary)
+
+                // The hierarchy as foreground (text) — each line a step fainter.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Primary — the standard label color").foregroundStyle(.primary)
+                    Text("Secondary — supporting text").foregroundStyle(.secondary)
+                    Text("Tertiary — even less prominent").foregroundStyle(.tertiary)
+                    Text("Quaternary — the faintest").foregroundStyle(.quaternary)
+                }
+
+                // The same hierarchy as swatches (shapes filled with the adaptive color). Written inline
+                // because Apple's SwiftUI exposes `.tertiary`/`.quaternary` only as `ShapeStyle` (not
+                // `Color`), so they can't be stored in a `[Color]`; `.fill(_:)` accepts both, dual-compiling.
+                HStack(spacing: 12) {
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 8).fill(.primary).frame(width: 64, height: 40)
+                        Text("primary").font(.caption).foregroundStyle(.secondary)
+                    }
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 8).fill(.secondary).frame(width: 64, height: 40)
+                        Text("secondary").font(.caption).foregroundStyle(.secondary)
+                    }
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 8).fill(.tertiary).frame(width: 64, height: 40)
+                        Text("tertiary").font(.caption).foregroundStyle(.secondary)
+                    }
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 8).fill(.quaternary).frame(width: 64, height: 40)
+                        Text("quaternary").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                Text("Named colors").font(.title3).fontWeight(.semibold)
+                ForEach(namedRows.indices, id: \.self) { row in
+                    HStack(spacing: 12) {
+                        ForEach(namedRows[row]) { ColorSwatch(name: $0.name, color: $0.color) }
+                    }
+                }
+            }
+            .padding(20)
+        }
+    }
+}
+
 // MARK: - Custom shapes (each implemented purely with the Path API, identical on HopUI and SwiftUI)
 
 /// An equilateral-ish triangle pointing up, filling its rect.
@@ -1063,25 +1156,38 @@ struct FormPlayground: View {
 }
 
 struct TabsPlayground: View {
+    @Environment(DemoModel.self) private var model
+
     var body: some View {
-        TabView {
-            VStack(spacing: 10) {
-                Text("Welcome to HopUI").font(.title)
-                Text("A native SwiftUI for the desktop.")
-            }
-            .tabItem { Text("Home") }
+        // Bind the TabView's selection to shared @Observable state. Tags identify each tab; selecting one
+        // writes its tag to `model.selectedTab`, and changing `model.selectedTab` switches tabs.
+        let selectedTab = Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 })
+        VStack(spacing: 12) {
+            Text("Selected tab: \(model.selectedTab.rawValue) — bound to DemoModel.selectedTab")
+                .foregroundStyle(.gray)
+            TabView(selection: selectedTab) {
+                VStack(spacing: 10) {
+                    Text("Welcome to HopUI").font(.title)
+                    Text("A native SwiftUI for the desktop.")
+                }
+                .tabItem { Text("Home") }
+                .tag(DemoTab.home)
 
-            VStack(spacing: 10) {
-                Text("Browse").font(.title)
-                Text("Switch tabs to change this pane.")
-            }
-            .tabItem { Text("Browse") }
+                VStack(spacing: 10) {
+                    Text("Browse").font(.title)
+                    Text("Switch tabs to change this pane.")
+                }
+                .tabItem { Text("Browse") }
+                .tag(DemoTab.browse)
 
-            VStack(spacing: 10) {
-                Text("Settings").font(.title)
-                Text("Each tab keeps its own content.")
+                VStack(spacing: 10) {
+                    Text("Settings").font(.title)
+                    Text("Each tab keeps its own content.")
+                }
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(DemoTab.settings)
             }
-            .tabItem { Label("Settings", systemImage: "gearshape") }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
