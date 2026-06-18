@@ -37,6 +37,7 @@ private let gtkComboChanged: @convention(c) (UnsafePointer<CChar>?, UnsafeMutabl
     state.suppress = true
     defer { state.suppress = false }
     state.onText = spec.onText
+    hop_combobox_set_placeholder(widget, spec.placeholder)
     if state.items != spec.items {
         hop_combobox_clear(widget)
         for item in spec.items { hop_combobox_append(widget, item) }

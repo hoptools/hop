@@ -23,6 +23,7 @@ void *hopwinui_combo_new(void);
 void hopwinui_combo_clear(void *combo);
 void hopwinui_combo_add_item(void *combo, const char *text);
 void hopwinui_combo_set_text(void *combo, const char *text);
+void hopwinui_combo_set_placeholder(void *combo, const char *text);
 void hopwinui_combo_connect(void *combo, hop_combo_text_fn fn, void *context);
 
 #ifdef __cplusplus

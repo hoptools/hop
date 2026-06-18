@@ -28,6 +28,9 @@ final class HopNSComboBox: NSComboBox, NSComboBoxDelegate {
 
     func apply(_ spec: ComboBoxSpec) {
         onText = spec.onText
+        // Prompt text shown in the editable field while it's empty (NSComboBox inherits placeholderString
+        // from NSTextField).
+        if placeholderString != spec.placeholder { placeholderString = spec.placeholder }
         if (objectValues as? [String]) != spec.items {
             suppress = true
             removeAllItems()

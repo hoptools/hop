@@ -36,6 +36,7 @@ private let qtComboChanged: @convention(c) (UnsafePointer<CChar>?, UnsafeMutable
     state.suppress = true
     defer { state.suppress = false }
     state.onText = spec.onText
+    hopqt_combobox_set_placeholder(widget, spec.placeholder)
     if state.items != spec.items {
         hopqt_combobox_clear(widget)
         for item in spec.items { hopqt_combobox_add_item(widget, item) }

@@ -47,6 +47,13 @@ static inline const char *hop_combobox_get_text(void *combo) {
     return gtk_editable_get_text(hop_combobox_entry(combo));
 }
 
+// Prompt text shown in the entry while it's empty (the combo's child is a GtkEntry; placeholder is a
+// GtkEntry property, not on GtkEditable, so cast to GtkEntry).
+static inline void hop_combobox_set_placeholder(void *combo, const char *text) {
+    GtkWidget *entry = gtk_combo_box_get_child(GTK_COMBO_BOX(combo));
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), text);
+}
+
 // Packs the Swift callback + its context; freed by GTK when the signal connection is destroyed.
 typedef struct { hop_combo_text_fn fn; void *context; } hop_combo_cb;
 

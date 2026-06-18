@@ -36,6 +36,7 @@ private let winuiComboChanged: @convention(c) (UnsafePointer<CChar>?, UnsafeMuta
     state.suppress = true
     defer { state.suppress = false }
     state.onText = spec.onText
+    hopwinui_combo_set_placeholder(widget, spec.placeholder)
     if state.items != spec.items {
         hopwinui_combo_clear(widget)
         for item in spec.items { hopwinui_combo_add_item(widget, item) }

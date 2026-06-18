@@ -22,16 +22,19 @@ public extension WidgetKey {
 }
 
 /// The toolkit-agnostic payload describing an *editable* combo box: the menu item titles, the current
-/// text, and the callback fired whenever the text changes — whether the user typed it freely or picked a
-/// menu item (selecting an item sets the text).
+/// text, a placeholder shown while the text is empty, and the callback fired whenever the text changes —
+/// whether the user typed it freely or picked a menu item (selecting an item sets the text).
 public struct ComboBoxSpec {
     public var items: [String]
     public var text: String
+    public var placeholder: String
     public var onText: @MainActor (String) -> Void
 
-    public init(items: [String], text: String, onText: @escaping @MainActor (String) -> Void) {
+    public init(items: [String], text: String, placeholder: String = "",
+                onText: @escaping @MainActor (String) -> Void) {
         self.items = items
         self.text = text
+        self.placeholder = placeholder
         self.onText = onText
     }
 }
@@ -52,17 +55,18 @@ struct ComboBoxComponent: WidgetComponent {
 /// not a selected index — so the menu items act as suggestions rather than the only allowed values.
 ///
 /// ```swift
-/// @State private var flavor = "Vanilla"
-/// ComboBox(["Vanilla", "Chocolate", "Strawberry"], text: $flavor)
+/// @State private var flavor = ""
+/// ComboBox(["Vanilla", "Chocolate", "Strawberry"], text: $flavor, placeholder: "Pick or type a flavor…")
 /// ```
 ///
-/// The matching per-toolkit module must be registered once at startup (e.g. `HopUIComboBoxAppKit.register()`
-/// in the app's AppKit entry point).
+/// `placeholder` is prompt text shown in the editable field while the bound text is empty (like a
+/// `TextField`'s prompt). The matching per-toolkit module must be registered once at startup (e.g.
+/// `HopUIComboBoxAppKit.register()` in the app's AppKit entry point).
 public struct ComboBox: HopRepresentable {
     private let spec: ComboBoxSpec
 
-    public init(_ items: [String], text: Binding<String>) {
-        spec = ComboBoxSpec(items: items, text: text.wrappedValue,
+    public init(_ items: [String], text: Binding<String>, placeholder: String = "") {
+        spec = ComboBoxSpec(items: items, text: text.wrappedValue, placeholder: placeholder,
                             onText: { text.wrappedValue = $0 })
     }
 

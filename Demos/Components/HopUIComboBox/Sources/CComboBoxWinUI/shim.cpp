@@ -16,6 +16,10 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
+// ComboBox.SelectionChanged is inherited from Selector in the Controls.Primitives namespace; its
+// auto-returning definition lives in that umbrella header (Controls.h only brings the declaration), so it
+// must be included or the call fails with "deduced return type cannot be used before it is defined".
+#include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
 
 #include <string>
 #include <string_view>
@@ -51,6 +55,10 @@ void hopwinui_combo_add_item(void *h, const char *text) {
 
 void hopwinui_combo_set_text(void *h, const char *text) {
     if (auto c = as<muxc::ComboBox>(h)) c.Text(hs(text));
+}
+
+void hopwinui_combo_set_placeholder(void *h, const char *text) {
+    if (auto c = as<muxc::ComboBox>(h)) c.PlaceholderText(hs(text));
 }
 
 void hopwinui_combo_connect(void *h, hop_combo_text_fn fn, void *context) {

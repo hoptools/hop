@@ -1083,8 +1083,10 @@ struct GesturePlayground: View {
 struct ComboBoxPlayground: View {
     @State private var fruit = "Banana"        // starts on a menu item
     @State private var size = "42 mm (custom)" // starts on freeform text, not in the menu
+    @State private var flavor = ""             // starts empty → shows the placeholder
     private let fruits = ["Apple", "Banana", "Cherry", "Dragonfruit", "Elderberry"]
     private let sizes = ["Small", "Medium", "Large", "Extra Large"]
+    private let flavors = ["Vanilla", "Chocolate", "Strawberry", "Pistachio"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1102,17 +1104,22 @@ struct ComboBoxPlayground: View {
                 Text("Size: \(size)").fontWeight(.semibold)
                 comboBox(sizes, text: $size)
             }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Flavor: \(flavor.isEmpty ? "—" : flavor)").fontWeight(.semibold)
+                comboBox(flavors, text: $flavor, placeholder: "Pick or type a flavor…")
+            }
         }
         .padding(20)
     }
 
-    @ViewBuilder private func comboBox(_ items: [String], text: Binding<String>) -> some View {
+    @ViewBuilder private func comboBox(_ items: [String], text: Binding<String>, placeholder: String = "") -> some View {
         #if HOPUI_TOOLKIT_SWIFTUI
-        // Apple's SwiftUI has no editable ComboBox; the closest reference for a freeform String is a TextField.
-        TextField("", text: text)
+        // Apple's SwiftUI has no editable ComboBox; the closest reference for a freeform String is a
+        // TextField, whose title doubles as its placeholder.
+        TextField(placeholder, text: text)
             .frame(width: 220)
         #else
-        ComboBox(items, text: text).frame(width: 220)
+        ComboBox(items, text: text, placeholder: placeholder).frame(width: 220)
         #endif
     }
 }

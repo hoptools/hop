@@ -22,6 +22,7 @@ void *hopqt_combobox_new(void);
 void hopqt_combobox_clear(void *combo);
 void hopqt_combobox_add_item(void *combo, const char *text);
 void hopqt_combobox_set_text(void *combo, const char *text);
+void hopqt_combobox_set_placeholder(void *combo, const char *text);
 void hopqt_combobox_connect(void *combo, hopqt_combo_text_fn fn, void *context);
 
 #ifdef __cplusplus

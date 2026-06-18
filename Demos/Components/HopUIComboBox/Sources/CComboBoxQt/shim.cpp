@@ -8,6 +8,7 @@
 
 #include "CComboBoxQt.h"
 #include <QtWidgets/QComboBox>
+#include <QtWidgets/QLineEdit>
 
 extern "C" {
 
@@ -27,6 +28,12 @@ void hopqt_combobox_add_item(void *combo, const char *text) {
 
 void hopqt_combobox_set_text(void *combo, const char *text) {
     static_cast<QComboBox *>(combo)->setCurrentText(QString::fromUtf8(text));
+}
+
+void hopqt_combobox_set_placeholder(void *combo, const char *text) {
+    // The placeholder lives on the editable combo's line edit (present because it's setEditable(true)).
+    if (QLineEdit *le = static_cast<QComboBox *>(combo)->lineEdit())
+        le->setPlaceholderText(QString::fromUtf8(text));
 }
 
 void hopqt_combobox_connect(void *combo, hopqt_combo_text_fn fn, void *context) {
