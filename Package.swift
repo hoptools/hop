@@ -64,18 +64,45 @@ func toolkitEnabled(_ name: String) -> Bool { selectedToolkit == nil || selected
 // Tools/HopPackaging, since they're toolkit-independent and have their own dependency set.)
 var products: [Product] = [
     .library(name: "HopGraph", targets: ["HopGraph"]),
+    .library(name: "HopPlatform", targets: ["HopPlatform"]),
     .library(name: "HopUI", targets: ["HopUI"]),
 ]
-// Package-level dependencies: none. The core HopGraph/HopUI libraries and the toolkit bindings depend
-// only on system libraries (GTK via pkg-config, Qt/WinUI via the local C/C++ shims), not on SwiftPM
-// packages. (The packaging tool's external deps moved with it to Tools/HopPackaging.)
-let packageDependencies: [Package.Dependency] = []
+// Package-level dependency: apple/swift-log — the standard Swift logging facade, which HopPlatform's
+// OS-native log sinks (os_log / journald / OutputDebugString) plug into as `LogHandler`s. swift-log has zero
+// transitive dependencies, so the runtime core stays lean. Otherwise the core libraries + toolkit bindings
+// depend only on system libraries (GTK via pkg-config, Qt/WinUI/journald via local shims / pkg-config).
+// (The packaging tool's other external deps remain in Tools/HopPackaging.)
+let packageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/apple/swift-log", from: "1.5.0"),
+]
+// HopPlatform builds on swift-log (the logging facade) everywhere; its OS-native sinks plug in as handlers.
+// The journald sink additionally needs libsystemd on Linux. macOS uses os_log and Windows OutputDebugStringW
+// — both from toolchain-implicit modules (os / WinSDK) — so only Linux adds a C target.
+var hopPlatformDeps: [Target.Dependency] = [.product(name: "Logging", package: "swift-log")]
+#if os(Linux)
+hopPlatformDeps.append(.target(name: "Csystemd"))
+#endif
+
 var targets: [Target] = [
     .target(name: "HopGraph"),
     .testTarget(name: "HopGraphTests", dependencies: ["HopGraph"]),
-    .target(name: "HopUI", dependencies: ["HopGraph"], swiftSettings: uiIsolation),
+    // The OS-keyed, UI-free foundation layer (logging, the run-loop concurrency seam, …). No toolkit/UI
+    // deps, no default MainActor isolation (like HopGraph) — usable from any layer. Its only conditional
+    // dependency is Csystemd (journald) on Linux.
+    .target(name: "HopPlatform", dependencies: hopPlatformDeps),
+    .testTarget(name: "HopPlatformTests", dependencies: ["HopPlatform"]),
+    .target(name: "HopUI", dependencies: ["HopGraph", "HopPlatform"], swiftSettings: uiIsolation),
     .testTarget(name: "HopUITests", dependencies: ["HopUI"]),
 ]
+
+// journald sink for HopPlatform's logging (Linux only). Resolved via pkg-config libsystemd, like CGTK4's
+// gtk4 — the systemLibrary just surfaces <systemd/sd-journal.h>; the sd_journal_sendv call is in Swift.
+#if os(Linux)
+targets += [
+    .systemLibrary(name: "Csystemd", path: "Sources/Csystemd", pkgConfig: "libsystemd",
+                   providers: [.apt(["libsystemd-dev"])]),
+]
+#endif
 
 if toolkitEnabled("gtk") {
     products += [
