@@ -7,7 +7,7 @@
 #   Usage: powershell -File scripts/ci/screenshot-playgrounds.ps1 -OutDir <dir> -Toolkits qt,winui
 #     toolkit ∈ qt | winui   (maps to hop-demo-qt.exe / hop-demo-winui.exe)
 #
-# Captures the primary screen (the demo renders onto the runner's interactive desktop). Best-effort:
+# Captures each demo's OWN window via PrintWindow (never the desktop or other windows). Best-effort:
 # failures are logged but never fail the job; the build/test gate is what matters. Always exits 0.
 
 param(
@@ -130,6 +130,24 @@ public static class HopWin {
         }, IntPtr.Zero);
         return best;
     }
+
+    [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+    // Force the window (and all children) to paint NOW, so a freshly shown window has real content for PrintWindow
+    // to grab instead of an unpainted/blank first frame. RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW.
+    public static void Redraw(IntPtr h) { RedrawWindow(h, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0100); }
+
+    [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+    [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    // Make THIS (capture) process DPI-aware BEFORE any GetWindowRect/PrintWindow. On a >100% DPI display a
+    // non-aware process sees GetWindowRect return scaled-down logical sizes, so the PrintWindow bitmap is too
+    // small and the window comes out cropped/scaled. Per-Monitor-V2 = (DPI_AWARENESS_CONTEXT)-4 (Win10 1703+);
+    // fall back to per-monitor (-3) then system-DPI-aware. Best-effort: returns the level achieved.
+    public static string MakeDpiAware() {
+        try { if (SetProcessDpiAwarenessContext((IntPtr)(-4))) return "per-monitor-v2"; } catch {}
+        try { if (SetProcessDpiAwarenessContext((IntPtr)(-3))) return "per-monitor"; } catch {}
+        try { if (SetProcessDPIAware()) return "system"; } catch {}
+        return "unchanged";
+    }
 }
 "@
 
@@ -156,39 +174,33 @@ function Test-Blank($bmp) {
     return $true   # < 6 distinct content colors -> effectively blank (or chrome-only)
 }
 
-# PrintWindow into a PowerShell-side bitmap (works even when the window is off-screen / larger than the
-# desktop). PW_RENDERFULLCONTENT (flag 2) captures DirectComposition/WinUI content too.
+# Capture the WINDOW ITSELF — never the desktop. PrintWindow renders the window's OWN surface into a bitmap
+# sized to the window, completely independent of its screen position, z-order, or whether other windows (or the
+# desktop) are in front of it. So the result is ALWAYS exactly that window, in its entirety, with nothing else in
+# frame — even if it is off-screen, larger than the screen, or occluded. PW_RENDERFULLCONTENT (flag 2) is
+# required to capture DirectComposition/WinUI (and Qt) content. We do NOT screen-capture at all, which is what
+# previously leaked the desktop/other windows and produced cropped/shifted shots when the window overhung the
+# (clamped) screen rect.
 function Grab-PrintWindow([IntPtr]$hWnd) {
     $size = [HopWin]::WindowSize($hWnd); $w = $size[0]; $h = $size[1]
     if ($w -le 0 -or $h -le 0) { return $null }
-    $bmp = New-Object System.Drawing.Bitmap $w, $h
+    # 24bpp RGB (NOT the default 32bpp ARGB): PrintWindow's GDI/DWM copy doesn't write the alpha channel, so a
+    # 32bpp bitmap comes out fully transparent and the saved PNG renders blank over the gallery's white tile.
+    $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.Clear([System.Drawing.Color]::White)         # any region PrintWindow leaves untouched stays white, not garbage
     $hdc = $g.GetHdc()
-    [void][HopWin]::PrintWindow($hWnd, $hdc, 2)
+    $ok = [HopWin]::PrintWindow($hWnd, $hdc, 2)      # 2 = PW_RENDERFULLCONTENT
     $g.ReleaseHdc($hdc); $g.Dispose()
+    if (-not $ok) { $bmp.Dispose(); return $null }
     return $bmp
 }
 
-# Copy the window's on-screen rectangle (clamped to the virtual screen). This reads the real DWM-composited
-# pixels, so it captures Qt/WinUI content that PrintWindow can return blank for — the primary method below.
-# Needs the window foregrounded + on-screen (handled in Capture-Window; resolution bumped at startup).
-function Grab-ScreenRegion([IntPtr]$hWnd) {
-    $r = [HopWin]::WindowRect($hWnd); $x = $r[0]; $y = $r[1]; $w = $r[2]; $h = $r[3]
-    if ($w -le 0 -or $h -le 0) { return $null }
-    $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
-    if ($x -lt $vs.X) { $x = $vs.X }; if ($y -lt $vs.Y) { $y = $vs.Y }
-    $w = [Math]::Min($w, $vs.Right - $x); $h = [Math]::Min($h, $vs.Bottom - $y)
-    if ($w -le 0 -or $h -le 0) { return $null }
-    $bmp = New-Object System.Drawing.Bitmap $w, $h
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size $w, $h))
-    $g.Dispose()
-    return $bmp
-}
-
-# Capture a launched app's main window, robustly: wait for the window (even if MainWindowHandle is slow to
-# populate), bring it to front at (0,0), then keep grabbing (PrintWindow, then screen-region) until the
-# result is non-blank. Saves only a non-blank shot — returns $false rather than ever writing an empty one.
+# Capture a launched app's main window: wait for the window handle, ensure it's shown (un-minimized), then keep
+# PrintWindow-ing until its content has actually painted (non-blank). We deliberately do NOT move, foreground, or
+# screen-capture the window — PrintWindow grabs the window's own pixels, so the shot is always the window, never
+# the desktop or another window. Saves only a non-blank shot; returns $false rather than ever writing an empty
+# (or desktop) image.
 function Capture-Window([System.Diagnostics.Process]$proc, $path) {
     $hWnd = [IntPtr]::Zero
     for ($i = 0; $i -lt 60; $i++) {                 # up to ~15s for the window to appear
@@ -201,27 +213,20 @@ function Capture-Window([System.Diagnostics.Process]$proc, $path) {
     }
     if ($hWnd -eq [IntPtr]::Zero) { return $false }
 
-    [void][HopWin]::ShowWindow($hWnd, 9)            # SW_RESTORE (un-minimize if needed)
+    [void][HopWin]::ShowWindow($hWnd, 9)            # SW_RESTORE — un-minimize (PrintWindow can't capture a minimized window)
     [void][HopWin]::ShowWindow($hWnd, 5)            # SW_SHOW
-    [void][HopWin]::SetWindowPos($hWnd, [IntPtr]::Zero, 0, 0, 0, 0, (0x0001 -bor 0x0040))  # HWND_TOP, NOSIZE|SHOWWINDOW
-    [void][HopWin]::SetForegroundWindow($hWnd)
 
-    for ($a = 0; $a -lt 20; $a++) {                 # up to ~12s of redraw attempts
+    for ($a = 0; $a -lt 24; $a++) {                 # up to ~14s for the window to paint its first real frame
         Start-Sleep -Milliseconds 600
-        # Screen-region first — it reads the real DWM-composited pixels, which reliably captures Qt/WinUI
-        # content (PrintWindow returns blank for some composited windows); PrintWindow is the off-screen
-        # fallback. Either way we only keep a non-blank result.
-        foreach ($grab in 'Grab-ScreenRegion', 'Grab-PrintWindow') {
-            $bmp = & $grab $hWnd
-            if ($null -eq $bmp) { continue }
-            $blank = Test-Blank $bmp
-            if (-not $blank) {
-                $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); return $true
-            }
-            $bmp.Dispose()
+        [void][HopWin]::Redraw($hWnd)               # force a paint so PrintWindow grabs real content, not a blank frame
+        $bmp = Grab-PrintWindow $hWnd
+        if ($null -eq $bmp) { continue }
+        if (-not (Test-Blank $bmp)) {
+            $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose(); return $true
         }
+        $bmp.Dispose()
     }
-    return $false                                   # never rendered content -> don't write a blank
+    return $false                                   # never painted real content -> no file (better than a blank/desktop)
 }
 
 # The WinUI demo is a framework-dependent, *unpackaged* Windows App SDK app, so launching it needs two
@@ -256,11 +261,11 @@ function Ensure-WinUIRuntime($bin) {
     }
 }
 
-# Enlarge the desktop so the window fits fully on-screen for the screen-region capture (runners default to
-# 1024x768, which would clip a 1280x800 window). Best-effort: a non-zero result just means we capture the
-# clamped (still non-blank) portion.
-$res = [HopWin]::SetResolution(1920, 1080)
-Write-Host "Display resolution -> 1920x1080 (result $res; 0 = ok)"
+# Make the capture process DPI-aware so GetWindowRect/PrintWindow operate in true physical pixels (otherwise a
+# >100% DPI display yields a cropped/scaled window). We no longer change the display resolution or screen-capture
+# at all: PrintWindow renders the window's own surface, so the window need not even fit on the screen.
+$dpi = [HopWin]::MakeDpiAware()
+Write-Host "Capture DPI awareness -> $dpi"
 
 # Human-readable byte size for the summary table.
 function Human-Size($b) {
