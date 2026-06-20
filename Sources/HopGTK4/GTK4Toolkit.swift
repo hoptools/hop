@@ -30,6 +30,17 @@ public final class GTK4Widget {
     // For `.onTapGesture`: the retained callback box + the GtkGestureClick controller (so we can remove it).
     var tapBox: GTK4ActionBox?
     var tapGesture: UnsafeMutableRawPointer?
+    // Controllers + retained boxes for the newer gestures (one slot each).
+    var longPressGesture: UnsafeMutableRawPointer?
+    var longPressBox: GTK4ActionBox?
+    var hoverController: UnsafeMutableRawPointer?
+    var hoverBox: GTK4ActionBox?
+    var dragGestureController: UnsafeMutableRawPointer?
+    var dragBox: GTK4ActionBox?
+    var zoomGesture: UnsafeMutableRawPointer?
+    var zoomBox: GTK4ActionBox?
+    var rotateGestureController: UnsafeMutableRawPointer?
+    var rotateBox: GTK4ActionBox?
     init(_ widget: UnsafeMutableRawPointer) { self.widget = widget }
 }
 
@@ -58,6 +69,13 @@ final class GTK4ActionBox {
     var action: (@MainActor () -> Void)?
     var tapAction: (@MainActor () -> Void)?   // `.onTapGesture`
     var tapCount = 1
+    // Newer gestures: each setter makes a fresh box holding just the relevant closures.
+    var longPress: (@MainActor () -> Void)?
+    var onHover: (@MainActor (Bool) -> Void)?
+    var dragChanged: (@MainActor (DragGesture.Value) -> Void)?
+    var dragEnded: (@MainActor (DragGesture.Value) -> Void)?
+    var magnifyChanged: (@MainActor (MagnifyGesture.Value) -> Void)?
+    var rotateChanged: (@MainActor (RotateGesture.Value) -> Void)?
     var onChange: (@MainActor (String) -> Void)?
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
@@ -150,6 +168,55 @@ private let gtk4TapCallback: @convention(c) (UnsafeMutableRawPointer?, Int32, Do
     guard let userData else { return }
     let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { if Int(nPress) == box.tapCount { box.tapAction?() } }
+}
+
+private let gtk4LongPressCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Double, UnsafeMutableRawPointer?) -> Void = { _, _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.longPress?() }
+}
+
+private let gtk4HoverEnterCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Double, UnsafeMutableRawPointer?) -> Void = { _, _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onHover?(true) }
+}
+private let gtk4HoverLeaveCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onHover?(false) }
+}
+
+// Build a DragGesture.Value from the gesture's start point (read via the shim) + the reported offset.
+private func gtk4DragValue(_ gesture: UnsafeMutableRawPointer, _ ox: Double, _ oy: Double) -> DragGesture.Value {
+    var sx = 0.0, sy = 0.0
+    hop_drag_get_start(gesture, &sx, &sy)
+    return DragGesture.Value(startLocation: CGPoint(x: sx, y: sy),
+                             location: CGPoint(x: sx + ox, y: sy + oy),
+                             translation: CGSize(width: ox, height: oy))
+}
+private let gtk4DragUpdateCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Double, UnsafeMutableRawPointer?) -> Void = { gesture, ox, oy, userData in
+    guard let gesture, let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    let value = gtk4DragValue(gesture, ox, oy)
+    MainActor.assumeIsolated { box.dragChanged?(value) }
+}
+private let gtk4DragEndCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Double, UnsafeMutableRawPointer?) -> Void = { gesture, ox, oy, userData in
+    guard let gesture, let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    let value = gtk4DragValue(gesture, ox, oy)
+    MainActor.assumeIsolated { box.dragEnded?(value) }
+}
+
+private let gtk4ZoomCallback: @convention(c) (UnsafeMutableRawPointer?, Double, UnsafeMutableRawPointer?) -> Void = { _, scale, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.magnifyChanged?(MagnifyGesture.Value(magnification: CGFloat(scale))) }
+}
+private let gtk4RotateCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Double, UnsafeMutableRawPointer?) -> Void = { _, _, delta, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.rotateChanged?(RotateGesture.Value(rotation: Angle(radians: delta))) }
 }
 
 private let gtk4ChangedCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { entry, userData in
@@ -1186,6 +1253,51 @@ public final class GTK4Toolkit: AppToolkit {
         box.tapCount = Swift.max(1, spec.count)
         handle.tapBox = box   // retain so the C callback's user_data stays valid
         handle.tapGesture = hop_tap_gesture_new(handle.widget, gtk4TapCallback, Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setLongPressHandler(_ handle: GTK4Widget, _ spec: LongPressGestureSpec?) {
+        if let g = handle.longPressGesture { hop_controller_remove(handle.widget, g); handle.longPressGesture = nil; handle.longPressBox = nil }
+        guard let spec else { return }
+        let box = GTK4ActionBox(); box.longPress = spec.action
+        handle.longPressBox = box
+        // GTK's default long-press time is ~0.5 s; scale it (clamped) to approximate the requested duration.
+        let factor = Swift.max(0.5, Swift.min(4.0, spec.minimumDuration / 0.5))
+        handle.longPressGesture = hop_longpress_gesture_new(handle.widget, factor, gtk4LongPressCallback,
+                                                            Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setHoverHandler(_ handle: GTK4Widget, _ handler: (@MainActor (Bool) -> Void)?) {
+        if let c = handle.hoverController { hop_controller_remove(handle.widget, c); handle.hoverController = nil; handle.hoverBox = nil }
+        guard let handler else { return }
+        let box = GTK4ActionBox(); box.onHover = handler
+        handle.hoverBox = box
+        handle.hoverController = hop_hover_controller_new(handle.widget, gtk4HoverEnterCallback, gtk4HoverLeaveCallback,
+                                                         Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setDragHandler(_ handle: GTK4Widget, _ spec: DragGestureSpec?) {
+        if let g = handle.dragGestureController { hop_controller_remove(handle.widget, g); handle.dragGestureController = nil; handle.dragBox = nil }
+        guard let spec else { return }
+        let box = GTK4ActionBox(); box.dragChanged = spec.onChanged; box.dragEnded = spec.onEnded
+        handle.dragBox = box
+        handle.dragGestureController = hop_drag_gesture_new(handle.widget, gtk4DragUpdateCallback, gtk4DragEndCallback,
+                                                           Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setMagnifyHandler(_ handle: GTK4Widget, _ spec: MagnifyGestureSpec?) {
+        if let g = handle.zoomGesture { hop_controller_remove(handle.widget, g); handle.zoomGesture = nil; handle.zoomBox = nil }
+        guard let spec else { return }
+        let box = GTK4ActionBox(); box.magnifyChanged = spec.onChanged   // GtkGestureZoom reports onChanged via scale-changed
+        handle.zoomBox = box
+        handle.zoomGesture = hop_zoom_gesture_new(handle.widget, gtk4ZoomCallback, Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setRotateHandler(_ handle: GTK4Widget, _ spec: RotateGestureSpec?) {
+        if let g = handle.rotateGestureController { hop_controller_remove(handle.widget, g); handle.rotateGestureController = nil; handle.rotateBox = nil }
+        guard let spec else { return }
+        let box = GTK4ActionBox(); box.rotateChanged = spec.onChanged
+        handle.rotateBox = box
+        handle.rotateGestureController = hop_rotate_gesture_new(handle.widget, gtk4RotateCallback, Unmanaged.passUnretained(box).toOpaque())
     }
 
     public func contentSize() -> CGSize {

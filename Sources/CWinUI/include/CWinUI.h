@@ -89,6 +89,15 @@ void hopwinui_button_connect(void* h, hopwinui_void_cb cb, void* user_data);
 // `.onTapGesture`: wire any UIElement's Tapped (count==1) or DoubleTapped (count>=2) event to `cb`.
 void hopwinui_tap_connect(void* h, int32_t count, hopwinui_void_cb cb, void* user_data);
 
+// `.onLongPressGesture`: wire the Holding event (fires when HoldingState becomes Started).
+void hopwinui_longpress_connect(void* h, hopwinui_void_cb cb, void* user_data);
+// `.onHover`: wire PointerEntered (entered=1) / PointerExited (entered=0).
+typedef void (*hopwinui_hover_cb)(void* user_data, int entered);
+void hopwinui_hover_connect(void* h, hopwinui_hover_cb cb, void* user_data);
+// `.gesture(DragGesture())`: wire PointerPressed/Moved/Released; cb gets start + current point + ended flag.
+typedef void (*hopwinui_drag_cb)(void* user_data, double sx, double sy, double cx, double cy, int ended);
+void hopwinui_drag_connect(void* h, hopwinui_drag_cb cb, void* user_data);
+
 // MARK: TextBox / PasswordBox
 char* hopwinui_textbox_text(void* h);  // malloc'd UTF-8; caller frees
 void hopwinui_textbox_set_text(void* h, const char* utf8);

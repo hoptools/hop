@@ -45,6 +45,16 @@ public protocol RenderToolkit: AnyObject {
     /// Install a tap-gesture recognizer on `handle` from `.onTapGesture` (nil removes it). Cross-cutting:
     /// can wrap any widget. The toolkit fires `spec.action` after `spec.count` taps.
     func setTapHandler(_ handle: Handle, _ spec: TapGestureSpec?)
+    /// Install a long-press recognizer (`.onLongPressGesture`). Default: no-op.
+    func setLongPressHandler(_ handle: Handle, _ spec: LongPressGestureSpec?)
+    /// Install a pointer enter/leave (hover) tracker (`.onHover`). Default: no-op.
+    func setHoverHandler(_ handle: Handle, _ handler: (@MainActor (Bool) -> Void)?)
+    /// Install a drag recognizer (`.gesture(DragGesture())`). Default: no-op.
+    func setDragHandler(_ handle: Handle, _ spec: DragGestureSpec?)
+    /// Install a pinch/magnify recognizer (`.gesture(MagnifyGesture())`). Default: no-op.
+    func setMagnifyHandler(_ handle: Handle, _ spec: MagnifyGestureSpec?)
+    /// Install a rotation recognizer (`.gesture(RotateGesture())`). Default: no-op.
+    func setRotateHandler(_ handle: Handle, _ spec: RotateGestureSpec?)
     /// Drive a `.fileImporter` presentation attached to `handle` (cross-cutting; can wrap any widget): when
     /// `spec.isPresented` transitions true, show the native open panel, then call `onCompletion` + reset.
     func configureFileImporter(_ handle: Handle, _ spec: FileImporterSpec)
@@ -98,4 +108,15 @@ public protocol AppToolkit: RenderToolkit {
     /// Install a handler the toolkit calls whenever the window content size changes, so the runtime can
     /// re-run the layout pass. Called once on mount.
     func setRelayoutHandler(_ handler: @escaping @MainActor () -> Void)
+}
+
+/// Default no-ops for the newer gesture recognizers, so a backend only overrides the ones it wires (e.g.
+/// trackpad magnify/rotate aren't installed on every toolkit). The cross-cutting reconciler calls all of
+/// these on every node; an un-overridden one simply does nothing.
+public extension RenderToolkit {
+    func setLongPressHandler(_ handle: Handle, _ spec: LongPressGestureSpec?) {}
+    func setHoverHandler(_ handle: Handle, _ handler: (@MainActor (Bool) -> Void)?) {}
+    func setDragHandler(_ handle: Handle, _ spec: DragGestureSpec?) {}
+    func setMagnifyHandler(_ handle: Handle, _ spec: MagnifyGestureSpec?) {}
+    func setRotateHandler(_ handle: Handle, _ spec: RotateGestureSpec?) {}
 }

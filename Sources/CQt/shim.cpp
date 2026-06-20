@@ -16,6 +16,8 @@
 #include <QtWidgets/QDateTimeEdit>
 #include <QtCore/QDateTime>
 #include <QtCore/QEvent>
+#include <QtCore/QTimer>
+#include <QtGui/QMouseEvent>
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QFileDialog>
 #include <QtGui/QColor>
@@ -403,6 +405,77 @@ void hopqt_tap_remove(void *widget, void *filter) {
     if (!filter) return;
     static_cast<QWidget *>(widget)->removeEventFilter(static_cast<HopTapFilter *>(filter));
     static_cast<HopTapFilter *>(filter)->deleteLater();
+}
+
+// Pointer-gesture event filters (no Q_OBJECT/moc needed — plain virtual overrides + lambda timer connect).
+namespace {
+class HopLongPressFilter : public QObject {
+public:
+    hopqt_void_cb cb; void *ud; QTimer timer;
+    HopLongPressFilter(int ms, hopqt_void_cb f, void *d) : cb(f), ud(d) {
+        timer.setSingleShot(true);
+        timer.setInterval(ms);
+        QObject::connect(&timer, &QTimer::timeout, [this]() { if (cb) cb(ud); });
+    }
+    bool eventFilter(QObject *, QEvent *ev) override {
+        if (ev->type() == QEvent::MouseButtonPress) timer.start();
+        else if (ev->type() == QEvent::MouseButtonRelease || ev->type() == QEvent::MouseMove) timer.stop();
+        return false;
+    }
+};
+class HopHoverFilter : public QObject {
+public:
+    hopqt_bool_cb cb; void *ud;
+    HopHoverFilter(hopqt_bool_cb f, void *d) : cb(f), ud(d) {}
+    bool eventFilter(QObject *, QEvent *ev) override {
+        if (ev->type() == QEvent::Enter && cb) cb(ud, 1);
+        else if (ev->type() == QEvent::Leave && cb) cb(ud, 0);
+        return false;
+    }
+};
+class HopDragFilter : public QObject {
+public:
+    hopqt_drag_cb cb; void *ud; bool pressed = false; QPointF start;
+    HopDragFilter(hopqt_drag_cb f, void *d) : cb(f), ud(d) {}
+    bool eventFilter(QObject *, QEvent *ev) override {
+        if (ev->type() == QEvent::MouseButtonPress) {
+            start = static_cast<QMouseEvent *>(ev)->position(); pressed = true;
+        } else if (ev->type() == QEvent::MouseMove && pressed) {
+            QPointF p = static_cast<QMouseEvent *>(ev)->position();
+            if (cb) cb(ud, start.x(), start.y(), p.x(), p.y(), 0);
+        } else if (ev->type() == QEvent::MouseButtonRelease && pressed) {
+            QPointF p = static_cast<QMouseEvent *>(ev)->position(); pressed = false;
+            if (cb) cb(ud, start.x(), start.y(), p.x(), p.y(), 1);
+        }
+        return false;
+    }
+};
+}  // namespace
+
+void *hopqt_longpress_install(void *widget, int ms, hopqt_void_cb cb, void *user_data) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    HopLongPressFilter *f = new HopLongPressFilter(ms, cb, user_data);
+    w->installEventFilter(f);
+    return f;
+}
+void *hopqt_hover_install(void *widget, hopqt_bool_cb cb, void *user_data) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    w->setAttribute(Qt::WA_Hover, true);
+    HopHoverFilter *f = new HopHoverFilter(cb, user_data);
+    w->installEventFilter(f);
+    return f;
+}
+void *hopqt_drag_install(void *widget, hopqt_drag_cb cb, void *user_data) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    HopDragFilter *f = new HopDragFilter(cb, user_data);
+    w->installEventFilter(f);
+    return f;
+}
+void hopqt_filter_remove(void *widget, void *filter) {
+    if (!filter) return;
+    QObject *f = static_cast<QObject *>(filter);
+    static_cast<QWidget *>(widget)->removeEventFilter(f);
+    f->deleteLater();
 }
 
 void *hopqt_lineedit_new(const char *placeholder) {

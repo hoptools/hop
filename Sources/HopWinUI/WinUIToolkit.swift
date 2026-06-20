@@ -54,6 +54,14 @@ public final class WinUIWidget {
     var onChangeColor: (@MainActor (HopUI.Color) -> Void)?
     var tapAction: (@MainActor () -> Void)?   // `.onTapGesture`
     var tapConnected = false                  // the Tapped/DoubleTapped event is wired at most once
+    // Newer pointer gestures — handler stored on the handle; the event is wired at most once (like tap).
+    var longPressAction: (@MainActor () -> Void)?
+    var longPressConnected = false
+    var onHoverHandler: (@MainActor (Bool) -> Void)?
+    var hoverConnected = false
+    var dragChanged: (@MainActor (DragGesture.Value) -> Void)?
+    var dragEnded: (@MainActor (DragGesture.Value) -> Void)?
+    var dragConnected = false
 
     /// Suppresses change callbacks while reflecting a bound value programmatically.
     var suppress = false
@@ -113,6 +121,21 @@ private let cbAction: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud i
 private let cbTap: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
     guard let w = widget(ud) else { return }
     MainActor.assumeIsolated { w.tapAction?() }
+}
+private let cbLongPress: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
+    guard let w = widget(ud) else { return }
+    MainActor.assumeIsolated { w.longPressAction?() }
+}
+private let cbHover: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void = { ud, entered in
+    guard let w = widget(ud) else { return }
+    MainActor.assumeIsolated { w.onHoverHandler?(entered != 0) }
+}
+private let cbDrag: @convention(c) (UnsafeMutableRawPointer?, Double, Double, Double, Double, Int32) -> Void = { ud, sx, sy, cx, cy, ended in
+    guard let w = widget(ud) else { return }
+    let value = DragGesture.Value(startLocation: CGPoint(x: sx, y: sy),
+                                  location: CGPoint(x: cx, y: cy),
+                                  translation: CGSize(width: cx - sx, height: cy - sy))
+    MainActor.assumeIsolated { if ended != 0 { w.dragEnded?(value) } else { w.dragChanged?(value) } }
 }
 private let cbString: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { s, ud in
     guard let w = widget(ud), let s else { return }
@@ -586,6 +609,31 @@ public final class WinUIToolkit: AppToolkit {
         if let spec, !handle.tapConnected {
             hopwinui_tap_connect(handle.handle, Int32(Swift.max(1, spec.count)), cbTap, unmanaged(handle))
             handle.tapConnected = true
+        }
+    }
+
+    public func setLongPressHandler(_ handle: WinUIWidget, _ spec: LongPressGestureSpec?) {
+        handle.longPressAction = spec?.action
+        if spec != nil, !handle.longPressConnected {
+            hopwinui_longpress_connect(handle.handle, cbLongPress, unmanaged(handle))
+            handle.longPressConnected = true
+        }
+    }
+
+    public func setHoverHandler(_ handle: WinUIWidget, _ handler: (@MainActor (Bool) -> Void)?) {
+        handle.onHoverHandler = handler
+        if handler != nil, !handle.hoverConnected {
+            hopwinui_hover_connect(handle.handle, cbHover, unmanaged(handle))
+            handle.hoverConnected = true
+        }
+    }
+
+    public func setDragHandler(_ handle: WinUIWidget, _ spec: DragGestureSpec?) {
+        handle.dragChanged = spec?.onChanged
+        handle.dragEnded = spec?.onEnded
+        if spec != nil, !handle.dragConnected {
+            hopwinui_drag_connect(handle.handle, cbDrag, unmanaged(handle))
+            handle.dragConnected = true
         }
     }
 

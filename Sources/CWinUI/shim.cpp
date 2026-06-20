@@ -27,6 +27,7 @@
 // pulled in, so the constructor is declared-but-not-defined and Clang rejects instantiating it with a
 // no-linkage local lambda ("used but not defined in this translation unit").
 #include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Microsoft.UI.Input.h>  // HoldingState, PointerPoint (for the long-press / drag gestures)
 #include <winrt/Microsoft.UI.Xaml.Markup.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
@@ -42,6 +43,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <array>
+#include <memory>
 #include <vector>
 #include <limits>
 
@@ -284,6 +287,45 @@ void hopwinui_tap_connect(void* h, int32_t count, hopwinui_void_cb cb, void* ud)
     } else {
         e.Tapped([cb, ud](auto&&, auto&&) { if (cb) cb(ud); });
     }
+}
+
+void hopwinui_longpress_connect(void* h, hopwinui_void_cb cb, void* ud) {
+    elem(h).Holding([cb, ud](winrt::Windows::Foundation::IInspectable const&,
+                             mux::Input::HoldingRoutedEventArgs const& args) {
+        if (cb && args.HoldingState() == winrt::Microsoft::UI::Input::HoldingState::Started) cb(ud);
+    });
+}
+
+void hopwinui_hover_connect(void* h, hopwinui_hover_cb cb, void* ud) {
+    auto e = elem(h);
+    e.PointerEntered([cb, ud](auto&&, auto&&) { if (cb) cb(ud, 1); });
+    e.PointerExited([cb, ud](auto&&, auto&&) { if (cb) cb(ud, 0); });
+}
+
+void hopwinui_drag_connect(void* h, hopwinui_drag_cb cb, void* ud) {
+    auto e = elem(h);
+    // Shared press state captured by all three pointer lambdas (start point + whether a drag is active).
+    auto state = std::make_shared<std::array<double, 3>>();  // [0]=pressed, [1]=startX, [2]=startY
+    e.PointerPressed([cb, ud, state, e](winrt::Windows::Foundation::IInspectable const&,
+                                        mux::Input::PointerRoutedEventArgs const& args) {
+        auto p = args.GetCurrentPoint(e).Position();
+        (*state)[0] = 1; (*state)[1] = p.X; (*state)[2] = p.Y;
+        e.CapturePointer(args.Pointer());
+    });
+    e.PointerMoved([cb, ud, state, e](winrt::Windows::Foundation::IInspectable const&,
+                                      mux::Input::PointerRoutedEventArgs const& args) {
+        if ((*state)[0] == 0) return;
+        auto p = args.GetCurrentPoint(e).Position();
+        if (cb) cb(ud, (*state)[1], (*state)[2], p.X, p.Y, 0);
+    });
+    e.PointerReleased([cb, ud, state, e](winrt::Windows::Foundation::IInspectable const&,
+                                         mux::Input::PointerRoutedEventArgs const& args) {
+        if ((*state)[0] == 0) return;
+        auto p = args.GetCurrentPoint(e).Position();
+        (*state)[0] = 0;
+        if (cb) cb(ud, (*state)[1], (*state)[2], p.X, p.Y, 1);
+        e.ReleasePointerCapture(args.Pointer());
+    });
 }
 
 // ---------------------------------------------------------------------------------------------------

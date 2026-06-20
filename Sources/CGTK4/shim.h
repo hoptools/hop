@@ -288,6 +288,64 @@ static inline void *hop_tap_gesture_new(void *widget, hop_tap_fn cb, void *data)
 static inline void hop_tap_gesture_remove(void *widget, void *gesture) {
     if (gesture) gtk_widget_remove_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(gesture));
 }
+// Remove any event controller added below (long-press / hover / drag / zoom / rotate).
+static inline void hop_controller_remove(void *widget, void *controller) {
+    if (controller) gtk_widget_remove_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(controller));
+}
+
+// `.onLongPressGesture`: GtkGestureLongPress, "pressed" fires once the press is held. `delay_factor`
+// scales GTK's default long-press time (range ~0.5–4.0) to approximate the requested duration.
+typedef void (*hop_longpress_fn)(void *gesture, double x, double y, void *data);
+static inline void *hop_longpress_gesture_new(void *widget, double delay_factor, hop_longpress_fn cb, void *data) {
+    GtkGesture *gesture = gtk_gesture_long_press_new();
+    gtk_gesture_long_press_set_delay_factor(GTK_GESTURE_LONG_PRESS(gesture), delay_factor);
+    g_signal_connect_data(gesture, "pressed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+    gtk_widget_add_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(gesture));
+    return gesture;
+}
+
+// `.onHover`: GtkEventControllerMotion. "enter" carries (x, y); "leave" carries nothing → two callbacks.
+typedef void (*hop_enter_fn)(void *controller, double x, double y, void *data);
+typedef void (*hop_leave_fn)(void *controller, void *data);
+static inline void *hop_hover_controller_new(void *widget, hop_enter_fn enter_cb, hop_leave_fn leave_cb, void *data) {
+    GtkEventController *controller = gtk_event_controller_motion_new();
+    g_signal_connect_data(controller, "enter", G_CALLBACK(enter_cb), data, NULL, (GConnectFlags)0);
+    g_signal_connect_data(controller, "leave", G_CALLBACK(leave_cb), data, NULL, (GConnectFlags)0);
+    gtk_widget_add_controller((GtkWidget *)widget, controller);
+    return controller;
+}
+
+// `.gesture(DragGesture())`: GtkGestureDrag. "drag-update"/"drag-end" carry the offset from the start; the
+// Swift side reads the start point via hop_drag_get_start to reconstruct the SwiftUI drag value.
+typedef void (*hop_drag_fn)(void *gesture, double offset_x, double offset_y, void *data);
+static inline void *hop_drag_gesture_new(void *widget, hop_drag_fn update_cb, hop_drag_fn end_cb, void *data) {
+    GtkGesture *gesture = gtk_gesture_drag_new();
+    g_signal_connect_data(gesture, "drag-update", G_CALLBACK(update_cb), data, NULL, (GConnectFlags)0);
+    g_signal_connect_data(gesture, "drag-end", G_CALLBACK(end_cb), data, NULL, (GConnectFlags)0);
+    gtk_widget_add_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(gesture));
+    return gesture;
+}
+static inline void hop_drag_get_start(void *gesture, double *sx, double *sy) {
+    gtk_gesture_drag_get_start_point(GTK_GESTURE_DRAG(gesture), sx, sy);
+}
+
+// `.gesture(MagnifyGesture())`: GtkGestureZoom, "scale-changed" gives the scale relative to the start (1.0).
+typedef void (*hop_zoom_fn)(void *gesture, double scale, void *data);
+static inline void *hop_zoom_gesture_new(void *widget, hop_zoom_fn cb, void *data) {
+    GtkGesture *gesture = gtk_gesture_zoom_new();
+    g_signal_connect_data(gesture, "scale-changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+    gtk_widget_add_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(gesture));
+    return gesture;
+}
+
+// `.gesture(RotateGesture())`: GtkGestureRotate, "angle-changed" gives (absolute angle, delta-since-start).
+typedef void (*hop_rotate_fn)(void *gesture, double angle, double angle_delta, void *data);
+static inline void *hop_rotate_gesture_new(void *widget, hop_rotate_fn cb, void *data) {
+    GtkGesture *gesture = gtk_gesture_rotate_new();
+    g_signal_connect_data(gesture, "angle-changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+    gtk_widget_add_controller((GtkWidget *)widget, GTK_EVENT_CONTROLLER(gesture));
+    return gesture;
+}
 
 static inline void *hop_entry_new(void) {
     return gtk_entry_new();

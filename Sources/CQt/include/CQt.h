@@ -92,6 +92,17 @@ void hopqt_button_connect(void *button, hopqt_void_cb cb, void *user_data);
 void *hopqt_tap_install(void *widget, int count, hopqt_void_cb cb, void *user_data);
 void hopqt_tap_remove(void *widget, void *filter);
 
+// Pointer gestures via event filters. Each returns the filter object; remove with hopqt_filter_remove.
+// `.onLongPressGesture`: fire `cb` after the button is held `ms` without moving/releasing.
+void *hopqt_longpress_install(void *widget, int ms, hopqt_void_cb cb, void *user_data);
+// `.onHover`: fire `cb(user_data, entered)` on pointer enter (1) / leave (0).
+typedef void (*hopqt_bool_cb)(void *user_data, int entered);
+void *hopqt_hover_install(void *widget, hopqt_bool_cb cb, void *user_data);
+// `.gesture(DragGesture())`: fire `cb(user_data, startX, startY, curX, curY, ended)` on move (ended=0) / release (1).
+typedef void (*hopqt_drag_cb)(void *user_data, double sx, double sy, double cx, double cy, int ended);
+void *hopqt_drag_install(void *widget, hopqt_drag_cb cb, void *user_data);
+void hopqt_filter_remove(void *widget, void *filter);
+
 // Text field
 void *hopqt_lineedit_new(const char *placeholder);
 void hopqt_lineedit_set_text(void *edit, const char *text);

@@ -99,6 +99,11 @@ final class Reconciler<Toolkit: RenderToolkit> {
         if node.patch != WidgetPatch() { toolkit.configure(handle, node.patch) }
         toolkit.setScrollHandler(handle, node.onScroll)
         toolkit.setTapHandler(handle, node.onTap)
+        toolkit.setLongPressHandler(handle, node.onLongPress)
+        toolkit.setHoverHandler(handle, node.onHover)
+        toolkit.setDragHandler(handle, node.dragGesture)
+        toolkit.setMagnifyHandler(handle, node.magnifyGesture)
+        toolkit.setRotateHandler(handle, node.rotateGesture)
         if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
         if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
     }

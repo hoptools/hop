@@ -39,6 +39,17 @@ public final class AppKitWidget {
     // For `.onTapGesture`: the installed click recognizer + its retained target.
     var tapRecognizer: NSClickGestureRecognizer?
     var tapTarget: TapTarget?
+    // The newer gesture recognizers + their retained targets (one slot each, replaced on update).
+    var longPressRecognizer: NSPressGestureRecognizer?
+    var longPressTarget: PressTarget?
+    var panRecognizer: NSPanGestureRecognizer?
+    var panTarget: PanTarget?
+    var magnifyRecognizer: NSMagnificationGestureRecognizer?
+    var magnifyTarget: MagnifyTarget?
+    var rotateRecognizer: NSRotationGestureRecognizer?
+    var rotateTarget: RotateTarget?
+    var hoverTrackingArea: NSTrackingArea?
+    var hoverTarget: HoverTarget?
     // For a `.list` widget: the (low-priority) preferred-width constraint, so a sidebar list can be narrower.
     var listPreferredWidth: NSLayoutConstraint?
     init(_ view: NSView) { self.view = view }
@@ -104,6 +115,72 @@ public final class ActionTrampoline: NSObject {
 public final class TapTarget: NSObject {
     var action: (@MainActor () -> Void)?
     @objc func fire() { action?() }
+}
+
+/// Target for `.onLongPressGesture` — fires once when the press is recognized (`.began`).
+public final class PressTarget: NSObject {
+    var action: (@MainActor () -> Void)?
+    @objc func fire(_ recognizer: NSPressGestureRecognizer) {
+        if recognizer.state == .began { action?() }
+    }
+}
+
+/// Target for a `DragGesture` `NSPanGestureRecognizer`. Reconstructs SwiftUI's `DragGesture.Value`
+/// (start/current location + translation) and forwards changed/ended.
+public final class PanTarget: NSObject {
+    var onChanged: (@MainActor (DragGesture.Value) -> Void)?
+    var onEnded: (@MainActor (DragGesture.Value) -> Void)?
+    @objc func fire(_ recognizer: NSPanGestureRecognizer) {
+        guard let view = recognizer.view else { return }
+        let p = recognizer.location(in: view)
+        let t = recognizer.translation(in: view)
+        let translation = CGSize(width: t.x, height: t.y)
+        let location = CGPoint(x: p.x, y: p.y)
+        let start = CGPoint(x: p.x - t.x, y: p.y - t.y)
+        let value = DragGesture.Value(startLocation: start, location: location, translation: translation)
+        switch recognizer.state {
+        case .changed: onChanged?(value)
+        case .ended, .cancelled, .failed: onEnded?(value)
+        default: break
+        }
+    }
+}
+
+/// Target for a `MagnifyGesture` `NSMagnificationGestureRecognizer`. AppKit's `magnification` is the delta
+/// from 1.0, so the SwiftUI-style scale factor is `1 + magnification`.
+public final class MagnifyTarget: NSObject {
+    var onChanged: (@MainActor (MagnifyGesture.Value) -> Void)?
+    var onEnded: (@MainActor (MagnifyGesture.Value) -> Void)?
+    @objc func fire(_ recognizer: NSMagnificationGestureRecognizer) {
+        let value = MagnifyGesture.Value(magnification: 1 + recognizer.magnification)
+        switch recognizer.state {
+        case .changed: onChanged?(value)
+        case .ended, .cancelled, .failed: onEnded?(value)
+        default: break
+        }
+    }
+}
+
+/// Target for a `RotateGesture` `NSRotationGestureRecognizer` (rotation in radians).
+public final class RotateTarget: NSObject {
+    var onChanged: (@MainActor (RotateGesture.Value) -> Void)?
+    var onEnded: (@MainActor (RotateGesture.Value) -> Void)?
+    @objc func fire(_ recognizer: NSRotationGestureRecognizer) {
+        let value = RotateGesture.Value(rotation: Angle(radians: Double(recognizer.rotation)))
+        switch recognizer.state {
+        case .changed: onChanged?(value)
+        case .ended, .cancelled, .failed: onEnded?(value)
+        default: break
+        }
+    }
+}
+
+/// Owner of an `.onHover` `NSTrackingArea`; AppKit calls `mouseEntered`/`mouseExited` on the area's owner.
+public final class HoverTarget: NSObject {
+    var action: (@MainActor (Bool) -> Void)?
+    // NSTrackingArea messages its owner with these selectors; the owner needn't be an NSResponder.
+    @objc func mouseEntered(with event: NSEvent) { action?(true) }
+    @objc func mouseExited(with event: NSEvent) { action?(false) }
 }
 
 /// Bridges `NSTextField`'s live-edit notifications to a stored Swift closure.
@@ -1056,6 +1133,82 @@ public final class AppKitToolkit: AppToolkit {
         handle.view.addGestureRecognizer(recognizer)
         handle.tapRecognizer = recognizer
         handle.tapTarget = target
+    }
+
+    public func setLongPressHandler(_ handle: AppKitWidget, _ spec: LongPressGestureSpec?) {
+        if let existing = handle.longPressRecognizer {
+            handle.view.removeGestureRecognizer(existing)
+            handle.longPressRecognizer = nil; handle.longPressTarget = nil
+        }
+        guard let spec else { return }
+        let target = PressTarget()
+        target.action = spec.action
+        let recognizer = NSPressGestureRecognizer(target: target, action: #selector(PressTarget.fire(_:)))
+        recognizer.minimumPressDuration = spec.minimumDuration
+        handle.view.addGestureRecognizer(recognizer)
+        handle.longPressRecognizer = recognizer
+        handle.longPressTarget = target
+    }
+
+    public func setHoverHandler(_ handle: AppKitWidget, _ handler: (@MainActor (Bool) -> Void)?) {
+        if let existing = handle.hoverTrackingArea {
+            handle.view.removeTrackingArea(existing)
+            handle.hoverTrackingArea = nil; handle.hoverTarget = nil
+        }
+        guard let handler else { return }
+        let target = HoverTarget()
+        target.action = handler
+        // .inVisibleRect → the area auto-tracks the view's visible bounds (no manual resize bookkeeping).
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  owner: target, userInfo: nil)
+        handle.view.addTrackingArea(area)
+        handle.hoverTrackingArea = area
+        handle.hoverTarget = target
+    }
+
+    public func setDragHandler(_ handle: AppKitWidget, _ spec: DragGestureSpec?) {
+        if let existing = handle.panRecognizer {
+            handle.view.removeGestureRecognizer(existing)
+            handle.panRecognizer = nil; handle.panTarget = nil
+        }
+        guard let spec else { return }
+        let target = PanTarget()
+        target.onChanged = spec.onChanged
+        target.onEnded = spec.onEnded
+        let recognizer = NSPanGestureRecognizer(target: target, action: #selector(PanTarget.fire(_:)))
+        handle.view.addGestureRecognizer(recognizer)
+        handle.panRecognizer = recognizer
+        handle.panTarget = target
+    }
+
+    public func setMagnifyHandler(_ handle: AppKitWidget, _ spec: MagnifyGestureSpec?) {
+        if let existing = handle.magnifyRecognizer {
+            handle.view.removeGestureRecognizer(existing)
+            handle.magnifyRecognizer = nil; handle.magnifyTarget = nil
+        }
+        guard let spec else { return }
+        let target = MagnifyTarget()
+        target.onChanged = spec.onChanged
+        target.onEnded = spec.onEnded
+        let recognizer = NSMagnificationGestureRecognizer(target: target, action: #selector(MagnifyTarget.fire(_:)))
+        handle.view.addGestureRecognizer(recognizer)
+        handle.magnifyRecognizer = recognizer
+        handle.magnifyTarget = target
+    }
+
+    public func setRotateHandler(_ handle: AppKitWidget, _ spec: RotateGestureSpec?) {
+        if let existing = handle.rotateRecognizer {
+            handle.view.removeGestureRecognizer(existing)
+            handle.rotateRecognizer = nil; handle.rotateTarget = nil
+        }
+        guard let spec else { return }
+        let target = RotateTarget()
+        target.onChanged = spec.onChanged
+        target.onEnded = spec.onEnded
+        let recognizer = NSRotationGestureRecognizer(target: target, action: #selector(RotateTarget.fire(_:)))
+        handle.view.addGestureRecognizer(recognizer)
+        handle.rotateRecognizer = recognizer
+        handle.rotateTarget = target
     }
 
     public func contentSize() -> CGSize {

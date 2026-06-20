@@ -38,6 +38,12 @@ public final class QtWidget {
     // For `.onTapGesture`: the retained callback box + the installed event filter (so we can remove it).
     var tapBox: QtActionBox?
     var tapFilter: UnsafeMutableRawPointer?
+    var longPressBox: QtActionBox?
+    var longPressFilter: UnsafeMutableRawPointer?
+    var hoverBox: QtActionBox?
+    var hoverFilter: UnsafeMutableRawPointer?
+    var dragBox: QtActionBox?
+    var dragFilter: UnsafeMutableRawPointer?
     init(_ ptr: UnsafeMutableRawPointer) { self.ptr = ptr }
 }
 
@@ -45,6 +51,10 @@ public final class QtWidget {
 /// pointer. The owning ``QtWidget`` retains it, so it is passed unretained across the boundary.
 final class QtActionBox {
     var action: (@MainActor () -> Void)?
+    var longPress: (@MainActor () -> Void)?
+    var onHover: (@MainActor (Bool) -> Void)?
+    var dragChanged: (@MainActor (DragGesture.Value) -> Void)?
+    var dragEnded: (@MainActor (DragGesture.Value) -> Void)?
     var onChange: (@MainActor (String) -> Void)?
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
@@ -101,6 +111,25 @@ private let qtClickCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void =
     guard let userData else { return }
     let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.action?() }
+}
+
+private let qtLongPressCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { userData in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.longPress?() }
+}
+private let qtHoverCallback: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void = { userData, entered in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onHover?(entered != 0) }
+}
+private let qtDragCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Double, Double, Double, Int32) -> Void = { userData, sx, sy, cx, cy, ended in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    let value = DragGesture.Value(startLocation: CGPoint(x: sx, y: sy),
+                                  location: CGPoint(x: cx, y: cy),
+                                  translation: CGSize(width: cx - sx, height: cy - sy))
+    MainActor.assumeIsolated { if ended != 0 { box.dragEnded?(value) } else { box.dragChanged?(value) } }
 }
 
 private let qtChangedCallback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { text, userData in
@@ -1040,6 +1069,31 @@ public final class QtToolkit: AppToolkit {
         handle.tapBox = box   // retain so the C callback's user_data stays valid
         handle.tapFilter = hopqt_tap_install(handle.ptr, Int32(Swift.max(1, spec.count)), qtClickCallback,
                                              Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setLongPressHandler(_ handle: QtWidget, _ spec: LongPressGestureSpec?) {
+        if let f = handle.longPressFilter { hopqt_filter_remove(handle.ptr, f); handle.longPressFilter = nil; handle.longPressBox = nil }
+        guard let spec else { return }
+        let box = QtActionBox(); box.longPress = spec.action
+        handle.longPressBox = box
+        handle.longPressFilter = hopqt_longpress_install(handle.ptr, Int32(spec.minimumDuration * 1000),
+                                                         qtLongPressCallback, Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setHoverHandler(_ handle: QtWidget, _ handler: (@MainActor (Bool) -> Void)?) {
+        if let f = handle.hoverFilter { hopqt_filter_remove(handle.ptr, f); handle.hoverFilter = nil; handle.hoverBox = nil }
+        guard let handler else { return }
+        let box = QtActionBox(); box.onHover = handler
+        handle.hoverBox = box
+        handle.hoverFilter = hopqt_hover_install(handle.ptr, qtHoverCallback, Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setDragHandler(_ handle: QtWidget, _ spec: DragGestureSpec?) {
+        if let f = handle.dragFilter { hopqt_filter_remove(handle.ptr, f); handle.dragFilter = nil; handle.dragBox = nil }
+        guard let spec else { return }
+        let box = QtActionBox(); box.dragChanged = spec.onChanged; box.dragEnded = spec.onEnded
+        handle.dragBox = box
+        handle.dragFilter = hopqt_drag_install(handle.ptr, qtDragCallback, Unmanaged.passUnretained(box).toOpaque())
     }
 
     public func contentSize() -> CGSize {

@@ -1193,22 +1193,83 @@ struct MenuPlayground: View {
 /// Demonstrates `.onTapGesture`. Tapping the first box increments a counter and flips its color; the
 /// second responds only to a double-tap. Each tap mutates `@State`, which re-renders the counts — the same
 /// reactive path a `Button` uses, but driven by a native tap recognizer on every toolkit.
+/// A labeled, fixed-size gesture target. The caller chains the gesture modifier onto it.
+private struct GestureTile: View {
+    let label: String
+    let color: Color
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14).fill(color).frame(width: 116, height: 80)
+            Text(label).font(.caption).foregroundStyle(.white)
+        }
+        .frame(width: 116, height: 80)
+    }
+}
+
+/// Demonstrates the full gesture set: tap, double-tap, long-press, hover (the pointer gestures, on every
+/// toolkit) plus drag, magnify, and rotate (the value-carrying `Gesture`s — drag everywhere; magnify/rotate
+/// on AppKit & GTK via trackpad). Each tile/shape reacts live to the gesture's value.
 struct GesturePlayground: View {
     @State private var taps = 0
     @State private var doubleTaps = 0
+    @State private var longPresses = 0
+    @State private var hovering = false
+    @State private var dragLive = CGSize.zero       // translation during an active drag
+    @State private var dragCommitted = CGSize.zero  // accumulated across finished drags
+    @State private var scale: CGFloat = 1
+    @State private var rotation = Angle.zero
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text("Single taps: \(taps) — tap the big box (it counts taps and flips colour)")
-            RoundedRectangle(cornerRadius: 16)
-                .fill(taps % 2 == 0 ? Color.blue : Color.green)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onTapGesture { taps += 1 }
-            Text("Double taps: \(doubleTaps) — double-tap the strip below")
-            RoundedRectangle(cornerRadius: 16)
-                .fill(doubleTaps % 2 == 0 ? Color.orange : Color.purple)
-                .frame(maxWidth: .infinity, minHeight: 90, maxHeight: 90)
-                .onTapGesture(count: 2) { doubleTaps += 1 }
+        VStack(spacing: 18) {
+            Text("Tap · double-tap · long-press · hover").font(.headline)
+            HStack(spacing: 14) {
+                GestureTile(label: "Tap: \(taps)", color: taps % 2 == 0 ? .blue : .green)
+                    .onTapGesture { taps += 1 }
+                GestureTile(label: "Double: \(doubleTaps)", color: doubleTaps % 2 == 0 ? .orange : .purple)
+                    .onTapGesture(count: 2) { doubleTaps += 1 }
+                GestureTile(label: "Hold: \(longPresses)", color: .pink)
+                    .onLongPressGesture(minimumDuration: 0.5) { longPresses += 1 }
+                GestureTile(label: hovering ? "Hovering!" : "Hover me", color: hovering ? .mint : .gray)
+                    .onHover { hovering = $0 }
+            }
+
+            Text("Drag · magnify · rotate (drag with the mouse; pinch/rotate on a trackpad)").font(.headline)
+            HStack(spacing: 40) {
+                VStack(spacing: 6) {
+                    Circle().fill(.blue).frame(width: 80, height: 80)
+                        .offset(x: dragCommitted.width + dragLive.width, y: dragCommitted.height + dragLive.height)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { dragLive = $0.translation }
+                                .onEnded { value in
+                                    dragCommitted.width += value.translation.width
+                                    dragCommitted.height += value.translation.height
+                                    dragLive = .zero
+                                }
+                        )
+                    Text("Drag").font(.caption).foregroundStyle(.secondary)
+                }
+                VStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 16).fill(.orange).frame(width: 80, height: 80)
+                        .scaleEffect(scale)
+                        .gesture(
+                            MagnifyGesture()
+                                .onChanged { scale = $0.magnification }
+                                .onEnded { _ in scale = 1 }
+                        )
+                    Text(String(format: "Magnify ×%.2f", scale)).font(.caption).foregroundStyle(.secondary)
+                }
+                VStack(spacing: 6) {
+                    Rectangle().fill(.purple).frame(width: 80, height: 80)
+                        .rotationEffect(rotation)
+                        .gesture(
+                            RotateGesture()
+                                .onChanged { rotation = $0.rotation }
+                                .onEnded { _ in rotation = .zero }
+                        )
+                    Text(String(format: "Rotate %.0f°", rotation.degrees)).font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(24)
     }

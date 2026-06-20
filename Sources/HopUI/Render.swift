@@ -244,6 +244,14 @@ public struct RenderNode {
     /// Tap-gesture handler attached via `.onTapGesture`; the toolkit installs a native tap recognizer on
     /// this node's widget that invokes it. Not part of equality.
     public var onTap: TapGestureSpec?
+    /// Long-press / hover / drag / magnify / rotate handlers attached via `.onLongPressGesture` / `.onHover`
+    /// / `.gesture(DragGesture()/MagnifyGesture()/RotateGesture())`. Each toolkit installs the matching
+    /// native recognizer on this node's widget. Not part of equality; default nil so the init needn't set them.
+    public var onLongPress: LongPressGestureSpec?
+    public var onHover: (@MainActor (Bool) -> Void)?
+    public var dragGesture: DragGestureSpec?
+    public var magnifyGesture: MagnifyGestureSpec?
+    public var rotateGesture: RotateGestureSpec?
     /// For a `.lazyStack` node: called by the layout engine with a materialized row's measured extent, so
     /// the lazy stack can refine its (uniform) row-size estimate. Not part of equality.
     public var onRowExtent: (@MainActor (Double) -> Void)?
@@ -313,6 +321,8 @@ extension RenderNode {
     var hasWrapperState: Bool {
         !layout.modifiers.isEmpty || preferences != nil || tag != nil || tabLabel != nil
             || fileImporter != nil || fileExporter != nil || onTap != nil || patch != WidgetPatch()
+            || onLongPress != nil || onHover != nil || dragGesture != nil || magnifyGesture != nil
+            || rotateGesture != nil
     }
 
     /// Overlay onto `self` the modifier state a wrapping modifier accumulated on a composite reference
@@ -328,6 +338,11 @@ extension RenderNode {
         if let fi = ref.fileImporter { fileImporter = fi }
         if let fe = ref.fileExporter { fileExporter = fe }
         if let ot = ref.onTap { onTap = ot }
+        if let lp = ref.onLongPress { onLongPress = lp }
+        if let hv = ref.onHover { onHover = hv }
+        if let dg = ref.dragGesture { dragGesture = dg }
+        if let mg = ref.magnifyGesture { magnifyGesture = mg }
+        if let rg = ref.rotateGesture { rotateGesture = rg }
         patch.overlay(ref.patch)
     }
 }
