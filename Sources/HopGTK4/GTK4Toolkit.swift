@@ -128,6 +128,15 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
 
     // GTK invokes `activate` on the main thread, so assert main-actor isolation to build the window.
     MainActor.assumeIsolated {
+        // The CI screenshot harness is the only thing that sets HOP_PLAYGROUND_ID; use it to (1) trace each
+        // bring-up step to stderr — unbuffered, so it survives even if a later step blocks — and (2) switch on
+        // the present-first window-mapping workaround below. Normal app launches are unaffected.
+        let screenshotMode = ProcessInfo.processInfo.environment["HOP_PLAYGROUND_ID"] != nil
+        let trace: (String) -> Void = screenshotMode
+            ? { FileHandle.standardError.write(Data("[hop-gtk] \($0)\n".utf8)) }
+            : { _ in }
+
+        trace("activate: create window")
         let window = hop_window_new(appPointer.raw)!
         context.toolkit.window = window
         hop_window_set_title(window, context.title)
@@ -152,8 +161,24 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
         let toolkitPtr = Unmanaged.passUnretained(context.toolkit).toOpaque()
         hop_root_container_set_relayout(wrapper, gtk4RelayoutCallback, toolkitPtr)
 
-        context.onReady(GTK4Widget(container))
-        hop_window_present(window)
+        // Window mapping order. Normally we mount the HopUI tree first (which sets a custom titlebar /
+        // header bar via setToolbar, making this a client-side-decorated window) and THEN present — that's
+        // correct on a real desktop. But under the headless CI Xvfb a CSD toplevel never maps (it stays
+        // created-but-unmapped at 1×1, so every screenshot came out blank). In screenshot mode we therefore
+        // present FIRST: the shell maps immediately as an ordinary server-side-decorated window (openbox
+        // provides the frame), then the mount fills it via the allocate hook. The trade-off — the custom
+        // header bar is set on an already-realized window (a benign GTK warning, server-side frame instead) —
+        // is fine for the gallery. Real apps keep the original order, so their header bar is unaffected.
+        if screenshotMode {
+            trace("activate: present window (screenshot mode)")
+            hop_window_present(window)
+            trace("activate: mount begin")
+            context.onReady(GTK4Widget(container))
+            trace("activate: mount end")
+        } else {
+            context.onReady(GTK4Widget(container))
+            hop_window_present(window)
+        }
     }
 }
 
