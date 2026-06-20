@@ -539,10 +539,11 @@ void hopwinui_path_commit(void* h) {
 }
 void hopwinui_path_set_fill(void* h, double r, double g2, double b, double a) { if (auto p = as<muxs::Path>(h)) p.Fill(brush(r, g2, b, a)); }
 
-// GradientBrush.GradientStops() is projected as IObservableVector<GradientStop> (not the concrete
-// GradientStopCollection class), so take that exact type — .Append comes from its IVector base.
-static void hopwinui_add_stops(wf::Collections::IObservableVector<muxm::GradientStop> const& coll,
-                               const double* stops, int n) {
+// The two brushes return DIFFERENT collection types for GradientStops(): LinearGradientBrush (via
+// GradientBrush) gives the concrete GradientStopCollection, while RadialGradientBrush gives
+// IObservableVector<GradientStop>. Both support .Append(GradientStop), so accept either via a template.
+template <typename Coll>
+static void hopwinui_add_stops(Coll const& coll, const double* stops, int n) {
     for (int i = 0; i < n; i++) {
         const double* s = stops + i * 5;
         muxm::GradientStop gs;
