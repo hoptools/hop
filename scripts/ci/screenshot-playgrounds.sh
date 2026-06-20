@@ -40,9 +40,9 @@ mkdir -p "$OUTDIR"
 # (Overridable via env, mostly for testing the failure path.)
 MIN_COLORS="${MIN_COLORS:-64}"
 # Per-playground capture budget: retry the grab this many times (× delay) waiting for content to draw.
-# Generous, since a software-rendered GTK window on a headless CI display can be slow to paint its first frame
-# (OK pages break out as soon as content appears, so this only costs wall-clock on genuine failures).
-CAPTURE_TRIES="${CAPTURE_TRIES:-20}"
+# OK pages break out as soon as content appears, so this only costs wall-clock on genuine failures — keep it
+# modest so a fully-failing toolkit (29 playgrounds) doesn't risk a step timeout while we diagnose.
+CAPTURE_TRIES="${CAPTURE_TRIES:-12}"
 CAPTURE_DELAY="${CAPTURE_DELAY:-0.6}"
 
 # toolkit name → demo executable (mirrors scripts/run_demo.sh).
@@ -148,6 +148,19 @@ elif [ "$OS" = "Linux" ]; then
     export QT_QPA_PLATFORM=xcb QT_OPENGL=software LIBGL_ALWAYS_SOFTWARE=1
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/hop-xdg}"; mkdir -p "$XDG_RUNTIME_DIR"
 
+    # Startup diagnostics — a systemic capture failure (every shot "blank") is invisible from the per-shot
+    # lines alone, so dump the display + tool state once. Shows in the CI step log.
+    echo "── Linux capture environment ──────────────────────────────"
+    echo "  DISPLAY=$DISPLAY  GSK_RENDERER=${GSK_RENDERER:-}  GDK_BACKEND=${GDK_BACKEND:-}"
+    xdpyinfo 2>/dev/null | grep -E "dimensions:|depth of root|number of screens" | sed 's/^/  /' \
+        || echo "  xdpyinfo: unavailable"
+    for t in import magick identify xwininfo xprop xdotool xwd Xvfb; do
+        printf '  %-10s %s\n' "$t" "$(command -v "$t" 2>/dev/null || echo MISSING)"
+    done
+    echo "  ImageMagick: $(import -version 2>&1 | head -1 || true)"
+    echo "  gtk4: $(pkg-config --modversion gtk4 2>/dev/null || echo '?')"
+    echo "───────────────────────────────────────────────────────────"
+
     img_stat() {  # "<w> <h> <colors>" via ImageMagick (IM6 `identify` / IM7 `magick identify`)
         local s
         s="$(identify -format '%w %h %k' "$1" 2>/dev/null || magick identify -format '%w %h %k' "$1" 2>/dev/null)"
@@ -167,9 +180,30 @@ elif [ "$OS" = "Linux" ]; then
         echo "$chosen"
     }
 
-    launch_demo() { HOP_PLAYGROUND_ID="$2" "$BIN/$1" >/dev/null 2>&1 & DEMO_PID=$!; }
+    # Per-launch demo output (overwritten each launch). Surfaced by the first-failure diagnostics so GTK
+    # warnings / a crash that would otherwise vanish into /dev/null are visible in the CI step log.
+    DEMO_LOG="$(mktemp)"
+    launch_demo() { HOP_PLAYGROUND_ID="$2" "$BIN/$1" >"$DEMO_LOG" 2>&1 & DEMO_PID=$!; }
     find_window() { largest_window_for_pid "$1"; }
-    grab() { import -window "$1" "$2" 2>/dev/null || magick import -window "$1" "$2" 2>/dev/null; [ -s "$2" ]; }
+
+    # Capture window $1 to $2. Primary: import the window directly. Fallback: grab the whole X root and crop
+    # to the window's geometry — this works under the WM-less Xvfb in cases where direct per-window XGetImage
+    # fails (unmapped/redirected window). import's stderr is kept in LAST_GRAB_ERR for diagnostics.
+    LAST_GRAB_ERR=""
+    grab() {  # <wid> <out>
+        local wid="$1" out="$2" X Y WIDTH HEIGHT
+        LAST_GRAB_ERR="$( { import -window "$wid" "$out" || magick import -window "$wid" "$out"; } 2>&1 )"
+        [ -s "$out" ] && return 0
+        X=""; Y=""; WIDTH=""; HEIGHT=""
+        eval "$(xdotool getwindowgeometry --shell "$wid" 2>/dev/null)"   # sets X / Y / WIDTH / HEIGHT
+        if [ -n "${WIDTH:-}" ] && [ -n "${HEIGHT:-}" ]; then
+            LAST_GRAB_ERR="$LAST_GRAB_ERR || root-crop: $( {
+                import -window root -crop "${WIDTH}x${HEIGHT}+${X:-0}+${Y:-0}" +repage "$out" \
+                || magick import -window root -crop "${WIDTH}x${HEIGHT}+${X:-0}+${Y:-0}" +repage "$out"
+            } 2>&1 )"
+        fi
+        [ -s "$out" ]
+    }
 else
     echo "unsupported OS: $OS" >&2; exit 0
 fi
@@ -201,7 +235,47 @@ capture_one() {  # <exe> <playground> <outfile>
     echo "$status"
 }
 
+# One-shot deep diagnostics (Linux): launch the first playground, keep it alive, and dump the window state
+# plus the result of each capture method WHILE the window exists (capture_one kills the process before the
+# loop can inspect it). This is what pins down a systemic "every shot blank" failure on the next CI run.
+probe_linux() {  # <exe> <playground>
+    [ "$OS" = "Linux" ] || return 0
+    local exe="$1" pg="$2" wid="" pid probe="/tmp/hop-probe.png" err="/tmp/hop-probe.err" i
+    echo "══ Linux capture probe: $exe / $pg ════════════════════════"
+    launch_demo "$exe" "$pg"; pid="$DEMO_PID"
+    for i in $(seq 1 40); do sleep 0.25; wid="$(find_window "$pid")"; [ -n "$wid" ] && break; done
+    echo "  demo pid $pid alive: $(kill -0 "$pid" 2>/dev/null && echo yes || echo no)   window id: ${wid:-<none>}"
+    if [ -n "$wid" ]; then
+        sleep 2   # give it a moment to draw
+        echo "  --- xwininfo -id $wid ---"
+        xwininfo -id "$wid" 2>&1 | grep -E "Width:|Height:|Map State:|Depth:|Absolute upper-left" | sed 's/^/  | /'
+        echo "  --- xprop -id $wid (pid/state/type) ---"
+        xprop -id "$wid" _NET_WM_PID WM_STATE _NET_WM_STATE _NET_WM_WINDOW_TYPE 2>&1 | sed 's/^/  | /'
+        for method in "import -window $wid" "import -window root"; do
+            rm -f "$probe"
+            echo "  --- $method ---"
+            if $method "$probe" 2>"$err"; then
+                echo "  | OK: $(img_stat "$probe")  ($(human_size "$(file_size "$probe")"))"
+            else
+                echo "  | FAILED: $(head -3 "$err" | tr '\n' ' ')"
+            fi
+        done
+    fi
+    echo "  --- demo stdout/stderr (HOP_PLAYGROUND_ID=$pg) ---"
+    if [ -s "$DEMO_LOG" ]; then sed 's/^/  | /' "$DEMO_LOG"; else echo "  | (no output)"; fi
+    kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+    echo "═══════════════════════════════════════════════════════════"
+}
+
 # ---- capture loop ---------------------------------------------------------------------------------
+
+# Run the one-time deep probe before the loop (Linux), using the first built toolkit + first playground.
+if [ "$OS" = "Linux" ]; then
+    for tk in "${TOOLKITS[@]}"; do
+        probe_exe="$(exec_for "$tk")" || continue
+        [ -x "$BIN/$probe_exe" ] && { probe_linux "$probe_exe" "${PGS[0]}"; break; }
+    done
+fi
 
 ok=0; bad=0
 for tk in "${TOOLKITS[@]}"; do
@@ -225,6 +299,11 @@ for tk in "${TOOLKITS[@]}"; do
         else
             echo "  ✗ $tk / $pg  ($status; $dims, $size)" >&2; bad=$((bad+1))
             SUMMARY_ROWS+=("| \`$tk\` | \`$pg\` | ❌ $status | $dims | $size |")
+            # Surface the real loop's capture error once (Linux), in case it differs from the probe.
+            if [ "${FAILURE_DUMPED:-0}" != "1" ] && [ -n "${LAST_GRAB_ERR:-}" ]; then
+                FAILURE_DUMPED=1
+                echo "    ↳ first grab error: $(echo "$LAST_GRAB_ERR" | tr '\n' ' ' | cut -c1-300)" >&2
+            fi
             rm -f "$out"   # never leave a blank/failed shot in the gallery — let it show as "missing"
         fi
     done
