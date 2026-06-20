@@ -262,7 +262,23 @@ function Ensure-WinUIRuntime($bin) {
 $res = [HopWin]::SetResolution(1920, 1080)
 Write-Host "Display resolution -> 1920x1080 (result $res; 0 = ok)"
 
+# Human-readable byte size for the summary table.
+function Human-Size($b) {
+    if ($b -ge 1MB) { "{0:N1} MB" -f ($b / 1MB) }
+    elseif ($b -ge 1KB) { "{0:N1} KB" -f ($b / 1KB) }
+    else { "$b B" }
+}
+# "<w>×<h>" for a saved PNG (read + released so it doesn't lock the file), or "—" if unreadable.
+function Png-Dims($path) {
+    if (-not (Test-Path $path)) { return "—" }
+    try {
+        $img = [System.Drawing.Image]::FromFile($path)
+        $d = "$($img.Width)×$($img.Height)"; $img.Dispose(); return $d
+    } catch { return "—" }
+}
+
 $ok = 0; $bad = 0
+$summaryRows = @()   # one markdown row per attempted screenshot
 foreach ($tk in $Toolkits) {
     $exe = Exec-For $tk
     if (-not $exe) { Write-Host "unknown toolkit: $tk"; continue }
@@ -273,17 +289,40 @@ foreach ($tk in $Toolkits) {
         $env:HOP_PLAYGROUND_ID = $pg
         $out = Join-Path $OutDir "$($tk)__$($pg).png"
         $proc = $null
+        $status = "fail"
         try {
             $proc = Start-Process -FilePath $exePath -PassThru -ErrorAction Stop
-            if (Capture-Window $proc $out) { Write-Host "  OK $tk / $pg"; $ok++ }
-            else { Write-Host "  FAIL (no non-blank window) $tk / $pg"; $bad++ }
+            if (Capture-Window $proc $out) { $status = "ok" }
         } catch {
-            Write-Host "  FAIL $tk / $pg : $_"; $bad++
+            Write-Host "  EXC $tk / $pg : $_"
         } finally {
             if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
         }
+        $dims = Png-Dims $out
+        $size = if (Test-Path $out) { Human-Size ((Get-Item $out).Length) } else { "—" }
+        if ($status -eq "ok") {
+            Write-Host "  OK $tk / $pg  ($dims, $size)"; $ok++
+            $summaryRows += "| ``$tk`` | ``$pg`` | ✅ ok | $dims | $size |"
+        } else {
+            Write-Host "  FAIL (no non-blank window) $tk / $pg"; $bad++
+            $summaryRows += "| ``$tk`` | ``$pg`` | ❌ blank | $dims | $size |"
+        }
     }
 }
+
+# Per-screenshot summary -> stdout + $GITHUB_STEP_SUMMARY (so every shot's status is visible in the CI run).
+$summary = @()
+$summary += "### Screenshots — $($Toolkits -join ', ') (Windows)"
+$summary += ""
+$summary += "✅ **$ok** captured · ❌ **$bad** failed · $($pgs.Count) playground(s) × $($Toolkits.Count) toolkit(s)"
+$summary += ""
+$summary += "| Toolkit | Playground | Status | Dimensions | Size |"
+$summary += "| --- | --- | --- | --- | ---: |"
+$summary += $summaryRows
+$summaryText = $summary -join "`n"
+Write-Host $summaryText
+# UTF-8 so the table's em-dash / ✅ ❌ / × render correctly in the GitHub step summary.
+if ($env:GITHUB_STEP_SUMMARY) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summaryText -Encoding utf8 }
 
 Write-Host "Captured $ok screenshot(s) ($bad failed) -> $OutDir"
 Get-ChildItem $OutDir -ErrorAction SilentlyContinue | Format-Table Name, Length

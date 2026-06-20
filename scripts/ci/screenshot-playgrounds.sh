@@ -10,8 +10,16 @@
 # playgrounds is the Demo's `Playground` enum — the single source of truth, parsed below.
 #
 #   macOS: captures the demo's own window (CGWindowList → `screencapture -l<id>`), which works even when
-#          the window isn't frontmost.
-#   Linux: runs everything under a self-managed Xvfb (software rendering) and captures the X root.
+#          the window isn't frontmost. A background `caffeinate` keeps the (possibly headless) display awake.
+#   Linux: runs everything under a self-managed Xvfb (software rendering) and captures the window via xdotool.
+#
+# Every capture is VALIDATED for content (not just "a file exists"): an unrendered window is one flat color,
+# so we count distinct colors and retry until the page has actually drawn — a blank/slow first frame no longer
+# slips through as a "successful" but empty screenshot. A persistently-blank or window-less capture is recorded
+# as a failure and its file removed, so the published gallery shows "missing" rather than a misleading blank.
+#
+# A per-screenshot summary (status · dimensions · file size) is written to $GITHUB_STEP_SUMMARY (and stdout)
+# so the success/failure of every shot is visible in the CI run.
 #
 # Best-effort: a failed capture is logged but never fails the job (the build/test gate is what matters);
 # this script always exits 0. The CI step uploads whatever PNGs were produced.
@@ -25,6 +33,17 @@ OUTDIR="${1:?usage: screenshot-playgrounds.sh <outdir> <toolkit...>}"; shift || 
 [ "$#" -gt 0 ] || { echo "no toolkits given" >&2; exit 2; }
 TOOLKITS=("$@")
 mkdir -p "$OUTDIR"
+
+# A captured window is "rendered" once it has at least this many distinct colors. A blank/unrendered window
+# is one flat color (plus a few anti-aliased corner pixels on a retina capture); any real HopUI page carries
+# the sidebar list + toolbar + text, i.e. hundreds of colors (measured: ~440). 64 sits comfortably between.
+# (Overridable via env, mostly for testing the failure path.)
+MIN_COLORS="${MIN_COLORS:-64}"
+# Per-playground capture budget: retry the grab this many times (× delay) waiting for content to draw.
+# Generous, since a software-rendered GTK window on a headless CI display can be slow to paint its first frame
+# (OK pages break out as soon as content appears, so this only costs wall-clock on genuine failures).
+CAPTURE_TRIES="${CAPTURE_TRIES:-20}"
+CAPTURE_DELAY="${CAPTURE_DELAY:-0.6}"
 
 # toolkit name → demo executable (mirrors scripts/run_demo.sh).
 exec_for() {
@@ -61,32 +80,59 @@ echo "Binaries:  $BIN"
 export HOP_WINDOW_SIZE="${HOP_WINDOW_SIZE:-1280x800}"
 echo "Window size: $HOP_WINDOW_SIZE"
 
+# GTK4 defaults to the GPU-backed GL renderer ("ngl"). CI displays — GitHub's headless macOS runners and the
+# Xvfb virtual display on Linux — have no usable GPU, so the GL renderer produces a BLANK window (which is why
+# the GTK shots were blank/missing in the gallery). Force GTK's software cairo renderer on EVERY OS; it renders
+# identically to GL on a real display and is the headless-safe path. Non-GTK toolkits ignore GSK_*.
+export GSK_RENDERER="${GSK_RENDERER:-cairo}"
+
 OS="$(uname -s)"
 
+# ---- helpers: human-readable size, summary state --------------------------------------------------
+
+SUMMARY_ROWS=()                                   # markdown table rows, one per attempted screenshot
+SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-}"           # GitHub Actions step-summary file (empty when run locally)
+
+# Human-readable byte size (integer math, one decimal — no awk dependency).
+human_size() {
+    local b="${1:-0}"
+    if   [ "$b" -ge 1048576 ]; then echo "$((b/1048576)).$(((b%1048576)*10/1048576)) MB"
+    elif [ "$b" -ge 1024 ];    then echo "$((b/1024)).$(((b%1024)*10/1024)) KB"
+    else echo "${b} B"; fi
+}
+
+# Byte size of a file (BSD `stat -f%z` / GNU `stat -c%s`).
+file_size() { stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 0; }
+
 # ---- per-OS capture setup -------------------------------------------------------------------------
+# Each OS defines three primitives that the common capture_one() drives:
+#   launch_demo <exe> <pg>   -> starts the demo in the background; sets global DEMO_PID
+#   find_window <pid>        -> echoes an opaque window handle for that pid (empty if none yet)
+#   grab <handle> <outfile>  -> best-effort capture of that window to outfile (0 if bytes were written)
+# plus `img_stat <file>` echoing "<w> <h> <colors>".
+
+cleanup() {
+    [ -n "${CAFFEINATE_PID:-}" ] && kill "$CAFFEINATE_PID" 2>/dev/null || true
+    [ -n "${XVFB_PID:-}" ]       && kill "$XVFB_PID"       2>/dev/null || true
+}
+trap cleanup EXIT
 
 if [ "$OS" = "Darwin" ]; then
     WINID="$(mktemp -d)/winid"
     swiftc -O scripts/ci/winid.swift -o "$WINID" || { echo "failed to build winid helper" >&2; exit 0; }
+    # Dependency-free image stats (GitHub's macOS runners have no ImageMagick). If it fails to build, fall
+    # back to a sentinel high color count so captures still succeed (degraded: no dimensions / blank check).
+    IMGSTAT="$(mktemp -d)/imgstat"
+    swiftc -O scripts/ci/imgstat.swift -o "$IMGSTAT" 2>/dev/null || IMGSTAT=""
+    img_stat() { [ -n "$IMGSTAT" ] && "$IMGSTAT" "$1" 2>/dev/null || echo "0 0 999999"; }
 
-    capture_one() {  # <exe> <playground> <outfile>
-        local exe="$1" pg="$2" out="$3"
-        HOP_PLAYGROUND_ID="$pg" "$BIN/$exe" >/dev/null 2>&1 &
-        local pid=$! id=""
-        for _ in $(seq 1 40); do
-            sleep 0.25
-            id="$("$WINID" "$pid" 2>/dev/null)" || true
-            [ -n "$id" ] && break
-        done
-        sleep 1.0   # let it finish drawing
-        if [ -n "$id" ]; then
-            screencapture -o -x -l"$id" "$out" 2>/dev/null
-        else
-            screencapture -o -x "$out" 2>/dev/null   # fallback: whole display
-        fi
-        kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
-        [ -s "$out" ]
-    }
+    # Keep the (possibly headless / asleep) display awake for the whole run so screencapture sees real pixels.
+    caffeinate -d -i -u >/dev/null 2>&1 &
+    CAFFEINATE_PID=$!
+
+    launch_demo() { HOP_PLAYGROUND_ID="$2" "$BIN/$1" >/dev/null 2>&1 & DEMO_PID=$!; }
+    find_window() { "$WINID" "$1" 2>/dev/null || true; }
+    grab() { screencapture -o -x -l"$1" "$2" 2>/dev/null; [ -s "$2" ]; }
 
 elif [ "$OS" = "Linux" ]; then
     export DISPLAY="${DISPLAY:-:99}"
@@ -94,13 +140,19 @@ elif [ "$OS" = "Linux" ]; then
         # Virtual display larger than the window, so the (undecorated, top-left-mapped) window never clips.
         Xvfb "$DISPLAY" -screen 0 1920x1200x24 -nolisten tcp >/tmp/hop-xvfb.log 2>&1 &
         XVFB_PID=$!
-        trap '[ -n "${XVFB_PID:-}" ] && kill "$XVFB_PID" 2>/dev/null || true' EXIT
         for _ in $(seq 1 40); do xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break; sleep 0.25; done
     fi
-    # Force software rendering so GTK4/Qt render without a GPU on the virtual display.
-    export GDK_BACKEND=x11 GSK_RENDERER=cairo
+    # Force software rendering so GTK4/Qt render without a GPU on the virtual display (GTK via GSK_RENDERER
+    # above; Qt/GL via the flags below).
+    export GDK_BACKEND=x11
     export QT_QPA_PLATFORM=xcb QT_OPENGL=software LIBGL_ALWAYS_SOFTWARE=1
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/hop-xdg}"; mkdir -p "$XDG_RUNTIME_DIR"
+
+    img_stat() {  # "<w> <h> <colors>" via ImageMagick (IM6 `identify` / IM7 `magick identify`)
+        local s
+        s="$(identify -format '%w %h %k' "$1" 2>/dev/null || magick identify -format '%w %h %k' "$1" 2>/dev/null)"
+        echo "${s:-0 0 0}"
+    }
 
     # The largest top-level window owned by a pid (the app's main window) — via xdotool + _NET_WM_PID.
     largest_window_for_pid() {
@@ -115,32 +167,39 @@ elif [ "$OS" = "Linux" ]; then
         echo "$chosen"
     }
 
-    # Capture window $1 to $2 (IM6 `import` / IM7 `magick import`); succeeds only if the result is non-blank
-    # (an unrendered window is a single flat color → ~1 unique color; any real page has hundreds).
-    grab_window() {  # <wid> <out>
-        import -window "$1" "$2" 2>/dev/null || magick import -window "$1" "$2" 2>/dev/null
-        [ -s "$2" ] || return 1
-        local k; k="$(identify -format '%k' "$2" 2>/dev/null || magick identify -format '%k' "$2" 2>/dev/null)"
-        case "$k" in ''|*[!0-9]*) return 1;; esac
-        [ "$k" -ge 5 ]
-    }
-
-    capture_one() {  # <exe> <playground> <outfile>
-        local exe="$1" pg="$2" out="$3"
-        HOP_PLAYGROUND_ID="$pg" "$BIN/$exe" >/dev/null 2>&1 &
-        local pid=$! wid="" ok=1
-        for _ in $(seq 1 40); do sleep 0.25; wid="$(largest_window_for_pid "$pid")"; [ -n "$wid" ] && break; done
-        if [ -n "$wid" ]; then
-            # Retry until the window has actually drawn content (not a blank/flat first frame).
-            for _ in $(seq 1 16); do sleep 0.6; if grab_window "$wid" "$out"; then ok=0; break; fi; done
-        fi
-        kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
-        if [ "$ok" -ne 0 ]; then rm -f "$out"; return 1; fi   # never leave a blank behind
-        return 0
-    }
+    launch_demo() { HOP_PLAYGROUND_ID="$2" "$BIN/$1" >/dev/null 2>&1 & DEMO_PID=$!; }
+    find_window() { largest_window_for_pid "$1"; }
+    grab() { import -window "$1" "$2" 2>/dev/null || magick import -window "$1" "$2" 2>/dev/null; [ -s "$2" ]; }
 else
     echo "unsupported OS: $OS" >&2; exit 0
 fi
+
+# ---- common capture: launch, wait for window, retry until content drawn ----------------------------
+
+# Echoes a status word: ok | blank | nowindow. Leaves the last captured bytes at <out> (even on blank) so the
+# caller can report its dimensions/size before deciding whether to keep it.
+capture_one() {  # <exe> <playground> <outfile>
+    local exe="$1" pg="$2" out="$3"
+    rm -f "$out"
+    launch_demo "$exe" "$pg"
+    local pid="$DEMO_PID" win="" status="nowindow" i w h k
+    for i in $(seq 1 40); do
+        sleep 0.25
+        win="$(find_window "$pid")" || true
+        [ -n "$win" ] && break
+    done
+    if [ -n "$win" ]; then
+        status="blank"
+        for i in $(seq 1 "$CAPTURE_TRIES"); do
+            sleep "$CAPTURE_DELAY"
+            grab "$win" "$out" || continue
+            read -r w h k < <(img_stat "$out")
+            if [ "${k:-0}" -ge "$MIN_COLORS" ]; then status="ok"; break; fi
+        done
+    fi
+    kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+    echo "$status"
+}
 
 # ---- capture loop ---------------------------------------------------------------------------------
 
@@ -150,9 +209,40 @@ for tk in "${TOOLKITS[@]}"; do
     if [ ! -x "$BIN/$exe" ]; then echo "skip $tk: $BIN/$exe not built" >&2; continue; fi
     for pg in "${PGS[@]}"; do
         out="$OUTDIR/${tk}__${pg}.png"
-        if capture_one "$exe" "$pg" "$out"; then echo "  ✓ $tk / $pg"; ok=$((ok+1)); else echo "  ✗ $tk / $pg" >&2; bad=$((bad+1)); fi
+        status="$(capture_one "$exe" "$pg" "$out")"
+
+        # Measure whatever we captured (even a blank) so the summary always carries dimensions + size.
+        dims="—"; size="—"
+        if [ -f "$out" ]; then
+            read -r w h _ < <(img_stat "$out")
+            [ "${w:-0}" -gt 0 ] && dims="${w}×${h}"
+            size="$(human_size "$(file_size "$out")")"
+        fi
+
+        if [ "$status" = "ok" ]; then
+            echo "  ✓ $tk / $pg  ($dims, $size)"; ok=$((ok+1))
+            SUMMARY_ROWS+=("| \`$tk\` | \`$pg\` | ✅ ok | $dims | $size |")
+        else
+            echo "  ✗ $tk / $pg  ($status; $dims, $size)" >&2; bad=$((bad+1))
+            SUMMARY_ROWS+=("| \`$tk\` | \`$pg\` | ❌ $status | $dims | $size |")
+            rm -f "$out"   # never leave a blank/failed shot in the gallery — let it show as "missing"
+        fi
     done
 done
+
+# ---- summary (stdout + $GITHUB_STEP_SUMMARY) ------------------------------------------------------
+
+{
+    echo "### Screenshots — ${TOOLKITS[*]} (${OS})"
+    echo ""
+    echo "✅ **${ok}** captured · ❌ **${bad}** failed · ${#PGS[@]} playground(s) × ${#TOOLKITS[@]} toolkit(s)"
+    echo ""
+    echo "| Toolkit | Playground | Status | Dimensions | Size |"
+    echo "| --- | --- | --- | --- | ---: |"
+    for row in "${SUMMARY_ROWS[@]}"; do echo "$row"; done
+} | tee /tmp/hop-screenshot-summary.md
+
+[ -n "$SUMMARY_FILE" ] && cat /tmp/hop-screenshot-summary.md >> "$SUMMARY_FILE" || true
 
 echo "Captured $ok screenshot(s) ($bad failed) → $OUTDIR"
 ls -la "$OUTDIR" || true
