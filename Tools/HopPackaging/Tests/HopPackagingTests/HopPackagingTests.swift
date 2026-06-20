@@ -138,3 +138,29 @@ import Testing
         }
     }
 }
+
+/// The Windows MSIX bundles only the Swift RUNTIME DLLs from the toolchain bin, not the compiler/tooling DLLs
+/// that share that directory (which had bloated the MSIX to ~300 MB). Lock the classification down.
+@Suite struct SwiftRuntimeBundlingTests {
+    @Test func keepsRuntimeFamilies() {
+        // Swift stdlib + overlays, Foundation, libdispatch, and the ICU data — the app needs these at runtime.
+        for dll in ["swiftCore.dll", "swift_Concurrency.dll", "swift_StringProcessing.dll", "swiftWinSDK.dll",
+                    "swiftCRT.dll", "swiftDispatch.dll", "swiftObservation.dll", "swiftRemoteMirror.dll",
+                    "Foundation.dll", "FoundationEssentials.dll", "FoundationInternationalization.dll",
+                    "FoundationNetworking.dll", "FoundationXML.dll", "_FoundationICU.dll",
+                    "dispatch.dll", "BlocksRuntime.dll", "icudt.dll"] {
+            #expect(WindowsBackend.isSwiftRuntimeDLL(dll), "should bundle runtime DLL \(dll)")
+        }
+    }
+
+    @Test func dropsToolingAndCompilerDLLs() {
+        // Compiler/tooling DLLs that sit in the same bin but must never ship in the app.
+        for dll in ["LLVM-C.dll", "libclang.dll", "clang.dll", "lldCommon.dll", "sourcekitdInProc.dll",
+                    "_InternalSwiftScan.dll", "_InternalSwiftStaticMirror.dll", "libIndexStore.dll",
+                    "swiftDemangle.dll"] {
+            #expect(!WindowsBackend.isSwiftRuntimeDLL(dll), "should NOT bundle tooling DLL \(dll)")
+        }
+        #expect(!WindowsBackend.isSwiftRuntimeDLL("swiftCore.lib"))   // not a DLL
+        #expect(!WindowsBackend.isSwiftRuntimeDLL("vcruntime140.dll")) // MSVC redist isn't a Swift runtime DLL
+    }
+}

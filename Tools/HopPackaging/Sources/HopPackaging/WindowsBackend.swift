@@ -79,6 +79,11 @@ public struct WindowsBackend: PlatformBackend {
 
     /// Copy the Swift runtime DLLs from the toolchain's bin (the directory containing swift.exe) next to the
     /// app, so the packaged executable launches without the Swift toolchain installed on the target machine.
+    ///
+    /// That bin holds the runtime redistributables the app needs (swiftCore, Foundation*, dispatch, the ICU
+    /// data, …) but ALSO the compiler/tooling DLLs (LLVM, clang, sourcekit, _InternalSwiftScan, …) — hundreds
+    /// of MB that must NOT ship in an app. Copying the whole directory is what bloated the Windows MSIX to
+    /// ~300 MB; we copy only the runtime families, matched by their stable name prefixes.
     private func bundleSwiftRuntime(_ context: PackagingContext, into appDir: FilePath) async throws {
         let swiftPath = try await context.runner.capture("where", ["swift.exe"])
         let firstLine = swiftPath.split(whereSeparator: \.isNewline).first.map(String.init) ?? swiftPath
@@ -86,10 +91,36 @@ public struct WindowsBackend: PlatformBackend {
             throw PackagingError.toolUnavailable(tool: "swift.exe", hint: "needed to locate the Swift runtime DLLs.")
         }
         let binDir = FilePath(firstLine).removingLastComponent()
+        var copied: [String] = []
+        var skipped = 0
         for entry in (try? FileOps.contents(of: binDir)) ?? [] where entry.lowercased().hasSuffix(".dll") {
-            try FileOps.copy(binDir.appending(entry), to: appDir.appending(entry))
+            if Self.isSwiftRuntimeDLL(entry) {
+                try FileOps.copy(binDir.appending(entry), to: appDir.appending(entry))
+                copied.append(entry)
+            } else {
+                skipped += 1
+            }
         }
-        context.logger.detail("Bundled Swift runtime DLLs from \(binDir.string)")
+        if copied.isEmpty {
+            context.logger.warn("No Swift runtime DLLs matched in \(binDir.string); the app may fail to launch.")
+        }
+        context.logger.detail("Bundled \(copied.count) Swift runtime DLL(s) from \(binDir.string) "
+            + "(skipped \(skipped) non-runtime): \(copied.sorted().joined(separator: ", "))")
+    }
+
+    /// Whether `name` is a Swift/Foundation runtime redistributable DLL (vs a compiler/tooling DLL that shares
+    /// the toolchain bin). Conservative: keeps every DLL in the Swift stdlib/Foundation/dispatch/ICU families
+    /// (the same runtime DLLs the old copy-everything bundled), and drops only the known tooling families.
+    static func isSwiftRuntimeDLL(_ name: String) -> Bool {
+        let n = name.lowercased()
+        guard n.hasSuffix(".dll") else { return false }
+        // Tooling/compiler DLLs that can sit beside the runtime — never ship these (large, unused at runtime).
+        let tooling = ["llvm", "clang", "lld", "sourcekit", "_internalswift", "libindexstore", "swiftdemangle"]
+        if tooling.contains(where: n.hasPrefix) { return false }
+        // Runtime families: Swift stdlib/overlays (swift*), Foundation (foundation*, _foundationicu), libdispatch
+        // (dispatch, swiftDispatch, BlocksRuntime), and ICU data (icu*).
+        let runtime = ["swift", "foundation", "_foundation", "icu", "dispatch", "blocksruntime"]
+        return runtime.contains(where: n.hasPrefix)
     }
 
     private func appxManifest(for meta: ResolvedMetadata, arch: Arch) -> String {
