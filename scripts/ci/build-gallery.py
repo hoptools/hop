@@ -12,7 +12,7 @@
 # screenshots-linux-gtk/, screenshots-windows-qt/, …), each containing <toolkit>__<playground>.png files.
 # <output_dir> gets an index.html plus an images/ folder.
 
-import sys, os, re, shutil, html
+import sys, os, re, shutil, html, hashlib
 
 # Map a downloaded artifact's directory name to a human platform label. Artifacts are named
 # "screenshots-<os>-<toolkit>" — one per CI job (e.g. screenshots-macos-appkit, screenshots-linux-gtk,
@@ -68,18 +68,78 @@ def variant_rank(platform, toolkit):
         return len(VARIANT_ORDER)
 
 
+# ---- installers (downloadable app packages) -------------------------------------------------------
+# The packaging jobs upload one artifact per platform/toolkit (artifact name == filename), e.g.
+# hopdemo-macos-aarch64-appkit.dmg / hopdemo-linux-x86_64-qt.flatpak / hopdemo-windows-x86_64-winui.msix.
+# We copy them into the published site (downloads/) so the links resolve, with a verifiable checksum.
+INSTALLER_EXTS = (".dmg", ".flatpak", ".msix", ".appimage", ".zip", ".exe", ".pkg")
+INSTALLER_OS_ORDER = {"macos": 0, "linux": 1, "windows": 2}
+TOOLKIT_ORDER = {"swiftui": 0, "appkit": 1, "gtk4": 2, "qt": 3, "winui": 4}
+FORMAT_LABEL = {"dmg": "Disk image (.dmg)", "flatpak": "Flatpak (.flatpak)", "msix": "MSIX (.msix)",
+                "appimage": "AppImage", "pkg": "Installer (.pkg)", "zip": "Zip archive", "exe": "Installer (.exe)"}
+
+
+def human_size(n):
+    """Bytes -> human-readable, e.g. 1536 -> '1.5 KB'."""
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+
+
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def installer_meta(fn):
+    """hopdemo-<os>-<arch>-<toolkit>.<ext> -> (platform_label, toolkit_label, format_label, sortkey)."""
+    m = re.match(r"hopdemo-([a-z0-9]+)-([a-z0-9_]+)-([a-z0-9]+)\.(.+)$", fn)
+    if not m:
+        return (fn, "", fn.rsplit(".", 1)[-1] if "." in fn else "", (9, 9, fn))
+    osid, arch, tk, ext = m.groups()
+    plat = f"{OS_LABEL.get(osid, osid)} · {arch}"
+    sortkey = (INSTALLER_OS_ORDER.get(osid, 9), TOOLKIT_ORDER.get(tk, 9), fn)
+    return (plat, TOOLKIT_NAME.get(tk, tk), FORMAT_LABEL.get(ext, ext), sortkey)
+
+
+def collect_installers(installers_dir, outdir):
+    """Find installer files under installers_dir (recursively — download-artifact may nest per artifact),
+    copy each into outdir/downloads/, and return a list sorted by platform/toolkit with size + sha256."""
+    found, seen = [], set()
+    if not installers_dir or not os.path.isdir(installers_dir):
+        return found
+    dldir = os.path.join(outdir, "downloads")
+    for root, _, files in os.walk(installers_dir):
+        for fn in files:
+            if not fn.lower().endswith(INSTALLER_EXTS) or fn in seen:
+                continue
+            seen.add(fn)
+            src = os.path.join(root, fn)
+            os.makedirs(dldir, exist_ok=True)
+            shutil.copy(src, os.path.join(dldir, fn))
+            found.append({"file": fn, "rel": f"downloads/{fn}",
+                          "size": os.path.getsize(src), "sha256": sha256_of(src)})
+    found.sort(key=lambda it: installer_meta(it["file"])[3])
+    return found
+
+
 def main():
     pos, opts = [], {}
     args = sys.argv[1:]
     i = 0
     while i < len(args):
-        if args[i] in ("--title", "--subtitle", "--source", "--run-url"):
+        if args[i] in ("--title", "--subtitle", "--source", "--run-url", "--installers"):
             opts[args[i].lstrip("-")] = args[i + 1]; i += 2
         else:
             pos.append(args[i]); i += 1
     if len(pos) < 2:
-        print("usage: build-gallery.py <artifacts_dir> <output_dir> [--title T] [--subtitle S] [--source PATH]",
-              file=sys.stderr)
+        print("usage: build-gallery.py <artifacts_dir> <output_dir> [--title T] [--subtitle S] "
+              "[--source PATH] [--installers DIR]", file=sys.stderr)
         sys.exit(2)
     artifacts, outdir = pos[0], pos[1]
     title = opts.get("title", "HopUI — Playground Screenshots")
@@ -118,6 +178,9 @@ def main():
     total = sum(len(v) for v in shots.values())
     # Each shown playground is expected on every variant; count the ones that didn't get produced.
     missing = sum(1 for pg in pgs for v in VARIANT_ORDER if v not in shots[pg])
+
+    # Installers (copied into outdir/downloads/ with size + checksum) for the bottom-of-page download table.
+    installers = collect_installers(opts.get("installers"), outdir)
 
     out = []
     out.append("<!doctype html><html lang='en'><head><meta charset='utf-8'>")
@@ -158,6 +221,15 @@ figcaption b { color:var(--fg); font-weight:600; }
 figcaption .na { color:var(--muted); font-style:italic; }
 footer { padding:24px; color:var(--muted); font-size:13px; border-top:1px solid var(--line); }
 a.full { color:inherit; text-decoration:none; }
+/* Downloads table: installers for each platform/toolkit, with size + verifiable SHA-256. */
+table.downloads { width:100%; border-collapse:collapse; font-size:13px; }
+table.downloads th, table.downloads td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line);
+                                          vertical-align:top; }
+table.downloads th { color:var(--muted); font-weight:600; white-space:nowrap; }
+table.downloads td.num { white-space:nowrap; color:var(--muted); }
+table.downloads a { color:var(--fg); font-weight:600; }
+code.sha { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px;
+           color:var(--muted); word-break:break-all; }
 </style>""")
     out.append("</head><body>")
     out.append("<header>")
@@ -165,6 +237,8 @@ a.full { color:inherit; text-decoration:none; }
     sub_html = html.escape(subtitle) if subtitle else f"{total} screenshots · {len(pgs)} playgrounds"
     if not subtitle and missing:
         sub_html += f" · {missing} missing"
+    if not subtitle and installers:
+        sub_html += f" · <a href='#downloads'>{len(installers)} downloads</a>"
     if run_url:
         label = f"CI run #{html.escape(run_id)}" if run_id else "CI run"
         sub_html += f" · <a href='{html.escape(run_url)}'>{label}</a>"
@@ -175,7 +249,10 @@ a.full { color:inherit; text-decoration:none; }
 
     # quick-jump nav
     out.append("<nav>")
-    out.append(" ".join(f"<a href='#{html.escape(p)}'>{html.escape(prettify(p))}</a>" for p in pgs))
+    nav_links = [f"<a href='#{html.escape(p)}'>{html.escape(prettify(p))}</a>" for p in pgs]
+    if installers:
+        nav_links.append("<a href='#downloads'>Downloads</a>")
+    out.append(" ".join(nav_links))
     out.append("</nav>")
 
     for pg in pgs:
@@ -203,6 +280,28 @@ a.full { color:inherit; text-decoration:none; }
                     f"<figcaption>{cap} · <span class='na'>missing</span></figcaption></figure>")
         out.append("</div></section>")
 
+    # Downloads: every platform/toolkit installer this build produced, hosted alongside the page, with file
+    # size and a SHA-256 checksum for verification.
+    if installers:
+        out.append("<section id='downloads'><h2>Downloads</h2>")
+        out.append("<div class='sub'>Demo-app installers from this build — verify with the SHA-256 checksum "
+                   "(e.g. <code class='sha'>shasum -a 256 &lt;file&gt;</code>).</div>")
+        out.append("<table class='downloads'><thead><tr>"
+                   "<th>Platform</th><th>Toolkit</th><th>Format</th><th>File</th><th>Size</th><th>SHA-256</th>"
+                   "</tr></thead><tbody>")
+        for it in installers:
+            plat, tk, fmt, _ = installer_meta(it["file"])
+            out.append(
+                "<tr>"
+                f"<td>{html.escape(plat)}</td>"
+                f"<td>{html.escape(tk)}</td>"
+                f"<td>{html.escape(fmt)}</td>"
+                f"<td><a href='{html.escape(it['rel'])}' download>{html.escape(it['file'])}</a></td>"
+                f"<td class='num'>{human_size(it['size'])}</td>"
+                f"<td><code class='sha'>{it['sha256']}</code></td>"
+                "</tr>")
+        out.append("</tbody></table></section>")
+
     foot = "Generated by scripts/ci/build-gallery.py"
     if run_url:
         foot += f" · <a href='{html.escape(run_url)}'>{html.escape(run_url)}</a>"
@@ -211,7 +310,8 @@ a.full { color:inherit; text-decoration:none; }
 
     with open(os.path.join(outdir, "index.html"), "w", encoding="utf-8") as f:
         f.write("\n".join(out))
-    print(f"Gallery: {len(pgs)} playgrounds, {total} screenshots, {missing} missing -> {outdir}/index.html")
+    print(f"Gallery: {len(pgs)} playgrounds, {total} screenshots, {missing} missing, "
+          f"{len(installers)} installers -> {outdir}/index.html")
 
 
 if __name__ == "__main__":

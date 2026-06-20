@@ -463,8 +463,20 @@ jobs:
         with:
           pattern: screenshots-*
           path: artifacts
+      # Pull in every platform/toolkit installer (the hopdemo-* artifacts the packaging jobs uploaded) so the
+      # gallery can host them and link to each with a checksum. merge-multiple flattens them into one dir;
+      # continue-on-error so a build where no installer was produced still publishes the gallery.
+      - name: Download all installer artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: hopdemo-*
+          path: installers
+          merge-multiple: true
       - name: Build gallery
-        run: python3 scripts/ci/build-gallery.py artifacts _site --title "HopUI · Playground Screenshots"
+        run: |
+          python3 scripts/ci/build-gallery.py artifacts _site \
+            --title "HopUI · Playground Screenshots" --installers installers
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
