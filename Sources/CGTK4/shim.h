@@ -1339,6 +1339,12 @@ static inline void hop_a11y_description(void *w, const char *s) {
 static inline void hop_a11y_hidden(void *w, int hidden) {
     gtk_accessible_update_state(GTK_ACCESSIBLE(w), GTK_ACCESSIBLE_STATE_HIDDEN, hidden ? TRUE : FALSE, -1);
 }
+// `.accessibilityIdentifier`: GTK's stable, programmatic widget id is the widget *name* — visible in
+// GtkInspector and surfaced to AT-SPI tooling (the analog of Qt's objectName / AppKit's
+// accessibilityIdentifier / WinUI's AutomationId). GTK has no dedicated AT-SPI "id" property to set.
+static inline void hop_a11y_identifier(void *w, const char *s) {
+    gtk_widget_set_name(GTK_WIDGET(w), s);
+}
 
 // --- GObject lifetime ------------------------------------------------------
 

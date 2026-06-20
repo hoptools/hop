@@ -837,6 +837,8 @@ public final class GTK4Toolkit: AppToolkit {
             hop_a11y_description(handle.widget, description)
         }
         if let hidden = patch.accessibilityHidden { hop_a11y_hidden(handle.widget, hidden ? 1 : 0) }
+        // `.accessibilityIdentifier` → the widget name (GTK's programmatic id; analogous to Qt's objectName).
+        if let identifier = patch.accessibilityIdentifier { hop_a11y_identifier(handle.widget, identifier) }
     }
 
     /// Builds an inline CSS rule (wrapped in `* { }` for the widget node) for the patch's styling.
