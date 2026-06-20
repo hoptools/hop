@@ -1319,7 +1319,9 @@ public final class AppKitToolkit: AppToolkit {
         if spec.scaleX != 1 || spec.scaleY != 1 { ctx.scaleBy(x: spec.scaleX, y: spec.scaleY) }
         ctx.translateBy(x: -cx, y: -cy)
 
-        if let fill = spec.fill {
+        if let gradient = spec.gradient {
+            drawGradient(gradient, path: cgPath, rect: rect, context: ctx)
+        } else if let fill = spec.fill {
             ctx.setFillColor(nsColor(fill).cgColor)
             ctx.addPath(cgPath)
             ctx.fillPath()
@@ -1330,6 +1332,50 @@ public final class AppKitToolkit: AppToolkit {
             ctx.addPath(cgPath)
             ctx.strokePath()
         }
+    }
+
+    /// Paint a gradient fill clipped to `cgPath`. Linear/radial use CoreGraphics' native drawing; angular
+    /// (which CoreGraphics has no primitive for) is rendered as a fan of interpolated wedges.
+    static func drawGradient(_ spec: GradientSpec, path cgPath: CGPath, rect: CGRect, context ctx: CGContext) {
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.addPath(cgPath)
+        ctx.clip()
+        switch spec.kind {
+        case .linear(let start, let end):
+            guard let g = cgGradient(spec.stops) else { return }
+            ctx.drawLinearGradient(g, start: start.point(in: rect), end: end.point(in: rect),
+                                   options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        case .radial(let center, let r0, let r1):
+            guard let g = cgGradient(spec.stops) else { return }
+            let c = center.point(in: rect)
+            ctx.drawRadialGradient(g, startCenter: c, startRadius: r0, endCenter: c, endRadius: r1,
+                                   options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        case .angular(let center, let startAngle, let endAngle):
+            let c = center.point(in: rect)
+            let radius = hypot(rect.width, rect.height)   // cover the whole clipped region
+            let total = endAngle.radians - startAngle.radians
+            let segments = 360
+            for i in 0..<segments {
+                let f0 = Double(i) / Double(segments), f1 = Double(i + 1) / Double(segments)
+                ctx.setFillColor(nsColor(spec.color(at: CGFloat((f0 + f1) / 2))).cgColor)
+                ctx.beginPath()
+                ctx.move(to: c)
+                ctx.addArc(center: c, radius: radius,
+                           startAngle: CGFloat(startAngle.radians + total * f0),
+                           endAngle: CGFloat(startAngle.radians + total * f1), clockwise: false)
+                ctx.closePath()
+                ctx.fillPath()
+            }
+        }
+    }
+
+    /// Build a `CGGradient` from HopUI gradient stops (device RGB).
+    static func cgGradient(_ stops: [Gradient.Stop]) -> CGGradient? {
+        guard !stops.isEmpty else { return nil }
+        let colors = stops.map { nsColor($0.color).cgColor } as CFArray
+        let locations = stops.map { CGFloat($0.location) }
+        return CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: locations)
     }
 
     public func run(title: String, onReady: @escaping @MainActor (AppKitWidget) -> Void) {

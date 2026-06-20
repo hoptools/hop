@@ -1077,12 +1077,65 @@ public final class QtToolkit: AppToolkit {
         defer { hopqt_path_free(qpath) }
         appendPath(spec.path(rect), to: qpath)
 
-        if let fill = spec.fill {
+        if let gradient = spec.gradient {
+            fillGradient(gradient, rect: rect, qpath: qpath, painter: painter)
+        } else if let fill = spec.fill {
             hopqt_painter_fill_path(painter, qpath, fill.red, fill.green, fill.blue, fill.opacity)
         }
         if let stroke = spec.stroke {
             hopqt_painter_stroke_path(painter, qpath, stroke.red, stroke.green, stroke.blue, stroke.opacity, Double(spec.lineWidth))
         }
+    }
+
+    /// Fill `qpath` with a gradient via Qt's native gradient brushes (all three are native to Qt).
+    static func fillGradient(_ spec: GradientSpec, rect: CGRect, qpath: UnsafeMutableRawPointer, painter: UnsafeMutableRawPointer) {
+        switch spec.kind {
+        case .linear(let start, let end):
+            let p0 = start.point(in: rect), p1 = end.point(in: rect)
+            var packed = packStops(spec.stops)
+            packed.withUnsafeBufferPointer { buf in
+                hopqt_painter_fill_path_linear(painter, qpath, Double(p0.x), Double(p0.y), Double(p1.x), Double(p1.y),
+                                               buf.baseAddress, Int32(spec.stops.count))
+            }
+        case .radial(let center, let r0, let r1):
+            let c = center.point(in: rect)
+            let end = Swift.max(Double(r1), 0.0001)
+            // QRadialGradient runs 0→radius; remap our [startRadius, endRadius] stop locations into that span.
+            let remapped = spec.stops.map {
+                Gradient.Stop(color: $0.color, location: CGFloat((Double(r0) + Double($0.location) * (Double(r1) - Double(r0))) / end))
+            }
+            var packed = packStops(remapped)
+            packed.withUnsafeBufferPointer { buf in
+                hopqt_painter_fill_path_radial(painter, qpath, Double(c.x), Double(c.y), end, buf.baseAddress, Int32(remapped.count))
+            }
+        case .angular(let center, let startAngle, let endAngle):
+            let c = center.point(in: rect)
+            let sweep = endAngle.degrees - startAngle.degrees
+            // QConicalGradient covers a full 360° counter-clockwise from its angle; SwiftUI sweeps clockwise.
+            // Reverse the stops (location → 1−location) for direction, scale into the sweep fraction, and
+            // clamp the remaining arc to the last color for a partial sweep.
+            var qstops = spec.stops.map {
+                Gradient.Stop(color: $0.color, location: CGFloat((1 - Double($0.location)) * sweep / 360.0))
+            }.reversed().map { $0 }
+            if sweep < 360, let first = spec.stops.first {
+                qstops.append(Gradient.Stop(color: first.color, location: 1.0))
+            }
+            var packed = packStops(qstops)
+            packed.withUnsafeBufferPointer { buf in
+                hopqt_painter_fill_path_conical(painter, qpath, Double(c.x), Double(c.y), -startAngle.degrees,
+                                                buf.baseAddress, Int32(qstops.count))
+            }
+        }
+    }
+
+    private static func packStops(_ stops: [Gradient.Stop]) -> [Double] {
+        var out: [Double] = []
+        out.reserveCapacity(stops.count * 5)
+        for stop in stops {
+            out.append(Double(stop.location))
+            out.append(stop.color.red); out.append(stop.color.green); out.append(stop.color.blue); out.append(stop.color.opacity)
+        }
+        return out
     }
 
     /// Replay a HopUI ``Path`` into a QPainterPath via the native Qt path primitives.

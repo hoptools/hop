@@ -19,6 +19,8 @@
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QFileDialog>
 #include <QtGui/QColor>
+#include <QtGui/QBrush>
+#include <QtGui/QGradient>
 #include <QtGui/QFont>
 #include <QtGui/QFontMetrics>
 #include <QtWidgets/QListView>
@@ -714,6 +716,51 @@ void hopqt_painter_fill_path(void *painter, void *path, double r, double g, doub
     QColor color;
     color.setRgbF(r, g, b, a);
     static_cast<QPainter *>(painter)->fillPath(*static_cast<QPainterPath *>(path), QBrush(color));
+}
+
+static void hopqt_apply_stops(QGradient &gradient, const double *stops, int stopCount) {
+    // QGradient collapses stops that share a position — setColorAt() (which setStops() also calls
+    // internally) REPLACES the color when a stop already exists at that exact offset, so a hard stop
+    // (two coincident stops, e.g. red@0.5 + blue@0.5) becomes a single stop → a smooth blend. Force the
+    // positions strictly increasing by nudging any coincident stop a hair forward; a sub-pixel-wide
+    // transition renders as the intended sharp edge.
+    QGradientStops list;
+    list.reserve(stopCount);
+    double previous = -1.0;
+    for (int i = 0; i < stopCount; i++) {
+        const double *s = stops + i * 5;
+        QColor c;
+        c.setRgbF(s[1], s[2], s[3], s[4]);
+        double pos = s[0];
+        if (pos <= previous) pos = previous + 1e-5;
+        if (pos > 1.0) pos = 1.0;
+        previous = pos;
+        list.append(QGradientStop(pos, c));
+    }
+    gradient.setStops(list);
+}
+
+void hopqt_painter_fill_path_linear(void *painter, void *path, double x0, double y0, double x1, double y1,
+                                    const double *stops, int stopCount) {
+    QLinearGradient gradient(x0, y0, x1, y1);
+    hopqt_apply_stops(gradient, stops, stopCount);
+    static_cast<QPainter *>(painter)->fillPath(*static_cast<QPainterPath *>(path), QBrush(gradient));
+}
+
+void hopqt_painter_fill_path_radial(void *painter, void *path, double cx, double cy, double radius,
+                                    const double *stops, int stopCount) {
+    QRadialGradient gradient(cx, cy, radius);   // focal point defaults to the center
+    hopqt_apply_stops(gradient, stops, stopCount);
+    static_cast<QPainter *>(painter)->fillPath(*static_cast<QPainterPath *>(path), QBrush(gradient));
+}
+
+void hopqt_painter_fill_path_conical(void *painter, void *path, double cx, double cy, double startAngleDeg,
+                                     const double *stops, int stopCount) {
+    // QConicalGradient takes a start angle in degrees; the Swift side has already mapped the stop locations
+    // (and angle) to match SwiftUI's clockwise sweep.
+    QConicalGradient gradient(cx, cy, startAngleDeg);
+    hopqt_apply_stops(gradient, stops, stopCount);
+    static_cast<QPainter *>(painter)->fillPath(*static_cast<QPainterPath *>(path), QBrush(gradient));
 }
 
 void hopqt_painter_stroke_path(void *painter, void *path, double r, double g, double b, double a, double width) {

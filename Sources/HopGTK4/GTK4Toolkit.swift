@@ -1224,7 +1224,9 @@ public final class GTK4Toolkit: AppToolkit {
         cairo_new_path(cr)
         appendPath(spec.path(rect), to: cr)
 
-        if let fill = spec.fill {
+        if let gradient = spec.gradient {
+            fillGradient(gradient, rect: rect, cr: cr)
+        } else if let fill = spec.fill {
             cairo_set_source_rgba(cr, fill.red, fill.green, fill.blue, fill.opacity)
             if spec.stroke != nil { cairo_fill_preserve(cr) } else { cairo_fill(cr) }
         }
@@ -1232,6 +1234,52 @@ public final class GTK4Toolkit: AppToolkit {
             cairo_set_source_rgba(cr, stroke.red, stroke.green, stroke.blue, stroke.opacity)
             cairo_set_line_width(cr, Double(spec.lineWidth))
             cairo_stroke(cr)
+        }
+    }
+
+    /// Fill the current Cairo path with a gradient. Linear/radial use Cairo patterns; angular (no Cairo
+    /// primitive) is rendered as a fan of interpolated wedges clipped to the path. Consumes the path.
+    static func fillGradient(_ spec: GradientSpec, rect: CGRect, cr: OpaquePointer) {
+        switch spec.kind {
+        case .linear(let start, let end):
+            let p0 = start.point(in: rect), p1 = end.point(in: rect)
+            guard let pat = cairo_pattern_create_linear(Double(p0.x), Double(p0.y), Double(p1.x), Double(p1.y)) else { return }
+            addStops(spec.stops, to: pat)
+            cairo_set_source(cr, pat)
+            cairo_fill(cr)
+            cairo_pattern_destroy(pat)
+        case .radial(let center, let r0, let r1):
+            let c = center.point(in: rect)
+            guard let pat = cairo_pattern_create_radial(Double(c.x), Double(c.y), Double(r0), Double(c.x), Double(c.y), Double(r1)) else { return }
+            addStops(spec.stops, to: pat)
+            cairo_set_source(cr, pat)
+            cairo_fill(cr)
+            cairo_pattern_destroy(pat)
+        case .angular(let center, let startAngle, let endAngle):
+            let c = center.point(in: rect)
+            cairo_save(cr)
+            cairo_clip(cr)   // clip to the path (consumes it), then paint wedges over the region
+            let radius = Double(hypot(rect.width, rect.height))
+            let total = endAngle.radians - startAngle.radians
+            let segments = 360
+            for i in 0..<segments {
+                let f0 = Double(i) / Double(segments), f1 = Double(i + 1) / Double(segments)
+                let color = spec.color(at: CGFloat((f0 + f1) / 2))
+                cairo_new_path(cr)
+                cairo_move_to(cr, Double(c.x), Double(c.y))
+                cairo_arc(cr, Double(c.x), Double(c.y), radius, startAngle.radians + total * f0, startAngle.radians + total * f1)
+                cairo_close_path(cr)
+                cairo_set_source_rgba(cr, color.red, color.green, color.blue, color.opacity)
+                cairo_fill(cr)
+            }
+            cairo_restore(cr)
+        }
+    }
+
+    private static func addStops(_ stops: [Gradient.Stop], to pattern: OpaquePointer) {
+        for stop in stops {
+            cairo_pattern_add_color_stop_rgba(pattern, Double(stop.location),
+                                              stop.color.red, stop.color.green, stop.color.blue, stop.color.opacity)
         }
     }
 

@@ -496,6 +496,39 @@ void hopwinui_path_commit(void* h) {
     g_pb.figure = nullptr; g_pb.figures.clear();
 }
 void hopwinui_path_set_fill(void* h, double r, double g2, double b, double a) { if (auto p = as<muxs::Path>(h)) p.Fill(brush(r, g2, b, a)); }
+
+static void hopwinui_add_stops(muxm::GradientStopCollection const& coll, const double* stops, int n) {
+    for (int i = 0; i < n; i++) {
+        const double* s = stops + i * 5;
+        muxm::GradientStop gs;
+        gs.Offset(s[0]);
+        gs.Color(col(s[1], s[2], s[3], s[4]));
+        coll.Append(gs);
+    }
+}
+
+void hopwinui_path_set_fill_linear(void* h, double x0, double y0, double x1, double y1, const double* stops, int n) {
+    auto p = as<muxs::Path>(h); if (!p) return;
+    muxm::LinearGradientBrush b;
+    b.MappingMode(muxm::BrushMappingMode::Absolute);
+    b.StartPoint(winrt::Windows::Foundation::Point{ (float)x0, (float)y0 });
+    b.EndPoint(winrt::Windows::Foundation::Point{ (float)x1, (float)y1 });
+    hopwinui_add_stops(b.GradientStops(), stops, n);
+    p.Fill(b);
+}
+
+void hopwinui_path_set_fill_radial(void* h, double cx, double cy, double rx, double ry, const double* stops, int n) {
+    auto p = as<muxs::Path>(h); if (!p) return;
+    muxm::RadialGradientBrush b;
+    b.MappingMode(muxm::BrushMappingMode::Absolute);
+    b.Center(winrt::Windows::Foundation::Point{ (float)cx, (float)cy });
+    b.GradientOrigin(winrt::Windows::Foundation::Point{ (float)cx, (float)cy });
+    b.RadiusX(rx);
+    b.RadiusY(ry);
+    hopwinui_add_stops(b.GradientStops(), stops, n);
+    p.Fill(b);
+}
+
 void hopwinui_path_set_stroke(void* h, double r, double g2, double b, double a, double thickness) {
     if (auto p = as<muxs::Path>(h)) { p.Stroke(brush(r, g2, b, a)); p.StrokeThickness(thickness); }
 }

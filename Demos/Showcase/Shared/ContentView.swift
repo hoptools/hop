@@ -83,7 +83,7 @@ enum DemoTab: String, Hashable, CaseIterable {
 enum Playground: String, CaseIterable, Hashable {
     case slider, button, toggle, stepper, picker, comboBox, datePicker, colorPicker, textField, secureField, progress
     case text, accessibility, label, link
-    case shapes, images, color
+    case shapes, images, color, gradient
     case layout, disclosure, groupBox, form, tabs
     case observable, environment, menus, files
     case gesture
@@ -108,6 +108,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .shapes: return "Shapes"
         case .images: return "Images"
         case .color: return "Color"
+        case .gradient: return "Gradient"
         case .layout: return "Layout"
         case .disclosure: return "Disclosure"
         case .groupBox: return "GroupBox"
@@ -148,7 +149,7 @@ let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "text", title: "Text & Accessibility",
                    items: [.text, .accessibility, .label, .link]),
     SidebarSection(id: "graphics", title: "Graphics",
-                   items: [.shapes, .images, .color]),
+                   items: [.shapes, .images, .color, .gradient]),
     SidebarSection(id: "containers", title: "Containers",
                    items: [.layout, .disclosure, .groupBox, .form, .tabs]),
     SidebarSection(id: "data", title: "Data & Menus",
@@ -270,6 +271,8 @@ public struct ContentView: View {
                 ImagePlayground()
             } else if selection == .color {
                 ColorPlayground()
+            } else if selection == .gradient {
+                GradientPlayground()
             } else if selection == .menus {
                 MenuPlayground()
             } else if selection == .comboBox {
@@ -776,6 +779,142 @@ struct ShapesPlayground: View {
                 Arrow().fill(.blue).frame(width: 56, height: 40)
                 House().fill(.brown).frame(width: 50, height: 50)
                 Triangle().stroke(.green, lineWidth: 3).frame(width: 48, height: 48)
+            }
+        }
+    }
+}
+
+/// A labeled gradient sample: the gradient (or gradient-filled shape) above a caption.
+private struct GradCell<Content: View>: View {
+    let title: String
+    let content: Content
+    init(_ title: String, @ViewBuilder _ content: () -> Content) { self.title = title; self.content = content() }
+    var body: some View {
+        VStack(spacing: 4) {
+            content
+            Text(title).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Demonstrates `LinearGradient`, `RadialGradient`, and `AngularGradient` across a wide range of
+/// configurations — as standalone views, as `Shape` fills, with custom stops, partial sweeps, transforms,
+/// and alpha fades. Linear & radial are native on every toolkit; angular is native on Qt, hand-rendered on
+/// AppKit/GTK, and approximated (radial) on WinUI, which has no conic brush.
+struct GradientPlayground: View {
+    private let rainbow: [Color] = [.red, .orange, .yellow, .green, .blue, .purple]
+    private let cellW: CGFloat = 100
+    private let cellH: CGFloat = 60
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text("LinearGradient — direction via start/end UnitPoints, even & custom stops")
+            HStack(spacing: 12) {
+                GradCell("top→bottom") {
+                    LinearGradient(colors: [.blue, .purple], startPoint: .top, endPoint: .bottom)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("leading→trailing") {
+                    LinearGradient(colors: [.red, .yellow], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("diagonal") {
+                    LinearGradient(colors: [.green, .blue], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("rainbow") {
+                    LinearGradient(gradient: Gradient(colors: rainbow), startPoint: .leading, endPoint: .trailing)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("hard stops") {
+                    LinearGradient(stops: [
+                        .init(color: .red, location: 0), .init(color: .red, location: 0.5),
+                        .init(color: .blue, location: 0.5), .init(color: .blue, location: 1),
+                    ], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: cellW, height: cellH)
+                }
+            }
+
+            Text("RadialGradient — center, off-center, ring (startRadius>0), multi-stop")
+            HStack(spacing: 12) {
+                GradCell("center") {
+                    RadialGradient(colors: [.yellow, .red], center: .center, startRadius: 0, endRadius: 55)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("off-center") {
+                    RadialGradient(colors: [.white, .blue], center: .topLeading, startRadius: 0, endRadius: 90)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("ring") {
+                    RadialGradient(colors: [.clear, .orange, .clear], center: .center, startRadius: 8, endRadius: 50)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("multi-stop") {
+                    RadialGradient(gradient: Gradient(colors: [.white, .cyan, .blue, .indigo]),
+                                   center: .center, startRadius: 0, endRadius: 55)
+                        .frame(width: cellW, height: cellH)
+                }
+            }
+
+            Text("AngularGradient — full sweep, partial arc, rotated start angle")
+            HStack(spacing: 12) {
+                GradCell("full sweep") {
+                    AngularGradient(colors: rainbow + [.red], center: .center)
+                        .frame(width: cellH, height: cellH)
+                }
+                GradCell("0°→180°") {
+                    AngularGradient(colors: [.yellow, .red], center: .center,
+                                    startAngle: .degrees(0), endAngle: .degrees(180))
+                        .frame(width: cellH, height: cellH)
+                }
+                GradCell("start 90°") {
+                    AngularGradient(gradient: Gradient(colors: rainbow + [.red]), center: .center, angle: .degrees(90))
+                        .frame(width: cellH, height: cellH)
+                }
+                GradCell("two-tone") {
+                    AngularGradient(colors: [.mint, .indigo, .mint], center: .center)
+                        .frame(width: cellH, height: cellH)
+                }
+            }
+
+            Text("As Shape fills — Circle, RoundedRectangle, Capsule, Ellipse")
+            HStack(spacing: 16) {
+                GradCell("linear") {
+                    Circle().fill(LinearGradient(colors: [.pink, .orange], startPoint: .top, endPoint: .bottom))
+                        .frame(width: cellH, height: cellH)
+                }
+                GradCell("radial") {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(RadialGradient(colors: [.white, .blue], center: .center, startRadius: 0, endRadius: 45))
+                        .frame(width: 84, height: cellH)
+                }
+                GradCell("angular") {
+                    Capsule().fill(AngularGradient(colors: rainbow + [.red], center: .center))
+                        .frame(width: 92, height: cellH)
+                }
+                GradCell("linear") {
+                    Ellipse().fill(LinearGradient(colors: [.teal, .indigo], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: 92, height: cellH)
+                }
+            }
+
+            Text("Advanced — rotated view, alpha fade, opacity stops over a backdrop")
+            HStack(spacing: 16) {
+                GradCell("rotated 20°") {
+                    LinearGradient(colors: [.purple, .cyan], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: cellW, height: cellH)
+                        .rotationEffect(.degrees(20))
+                }
+                GradCell("alpha fade") {
+                    LinearGradient(colors: [.blue, Color(red: 0, green: 0, blue: 1, opacity: 0)],
+                                   startPoint: .leading, endPoint: .trailing)
+                        .frame(width: cellW, height: cellH)
+                }
+                GradCell("scaled 1.2×") {
+                    RadialGradient(colors: [.yellow, .red, .purple], center: .center, startRadius: 0, endRadius: 40)
+                        .frame(width: cellH, height: cellH)
+                        .scaleEffect(1.2)
+                }
             }
         }
     }

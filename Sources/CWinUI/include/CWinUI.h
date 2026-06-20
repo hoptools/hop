@@ -151,6 +151,11 @@ void hopwinui_path_add_ellipse(void* h, double cx, double cy, double rx, double 
 void hopwinui_path_commit(void* h);
 void hopwinui_path_set_fill(void* h, double r, double g, double b, double a);
 void hopwinui_path_set_stroke(void* h, double r, double g, double b, double a, double thickness);
+// Gradient fills (absolute coordinates). `stops` is `stopCount` packed 5-tuples (offset, r, g, b, a).
+// WinUI XAML has LinearGradientBrush + RadialGradientBrush but no conic brush — angular gradients are
+// approximated with the radial brush by the Swift side.
+void hopwinui_path_set_fill_linear(void* h, double x0, double y0, double x1, double y1, const double* stops, int stopCount);
+void hopwinui_path_set_fill_radial(void* h, double cx, double cy, double rx, double ry, const double* stops, int stopCount);
 void hopwinui_path_clear_fill(void* h);
 void hopwinui_path_clear_stroke(void* h);
 void hopwinui_path_set_transform(void* h, double cx, double cy, double tx, double ty, double rotation_deg, double sx, double sy);

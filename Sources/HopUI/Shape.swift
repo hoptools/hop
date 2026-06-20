@@ -15,6 +15,9 @@ import Foundation  // sin/cos for the transform-bleed bounding box
 public struct ShapeSpec {
     public let path: @MainActor (CGRect) -> Path
     public var fill: Color?
+    /// A gradient fill (takes precedence over `fill` when set). Backends paint it with their native
+    /// gradient API, clipped to the path. See ``GradientSpec``.
+    public var gradient: GradientSpec?
     public var stroke: Color?
     public var lineWidth: CGFloat
     public var offset: CGSize
@@ -23,10 +26,11 @@ public struct ShapeSpec {
     public var scaleY: CGFloat
 
     public init(path: @escaping @MainActor (CGRect) -> Path,
-                fill: Color? = nil, stroke: Color? = nil, lineWidth: CGFloat = 1,
+                fill: Color? = nil, gradient: GradientSpec? = nil, stroke: Color? = nil, lineWidth: CGFloat = 1,
                 offset: CGSize = .zero, rotation: Angle = .zero, scaleX: CGFloat = 1, scaleY: CGFloat = 1) {
         self.path = path
         self.fill = fill
+        self.gradient = gradient
         self.stroke = stroke
         self.lineWidth = lineWidth
         self.offset = offset
@@ -80,13 +84,15 @@ public struct _ShapeView: View, PrimitiveView {
     func makeNode(_ context: RenderContext) -> RenderNode {
         var resolved = spec
         let scheme = currentEnvironment().colorScheme
-        // A bare shape fills with the inherited foreground color (default black), like SwiftUI.
-        if resolved.fill == nil, resolved.stroke == nil {
+        // A bare shape fills with the inherited foreground color (default black), like SwiftUI — unless it
+        // already has a gradient fill.
+        if resolved.fill == nil, resolved.stroke == nil, resolved.gradient == nil {
             resolved.fill = currentEnvironment().foregroundColor ?? .black
         }
         // Resolve any adaptive content colors (`.primary`/`.secondary`/…) for the current scheme.
         resolved.fill = resolved.fill?.resolve(in: scheme)
         resolved.stroke = resolved.stroke?.resolve(in: scheme)
+        resolved.gradient = resolved.gradient?.resolved(in: scheme)
         return RenderNode(id: context.id, component: ShapeComponent(spec: resolved))
     }
 }
@@ -151,6 +157,12 @@ struct _ShapeNodeModifier<Content: View>: View, PrimitiveView {
             ?? RenderNode(id: context.id, component: ShapeComponent(spec: ShapeSpec(path: { _ in Path() })))
         if var shape = node.component as? ShapeComponent {
             modify(&shape.spec)
+            // A modifier may have just set a fresh fill/stroke/gradient (e.g. `.fill(.primary)` or
+            // `.fill(LinearGradient(...))`); resolve adaptive colors for the current scheme.
+            let scheme = currentEnvironment().colorScheme
+            shape.spec.fill = shape.spec.fill?.resolve(in: scheme)
+            shape.spec.stroke = shape.spec.stroke?.resolve(in: scheme)
+            shape.spec.gradient = shape.spec.gradient?.resolved(in: scheme)
             node.component = shape
         }
         return node

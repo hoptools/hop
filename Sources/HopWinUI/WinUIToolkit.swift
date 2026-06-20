@@ -866,11 +866,58 @@ public final class WinUIToolkit: AppToolkit {
             }
         }
         hopwinui_path_commit(h)
-        if let fill = spec.fill { hopwinui_path_set_fill(h, fill.red, fill.green, fill.blue, fill.opacity) } else { hopwinui_path_clear_fill(h) }
+        if let gradient = spec.gradient {
+            fillGradient(gradient, rect: rect, handle: h)
+        } else if let fill = spec.fill {
+            hopwinui_path_set_fill(h, fill.red, fill.green, fill.blue, fill.opacity)
+        } else {
+            hopwinui_path_clear_fill(h)
+        }
         if let stroke = spec.stroke { hopwinui_path_set_stroke(h, stroke.red, stroke.green, stroke.blue, stroke.opacity, Double(spec.lineWidth)) } else { hopwinui_path_clear_stroke(h) }
         hopwinui_path_set_transform(h, Double(rect.width / 2), Double(rect.height / 2),
                                     Double(spec.offset.width), Double(spec.offset.height),
                                     spec.rotation.degrees, Double(spec.scaleX), Double(spec.scaleY))
+    }
+
+    /// Fill the path with a gradient brush. WinUI has Linear/RadialGradientBrush but no conic brush, so an
+    /// angular gradient is approximated with a center-out radial brush (documented limitation).
+    private func fillGradient(_ spec: GradientSpec, rect: CGRect, handle h: UnsafeMutableRawPointer) {
+        switch spec.kind {
+        case .linear(let start, let end):
+            let p0 = start.point(in: rect), p1 = end.point(in: rect)
+            var packed = Self.packStops(spec.stops)
+            packed.withUnsafeBufferPointer { buf in
+                hopwinui_path_set_fill_linear(h, Double(p0.x), Double(p0.y), Double(p1.x), Double(p1.y),
+                                              buf.baseAddress, Int32(spec.stops.count))
+            }
+        case .radial(let center, let r0, let r1):
+            let c = center.point(in: rect)
+            let end = Swift.max(Double(r1), 0.0001)
+            let remapped = spec.stops.map {
+                Gradient.Stop(color: $0.color, location: CGFloat((Double(r0) + Double($0.location) * (Double(r1) - Double(r0))) / end))
+            }
+            var packed = Self.packStops(remapped)
+            packed.withUnsafeBufferPointer { buf in
+                hopwinui_path_set_fill_radial(h, Double(c.x), Double(c.y), end, end, buf.baseAddress, Int32(remapped.count))
+            }
+        case .angular(let center, _, _):
+            let c = center.point(in: rect)
+            let radius = (Double(rect.width) * Double(rect.width) + Double(rect.height) * Double(rect.height)).squareRoot() / 2
+            var packed = Self.packStops(spec.stops)
+            packed.withUnsafeBufferPointer { buf in
+                hopwinui_path_set_fill_radial(h, Double(c.x), Double(c.y), radius, radius, buf.baseAddress, Int32(spec.stops.count))
+            }
+        }
+    }
+
+    private static func packStops(_ stops: [Gradient.Stop]) -> [Double] {
+        var out: [Double] = []
+        out.reserveCapacity(stops.count * 5)
+        for stop in stops {
+            out.append(Double(stop.location))
+            out.append(stop.color.red); out.append(stop.color.green); out.append(stop.color.blue); out.append(stop.color.opacity)
+        }
+        return out
     }
 
     // MARK: - App / run loop

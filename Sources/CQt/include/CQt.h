@@ -166,6 +166,14 @@ void hopqt_painter_rotate(void *painter, double degrees);
 void hopqt_painter_scale(void *painter, double sx, double sy);
 void hopqt_painter_fill_path(void *painter, void *path, double r, double g, double b, double a);
 void hopqt_painter_stroke_path(void *painter, void *path, double r, double g, double b, double a, double width);
+// Gradient fills. `stops` is `stopCount` packed 5-tuples (location, r, g, b, a). Qt supports all three
+// natively (QLinearGradient / QRadialGradient / QConicalGradient).
+void hopqt_painter_fill_path_linear(void *painter, void *path, double x0, double y0, double x1, double y1,
+                                    const double *stops, int stopCount);
+void hopqt_painter_fill_path_radial(void *painter, void *path, double cx, double cy, double radius,
+                                    const double *stops, int stopCount);
+void hopqt_painter_fill_path_conical(void *painter, void *path, double cx, double cy, double startAngleDeg,
+                                     const double *stops, int stopCount);
 
 // QPainterPath construction (built by Swift, then filled/stroked, then freed).
 void *hopqt_path_new(void);
