@@ -202,7 +202,7 @@ jobs:
       - name: Install GTK4, flatpak (+ Xvfb/ImageMagick)
         run: |
           scripts/ci/apt-install.sh libgtk-4-dev pkg-config libsystemd-dev \
-            xvfb x11-utils x11-apps xdotool openbox imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme \
+            xvfb x11-utils x11-apps xdotool openbox dbus-x11 imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme \
             flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50

@@ -114,6 +114,7 @@ file_size() { stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 0
 cleanup() {
     [ -n "${CAFFEINATE_PID:-}" ] && kill "$CAFFEINATE_PID" 2>/dev/null || true
     [ -n "${WM_PID:-}" ]         && kill "$WM_PID"         2>/dev/null || true
+    [ -n "${DBUS_PID:-}" ]       && kill "$DBUS_PID"       2>/dev/null || true
     [ -n "${XVFB_PID:-}" ]       && kill "$XVFB_PID"       2>/dev/null || true
 }
 trap cleanup EXIT
@@ -154,6 +155,17 @@ elif [ "$OS" = "Linux" ]; then
     else
         echo "WARNING: no window manager (openbox) found — GTK windows may not map under Xvfb" >&2
     fi
+    # A private session D-Bus is REQUIRED for GTK: hop-demo-gtk4 is a GtkApplication (a GApplication), which
+    # registers over the session bus before it emits `activate` (where the window is built). The runner has NO
+    # session bus and `dbus-launch` autolaunch fails ("Unable to acquire session bus … Child process exited
+    # with code 1"), so `activate` never fired and the toplevel was never created — that's why the GTK window
+    # stayed the 1×1 GDK leader window while Qt (no D-Bus) worked. Start one bus for all demos so registration
+    # succeeds immediately; export its address so each demo inherits it (no wrapper, so pids stay correct).
+    if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-launch >/dev/null 2>&1; then
+        eval "$(dbus-launch --sh-syntax)"   # sets DBUS_SESSION_BUS_ADDRESS + DBUS_SESSION_BUS_PID
+        export DBUS_SESSION_BUS_ADDRESS
+        DBUS_PID="${DBUS_SESSION_BUS_PID:-}"
+    fi
     # Force software rendering so GTK4/Qt render without a GPU on the virtual display (GTK via GSK_RENDERER
     # above; Qt/GL via the flags below).
     export GDK_BACKEND=x11
@@ -165,6 +177,7 @@ elif [ "$OS" = "Linux" ]; then
     echo "── Linux capture environment ──────────────────────────────"
     echo "  DISPLAY=$DISPLAY  GSK_RENDERER=${GSK_RENDERER:-}  GDK_BACKEND=${GDK_BACKEND:-}"
     echo "  window manager: $([ -n "${WM_PID:-}" ] && echo "openbox (pid $WM_PID)" || echo NONE)"
+    echo "  session D-Bus: ${DBUS_SESSION_BUS_ADDRESS:-<none>}"
     xdpyinfo 2>/dev/null | grep -E "dimensions:|depth of root|number of screens" | sed 's/^/  /' \
         || echo "  xdpyinfo: unavailable"
     for t in import magick identify xwininfo xprop xdotool xwd Xvfb; do

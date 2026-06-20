@@ -118,6 +118,15 @@ final class GTK4ActionBox {
     var bleedY: Double = 0
 }
 
+// Screenshot-harness tracing: HOP_PLAYGROUND_ID is set only by the CI screenshot script. Writes to stderr
+// (unbuffered) so a step that blocks still leaves a trail. Used to localise where GTK app bring-up stalls on
+// the headless runner (e.g. GApplication blocking on session-bus registration before `activate` fires).
+func gtk4Trace(_ message: String) {
+    if ProcessInfo.processInfo.environment["HOP_PLAYGROUND_ID"] != nil {
+        FileHandle.standardError.write(Data("[hop-gtk] \(message)\n".utf8))
+    }
+}
+
 // Top-level (non-capturing) C callbacks. C function pointers cannot capture, so context is passed
 // through the GTK `user_data` argument and recovered via `Unmanaged`.
 
@@ -128,15 +137,11 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
 
     // GTK invokes `activate` on the main thread, so assert main-actor isolation to build the window.
     MainActor.assumeIsolated {
-        // The CI screenshot harness is the only thing that sets HOP_PLAYGROUND_ID; use it to (1) trace each
-        // bring-up step to stderr — unbuffered, so it survives even if a later step blocks — and (2) switch on
-        // the present-first window-mapping workaround below. Normal app launches are unaffected.
+        // HOP_PLAYGROUND_ID is set only by the CI screenshot harness; use it to switch on the present-first
+        // window-mapping workaround below (gtk4Trace already keys off the same var). Normal launches unaffected.
         let screenshotMode = ProcessInfo.processInfo.environment["HOP_PLAYGROUND_ID"] != nil
-        let trace: (String) -> Void = screenshotMode
-            ? { FileHandle.standardError.write(Data("[hop-gtk] \($0)\n".utf8)) }
-            : { _ in }
 
-        trace("activate: create window")
+        gtk4Trace("activate: create window")
         let window = hop_window_new(appPointer.raw)!
         context.toolkit.window = window
         hop_window_set_title(window, context.title)
@@ -170,11 +175,11 @@ private let gtk4ActivateCallback: @convention(c) (UnsafeMutableRawPointer?, Unsa
         // header bar is set on an already-realized window (a benign GTK warning, server-side frame instead) —
         // is fine for the gallery. Real apps keep the original order, so their header bar is unaffected.
         if screenshotMode {
-            trace("activate: present window (screenshot mode)")
+            gtk4Trace("activate: present window (screenshot mode)")
             hop_window_present(window)
-            trace("activate: mount begin")
+            gtk4Trace("activate: mount begin")
             context.onReady(GTK4Widget(container))
-            trace("activate: mount end")
+            gtk4Trace("activate: mount end")
         } else {
             context.onReady(GTK4Widget(container))
             hop_window_present(window)
@@ -1488,11 +1493,14 @@ public final class GTK4Toolkit: AppToolkit {
     public func run(title: String, onReady: @escaping @MainActor (GTK4Widget) -> Void) {
         // Route Swift Concurrency (Task/await on the main actor) onto GLib's loop before it starts.
         installGTK4MainExecutor()
+        gtk4Trace("run: creating GtkApplication")
         let app = hop_app_new("net.hoptools.hopui.demo")!
         self.app = app
         let context = GTK4RunContext(toolkit: self, title: title, onReady: onReady)
         _ = hop_connect_activate(app, gtk4ActivateCallback, Unmanaged.passRetained(context).toOpaque())
+        gtk4Trace("run: entering g_application_run (registers on session bus, then fires activate)")
         _ = hop_app_run(app)
+        gtk4Trace("run: g_application_run returned (app exited)")
     }
 
     public func scheduleOnMainThread(_ work: @escaping @MainActor () -> Void) {
