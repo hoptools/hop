@@ -202,7 +202,7 @@ jobs:
       - name: Install GTK4, flatpak (+ Xvfb/ImageMagick)
         run: |
           scripts/ci/apt-install.sh libgtk-4-dev pkg-config libsystemd-dev \
-            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme \
+            xvfb x11-utils x11-apps xdotool openbox imagemagick fonts-dejavu-core libgl1-mesa-dri adwaita-icon-theme \
             flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
@@ -258,7 +258,7 @@ jobs:
       - name: Install Qt6, flatpak (+ Xvfb/ImageMagick)
         run: |
           scripts/ci/apt-install.sh qt6-base-dev libsystemd-dev pkg-config \
-            xvfb x11-utils x11-apps xdotool imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0 \
+            xvfb x11-utils x11-apps xdotool openbox imagemagick fonts-dejavu-core libgl1 libxkbcommon-x11-0 libxcb-cursor0 \
             flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.kde.Platform//6.9 org.kde.Sdk//6.9

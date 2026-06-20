@@ -113,6 +113,7 @@ file_size() { stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 0
 
 cleanup() {
     [ -n "${CAFFEINATE_PID:-}" ] && kill "$CAFFEINATE_PID" 2>/dev/null || true
+    [ -n "${WM_PID:-}" ]         && kill "$WM_PID"         2>/dev/null || true
     [ -n "${XVFB_PID:-}" ]       && kill "$XVFB_PID"       2>/dev/null || true
 }
 trap cleanup EXIT
@@ -142,6 +143,17 @@ elif [ "$OS" = "Linux" ]; then
         XVFB_PID=$!
         for _ in $(seq 1 40); do xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break; sleep 0.25; done
     fi
+    # A window manager is REQUIRED: under a bare (WM-less) Xvfb, GTK4 toplevels get stuck unmapped at 1×1
+    # (diagnostics showed `Map State: IsUnMapped`, root window blank) — GTK4's X11 backend waits for the
+    # initial ConfigureNotify a WM sends before it sizes and maps the surface. openbox is tiny and headless-
+    # safe; this is exactly what a real desktop (or macOS) provides, which is why the window shows there.
+    WM_PID=""
+    if command -v openbox >/dev/null 2>&1; then
+        openbox >/tmp/hop-wm.log 2>&1 & WM_PID=$!
+        sleep 1   # let it take over as WM before any app maps a window
+    else
+        echo "WARNING: no window manager (openbox) found — GTK windows may not map under Xvfb" >&2
+    fi
     # Force software rendering so GTK4/Qt render without a GPU on the virtual display (GTK via GSK_RENDERER
     # above; Qt/GL via the flags below).
     export GDK_BACKEND=x11
@@ -152,6 +164,7 @@ elif [ "$OS" = "Linux" ]; then
     # lines alone, so dump the display + tool state once. Shows in the CI step log.
     echo "── Linux capture environment ──────────────────────────────"
     echo "  DISPLAY=$DISPLAY  GSK_RENDERER=${GSK_RENDERER:-}  GDK_BACKEND=${GDK_BACKEND:-}"
+    echo "  window manager: $([ -n "${WM_PID:-}" ] && echo "openbox (pid $WM_PID)" || echo NONE)"
     xdpyinfo 2>/dev/null | grep -E "dimensions:|depth of root|number of screens" | sed 's/^/  /' \
         || echo "  xdpyinfo: unavailable"
     for t in import magick identify xwininfo xprop xdotool xwd Xvfb; do
