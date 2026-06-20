@@ -539,7 +539,10 @@ void hopwinui_path_commit(void* h) {
 }
 void hopwinui_path_set_fill(void* h, double r, double g2, double b, double a) { if (auto p = as<muxs::Path>(h)) p.Fill(brush(r, g2, b, a)); }
 
-static void hopwinui_add_stops(muxm::GradientStopCollection const& coll, const double* stops, int n) {
+// GradientBrush.GradientStops() is projected as IObservableVector<GradientStop> (not the concrete
+// GradientStopCollection class), so take that exact type — .Append comes from its IVector base.
+static void hopwinui_add_stops(wf::Collections::IObservableVector<muxm::GradientStop> const& coll,
+                               const double* stops, int n) {
     for (int i = 0; i < n; i++) {
         const double* s = stops + i * 5;
         muxm::GradientStop gs;
