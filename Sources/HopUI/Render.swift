@@ -166,12 +166,16 @@ public struct NodePreferences {
     public var navigationTitle: String?
     /// `.navigationDestination(for:)` builders — consumed by the enclosing `NavigationStack`.
     public var navigationDestinations: [ObjectIdentifier: (AnyHashable) -> any View]?
+    /// The resolved navigation chrome (title) an enclosing `NavigationStack` publishes to the window so
+    /// the toolkit can render it natively. Collected by `collectWindowPreferences` (first in pre-order wins).
+    public var navigationBar: NavigationBarSpec?
 
     public init() {}
 
     /// Whether this node carries any preference (lets the walk skip empty nodes cheaply).
     var isEmpty: Bool {
-        preferredColorScheme == nil && toolbar == nil && navigationTitle == nil && navigationDestinations == nil
+        preferredColorScheme == nil && toolbar == nil && navigationTitle == nil
+            && navigationDestinations == nil && navigationBar == nil
     }
 
     /// Combine with an OUTER set of preferences (e.g. those a wrapping modifier accumulated on a composite
@@ -184,6 +188,7 @@ public struct NodePreferences {
         if let dests = outer.navigationDestinations {
             result.navigationDestinations = dests.merging(result.navigationDestinations ?? [:]) { o, _ in o }
         }
+        if let nb = outer.navigationBar { result.navigationBar = nb }
         return result
     }
 }

@@ -11,18 +11,21 @@
 /// Collect window-level preferences from the whole tree: toolbar items (concatenated in pre-order) and
 /// the preferred color scheme (outermost wins — the first encountered in pre-order).
 @MainActor
-func collectWindowPreferences(_ root: RenderNode) -> (toolbar: [ToolbarItemSpec], colorScheme: ColorScheme?) {
+func collectWindowPreferences(_ root: RenderNode)
+    -> (toolbar: [ToolbarItemSpec], colorScheme: ColorScheme?, navigationBar: NavigationBarSpec?) {
     var toolbar: [ToolbarItemSpec] = []
     var colorScheme: ColorScheme?
+    var navigationBar: NavigationBarSpec?
     func walk(_ node: RenderNode) {
         if let prefs = node.preferences {
             if let items = prefs.toolbar { toolbar += items }
             if colorScheme == nil, let scheme = prefs.preferredColorScheme { colorScheme = scheme }
+            if navigationBar == nil, let nb = prefs.navigationBar { navigationBar = nb }
         }
         for child in node.children { walk(child) }
     }
     walk(root)
-    return (toolbar, colorScheme)
+    return (toolbar, colorScheme, navigationBar)
 }
 
 /// Collect the navigation preferences contributed by a subtree (an enclosing `NavigationStack`'s

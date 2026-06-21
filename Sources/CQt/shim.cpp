@@ -264,6 +264,31 @@ void hopqt_toolbar_clear(void *toolbar) {
     static_cast<QToolBar *>(toolbar)->clear();
 }
 
+// An expanding spacer widget; a pair flanking the title label centers it in the toolbar (QToolBar has
+// no addStretch, so this inserts a horizontally-expanding QWidget instead).
+void hopqt_toolbar_add_stretch(void *toolbar) {
+    QToolBar *tb = static_cast<QToolBar *>(toolbar);
+    QWidget *spacer = new QWidget();
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(spacer);
+}
+
+// A bold, centered navigation-title label packed into the toolbar (between two stretches).
+void hopqt_toolbar_add_title(void *toolbar, const char *text) {
+    QToolBar *tb = static_cast<QToolBar *>(toolbar);
+    QLabel *label = new QLabel(QString::fromUtf8(text));
+    label->setAlignment(Qt::AlignCenter);
+    QFont f = label->font();
+    f.setBold(true);
+    label->setFont(f);
+    label->setContentsMargins(8, 0, 8, 0);
+    tb->addWidget(label);
+}
+
+void hopqt_widget_set_visible(void *widget, int visible) {
+    static_cast<QWidget *>(widget)->setVisible(visible != 0);
+}
+
 void *hopqt_vbox_new(int spacing) {
     QWidget *w = new QWidget();
     QVBoxLayout *l = new QVBoxLayout(w);

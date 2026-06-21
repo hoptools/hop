@@ -328,6 +328,10 @@ public final class QtToolkit: AppToolkit {
     private var toolbar: UnsafeMutableRawPointer?
     private var toolbarBoxes: [QtActionBox] = []
     private var toolbarSignature: String?
+    /// The most recent toolbar items + the resolved navigation title, rebuilt together (the QToolBar is
+    /// cleared and re-packed on either change) so the centered title coexists with the toolbar buttons.
+    private var lastToolbarItems: [ToolbarItemSpec] = []
+    private var navigationTitleString: String?
     private var menuBoxes: [QtActionBox] = []
     private var menuSignature: String?
     // Secondary windows (e.g. About) are kept here for the app's lifetime.
@@ -1310,20 +1314,40 @@ public final class QtToolkit: AppToolkit {
     }
 
     public func setToolbar(_ items: [ToolbarItemSpec]) {
-        let signature = items.map { item -> String in
+        lastToolbarItems = items
+        rebuildToolbarChrome()
+    }
+
+    /// Qt renders the navigation title in the window's QToolBar (a centered bold label between two
+    /// stretches), not the OS/WM window-title string — the in-window header for a QMainWindow.
+    public var handlesNavigationBarNatively: Bool { true }
+
+    public func setNavigationTitle(_ title: String?) {
+        navigationTitleString = (title?.isEmpty == false) ? title : nil
+        rebuildToolbarChrome()
+    }
+
+    /// Clear and re-pack the QToolBar from the current toolbar items plus, when set, a centered title
+    /// (stretch + bold label + stretch). A combined (items + title) signature guards against rebuilding on
+    /// every flush. The toolbar is hidden when there is nothing to show, so a title-less, toolbar-less
+    /// window has no empty bar. The OS window title (hopqt_window_new) is never changed.
+    private func rebuildToolbarChrome() {
+        guard let window else { return }
+        let itemsSig = lastToolbarItems.map { item -> String in
             switch item.kind {
             case .text(let string): return "t:\(string)"
             case .button(let title, _): return "b:\(title)"
             }
         }.joined(separator: "|")
-        guard signature != toolbarSignature, let window else { return }
+        let signature = itemsSig + "|title:" + (navigationTitleString ?? "")
+        guard signature != toolbarSignature else { return }
         toolbarSignature = signature
 
         if toolbar == nil { toolbar = hopqt_toolbar_add(window) }
         guard let toolbar else { return }
         hopqt_toolbar_clear(toolbar)
         toolbarBoxes = []
-        for item in items {
+        for item in lastToolbarItems {
             switch item.kind {
             case .text(let string):
                 hopqt_toolbar_add_label(toolbar, string)
@@ -1334,5 +1358,11 @@ public final class QtToolkit: AppToolkit {
                 hopqt_toolbar_add_button(toolbar, title, qtClickCallback, Unmanaged.passUnretained(box).toOpaque())
             }
         }
+        if let title = navigationTitleString {
+            hopqt_toolbar_add_stretch(toolbar)
+            hopqt_toolbar_add_title(toolbar, title)
+            hopqt_toolbar_add_stretch(toolbar)
+        }
+        hopqt_widget_set_visible(toolbar, (lastToolbarItems.isEmpty && navigationTitleString == nil) ? 0 : 1)
     }
 }

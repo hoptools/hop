@@ -104,6 +104,10 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
 
     let reconciler = Reconciler(toolkit: toolkit)
 
+    // Tell `NavigationStack` whether to publish its title to native window chrome (this toolkit's header
+    // bar) or render it as a portable inline label. Set before any render pass evaluates a stack.
+    NavigationBarRouting.native = toolkit.handlesNavigationBarNatively
+
     // Run the framework-owned layout engine over the current tree at the window's content size.
     let relayout: @MainActor () -> Void = {
         reconciler.layout(in: CGRect(origin: .zero, size: toolkit.contentSize()))
@@ -114,6 +118,7 @@ func runRootView<Toolkit: AppToolkit>(_ makeRoot: @escaping @MainActor () -> any
         let prefs = collectWindowPreferences(root)
         toolkit.setToolbar(prefs.toolbar)
         toolkit.setColorScheme(prefs.colorScheme)
+        toolkit.setNavigationTitle(prefs.navigationBar?.title)
     }
 
     GraphContext.flush = {

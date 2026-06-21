@@ -339,6 +339,13 @@ final class MockToolkit: AppToolkit {
     private(set) var appliedColorScheme: ColorScheme?
     func setColorScheme(_ colorScheme: ColorScheme?) { appliedColorScheme = colorScheme }
 
+    // Navigation chrome: tests can opt into native routing (title → header bar) by setting this true
+    // before `runHopApp`, then assert the routed title via `navigationTitle`.
+    var navigationBarNative = false
+    var handlesNavigationBarNatively: Bool { navigationBarNative }
+    private(set) var navigationTitle: String?
+    func setNavigationTitle(_ title: String?) { navigationTitle = title }
+
     // Deferred main-thread work (the observation re-render). Tests run it explicitly via drainMainThread().
     private var pendingMain: [@MainActor () -> Void] = []
     func scheduleOnMainThread(_ work: @escaping @MainActor () -> Void) { pendingMain.append(work) }
@@ -746,6 +753,48 @@ private struct NavDemo: View {
         list.listSpec?.onSelect(0)
         toolkit.drainMainThread()
         #expect(!(toolkit.liveLabels().contains("DeepPage")))
+    }
+
+    @Test func testNavigationTitleRoutesToNativeChromeWhenSupported() throws {
+        let toolkit = MockToolkit()
+        toolkit.navigationBarNative = true   // a toolkit with native nav chrome (like GTK's header bar)
+        runHopApp(SimpleNavDemo(), toolkit: toolkit, title: "test")
+
+        // The title is published to native chrome (the header bar), NOT rendered as an inline label.
+        #expect(toolkit.navigationTitle == "Home")
+        #expect(toolkit.liveLabels().contains("RootBody"))
+        #expect(!toolkit.liveLabels().contains("Home"))
+
+        // Pushing a destination updates the chrome title; the back button stays inline.
+        try #require(toolkit.widgets.first { $0.kind == .button && $0.title == "go" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("DeepBody"))
+        #expect(toolkit.navigationTitle == "Detail")
+        #expect(!toolkit.liveLabels().contains("Detail"))
+        #expect(toolkit.liveLabels().contains("‹ Back"))
+    }
+
+    @Test func testNavigationTitleRendersInlineWhenToolkitLacksNativeChrome() throws {
+        let toolkit = MockToolkit()   // handlesNavigationBarNatively defaults to false
+        runHopApp(SimpleNavDemo(), toolkit: toolkit, title: "test")
+
+        #expect(toolkit.liveLabels().contains("Home"))   // inline title label (the portable fallback)
+        #expect(toolkit.navigationTitle == nil)          // nothing routed to native chrome
+    }
+}
+
+/// A minimal stack (no split view) so navigation-title assertions are not confused by sidebar row text.
+private struct SimpleNavDemo: View {
+    @State var path: [String] = []
+    var body: some View {
+        NavigationStack(path: $path) {
+            VStack {
+                Text("RootBody")
+                NavigationLink("go", value: "deep")
+            }
+            .navigationTitle("Home")
+            .navigationDestination(for: String.self) { _ in Text("DeepBody").navigationTitle("Detail") }
+        }
     }
 }
 

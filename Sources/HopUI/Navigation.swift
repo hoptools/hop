@@ -6,9 +6,26 @@
 // path-driven: a stack owns a path of pushed values, a link appends to it, a destination builds a
 // view from the top value, and back pops it — no hard-coded view switching.
 
+/// The navigation chrome a `NavigationStack` publishes to the window so the active toolkit can render
+/// it in native window chrome (e.g. a GtkHeaderBar's centered title) instead of as an inline view.
+/// Currently the resolved title; extensible later (subtitle, back affordance) without touching call sites.
+public struct NavigationBarSpec {
+    public var title: String?
+    public init(title: String?) { self.title = title }
+}
+
+/// Whether the active toolkit renders the navigation bar in native window chrome. Set once by the
+/// runtime from `AppToolkit.handlesNavigationBarNatively`; read by `NavigationStack` to decide between
+/// publishing the title to chrome (native) and rendering a portable inline title (the default). This
+/// keeps toolkits that have not adopted native nav chrome working unchanged.
+enum NavigationBarRouting {
+    @MainActor static var native = false
+}
+
 /// A view that presents a stack of views over a root, mirroring SwiftUI's `NavigationStack`. The
-/// visible view is the destination for the top of the path (or the root when the path is empty),
-/// shown beneath a bar with the navigation title and — when not at the root — a back button.
+/// visible view is the destination for the top of the path (or the root when the path is empty), shown
+/// beneath (or, with native chrome, below a header bar carrying) the navigation title and — when not at
+/// the root — a back button.
 public struct NavigationStack<Content: View>: View, PrimitiveView {
     let content: Content
     let pathGet: @MainActor () -> [AnyHashable]
@@ -63,6 +80,10 @@ public struct NavigationStack<Content: View>: View, PrimitiveView {
             showBack = true
         }
 
+        // When the toolkit renders nav chrome natively (e.g. GTK's header bar), the title is published as
+        // a window preference and shown there — not as an inline label; only the back button (when present)
+        // stays inline. Otherwise the bar is the portable inline strip (back button + title label).
+        let routeTitleToChrome = NavigationBarRouting.native
         var barChildren: [RenderNode] = []
         if showBack {
             barChildren.append(RenderNode(id: context.id + "·back",
@@ -70,17 +91,34 @@ public struct NavigationStack<Content: View>: View, PrimitiveView {
                     patch: WidgetPatch(title: "‹ Back"),
                     action: { var p = pathGet(); if !p.isEmpty { p.removeLast() }; pathSet(p) })))
         }
-        barChildren.append(RenderNode(id: context.id + "·title",
-                                      component: PrimitiveLeafComponent(.label,
-                                          patch: WidgetPatch(text: title ?? ""))))
-        let bar = RenderNode(id: context.id + "·navbar", component: ContainerComponent.hstack(spacing: 8),
-                             patch: WidgetPatch(spacing: 8), children: barChildren)
+        if !routeTitleToChrome {
+            barChildren.append(RenderNode(id: context.id + "·title",
+                                          component: PrimitiveLeafComponent(.label,
+                                              patch: WidgetPatch(text: title ?? ""))))
+        }
         var body = bodyNodes.first ?? RenderNode(id: context.id + "·body", component: ContainerComponent.vstack())
         // The content area fills the space below the bar and centers its content — matching SwiftUI, where
         // navigation content is centered in the pane (a greedy fill via maxWidth/maxHeight: .infinity).
         body.layout.modifiers.append(.frame(FrameSpec(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)))
-        return RenderNode(id: context.id, component: ContainerComponent.vstack(spacing: 12),
-                          patch: WidgetPatch(spacing: 12), children: [bar, body])
+
+        // Omit the inline bar entirely when there is nothing left to show in it (native chrome at the root).
+        var children: [RenderNode] = []
+        if !barChildren.isEmpty {
+            children.append(RenderNode(id: context.id + "·navbar", component: ContainerComponent.hstack(spacing: 8),
+                                       patch: WidgetPatch(spacing: 8), children: barChildren))
+        }
+        children.append(body)
+
+        var node = RenderNode(id: context.id, component: ContainerComponent.vstack(spacing: 12),
+                              patch: WidgetPatch(spacing: 12), children: children)
+        // Publish the resolved title (accounting for any pushed destination) to the window's native
+        // navigation chrome; `collectWindowPreferences` carries it up to `AppToolkit.setNavigationTitle`.
+        if routeTitleToChrome {
+            var prefs = node.preferences ?? NodePreferences()
+            prefs.navigationBar = NavigationBarSpec(title: title)
+            node.preferences = prefs
+        }
+        return node
     }
 }
 

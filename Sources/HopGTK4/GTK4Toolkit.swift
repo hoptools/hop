@@ -506,6 +506,11 @@ public final class GTK4Toolkit: AppToolkit {
     private var headerBar: UnsafeMutableRawPointer?
     private var toolbarBoxes: [GTK4ActionBox] = []
     private var toolbarSignature: String?
+    /// Widgets currently packed into the header bar by `setToolbar`, so they can be removed when the
+    /// toolbar changes without rebuilding the bar (which would drop the centered navigation title).
+    private var toolbarItemWidgets: [UnsafeMutableRawPointer] = []
+    /// The navigation title currently shown in the header bar's centered title slot (nil = none).
+    private var navigationTitleString: String?
     private var menuBoxes: [GTK4ActionBox] = []
     private var menuSignature: String?
     // Secondary windows (e.g. About) are kept here for the app's lifetime.
@@ -1602,18 +1607,22 @@ public final class GTK4Toolkit: AppToolkit {
             case .button(let title, _): return "b:\(title)"
             }
         }.joined(separator: "|")
-        guard signature != toolbarSignature, let window else { return }
+        guard signature != toolbarSignature, window != nil else { return }
         toolbarSignature = signature
 
-        // Modern GTK4 toolbar idiom: a GtkHeaderBar installed as the window's titlebar.
-        let bar = hop_header_bar_new()!
-        headerBar = bar
+        // Modern GTK4 toolbar idiom: a GtkHeaderBar installed as the window's titlebar. The bar is created
+        // once and shared with the navigation title (which lives in the centered title-widget slot), so a
+        // toolbar change must NOT rebuild it — that would drop the title. Remove the prior items, re-pack.
+        guard let bar = ensureHeaderBar() else { return }
+        for widget in toolbarItemWidgets { hop_header_bar_remove(bar, widget) }
+        toolbarItemWidgets = []
         toolbarBoxes = []
-        hop_window_set_titlebar(window, bar)
         for item in items {
             switch item.kind {
             case .text(let string):
-                hop_header_bar_pack_start(bar, hop_label_new(string)!)
+                let label = hop_label_new(string)!
+                hop_header_bar_pack_start(bar, label)
+                toolbarItemWidgets.append(label)
             case .button(let title, let action):
                 let button = hop_button_new(title)!
                 let box = GTK4ActionBox()
@@ -1621,7 +1630,44 @@ public final class GTK4Toolkit: AppToolkit {
                 toolbarBoxes.append(box)
                 _ = hop_connect_clicked(button, gtk4ClickedCallback, Unmanaged.passUnretained(box).toOpaque())
                 hop_header_bar_pack_start(bar, button)
+                toolbarItemWidgets.append(button)
             }
+        }
+    }
+
+    /// GTK renders the navigation bar in native chrome (the header bar's centered title), so
+    /// `NavigationStack` publishes the title here rather than as an inline label.
+    public var handlesNavigationBarNatively: Bool { true }
+
+    public func setNavigationTitle(_ title: String?) {
+        let normalized = (title?.isEmpty == false) ? title : nil
+        guard normalized != navigationTitleString else { return }
+        navigationTitleString = normalized
+        applyNavigationTitle()
+    }
+
+    /// Create the window's GtkHeaderBar titlebar once and install it; shared by the toolbar and the
+    /// navigation title. Returns nil before the window exists.
+    private func ensureHeaderBar() -> UnsafeMutableRawPointer? {
+        if let headerBar { return headerBar }
+        guard let window else { return nil }
+        let bar = hop_header_bar_new()!
+        headerBar = bar
+        hop_window_set_titlebar(window, bar)
+        return bar
+    }
+
+    /// Put the navigation title in the header bar's centered title slot (GTK's `.title` style class gives
+    /// it the standard header-bar title appearance). A nil title reverts to GTK's default (the window's
+    /// own title string); never create an empty header bar just to clear a title.
+    private func applyNavigationTitle() {
+        if let title = navigationTitleString {
+            guard let bar = ensureHeaderBar() else { return }
+            let label = hop_label_new(title)!
+            hop_widget_add_css_class(label, "title")
+            hop_header_bar_set_title_widget(bar, label)
+        } else if let headerBar {
+            hop_header_bar_set_title_widget(headerBar, nil)
         }
     }
 }

@@ -72,8 +72,10 @@ public static class HopWin {
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("dwmapi.dll")] public static extern int DwmFlush();
     delegate bool EnumWindowsProc(IntPtr h, IntPtr lp);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
 
@@ -113,28 +115,43 @@ public static class HopWin {
         if (!GetWindowRect(h, out r)) return new int[] { 0, 0, 0, 0 };
         return new int[] { r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top };
     }
-    // The largest visible top-level window owned by pid — used when Process.MainWindowHandle is still 0
-    // (common right after launch, and for some toolkits' window types).
+    // (continued from the comment above the helpers) Used when Process.MainWindowHandle is still 0 (common right
+    // after launch, and for some toolkits' window types). Picks the biggest non-tool-window; only if EVERY
+    // candidate is a tool window does it fall back to the biggest tool window, so a borderless/splash-style main
+    // window is never silently dropped.
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] static extern int GetWindowLong(IntPtr h, int idx);
     public static IntPtr FindMainWindow(uint pid) {
-        IntPtr best = IntPtr.Zero; int bestArea = -1;
+        IntPtr best = IntPtr.Zero;     int bestArea = -1;     // best non-tool-window
+        IntPtr bestTool = IntPtr.Zero; int bestToolArea = -1; // fallback: best tool window
         EnumWindows((h, lp) => {
             uint wp; GetWindowThreadProcessId(h, out wp);
             if (wp == pid && IsWindowVisible(h)) {
                 RECT r;
                 if (GetWindowRect(h, out r)) {
                     int a = (r.Right - r.Left) * (r.Bottom - r.Top);
-                    if (a > bestArea) { bestArea = a; best = h; }
+                    bool tool = (GetWindowLong(h, -20) & 0x80) != 0;   // GWL_EXSTYLE & WS_EX_TOOLWINDOW
+                    if (tool) { if (a > bestToolArea) { bestToolArea = a; bestTool = h; } }
+                    else      { if (a > bestArea)     { bestArea = a;     best = h; } }
                 }
             }
             return true;
         }, IntPtr.Zero);
-        return best;
+        return best != IntPtr.Zero ? best : bestTool;
     }
 
     [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
-    // Force the window (and all children) to paint NOW, so a freshly shown window has real content for PrintWindow
-    // to grab instead of an unpainted/blank first frame. RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW.
-    public static void Redraw(IntPtr h) { RedrawWindow(h, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0100); }
+    [DllImport("user32.dll")] static extern bool UpdateWindow(IntPtr h);
+    // Force the window (and all children, plus the nonclient title bar) to paint NOW, then flush the DWM
+    // compositor, so a freshly shown window has real, committed content for PrintWindow to grab instead of an
+    // unpainted/blank first frame. Flags: RDW_INVALIDATE(0x1)|RDW_ERASE(0x4)|RDW_ALLCHILDREN(0x80)|
+    // RDW_UPDATENOW(0x100)|RDW_FRAME(0x400). RDW_FRAME repaints the nonclient area so the window's own title bar
+    // is captured (the requirement asks for the WHOLE window). DwmFlush waits for the next composition pass so a
+    // DirectComposition/WinUI surface is committed before we PrintWindow it. Return BOOLs ignored (best-effort).
+    public static void ForcePaint(IntPtr h) {
+        RedrawWindow(h, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0100 | 0x0400);
+        UpdateWindow(h);
+        try { DwmFlush(); } catch {}
+    }
 
     [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -151,56 +168,84 @@ public static class HopWin {
 }
 "@
 
-# Is a captured bitmap effectively blank? Sample a coarse grid and count distinct colors: an unrendered
-# window is a single flat color (1), while any real page (the sidebar tree alone has dozens) blows past
-# the threshold. Cheap (early-exits) and far more reliable than a fixed sleep for "did it draw yet".
+# Make the capture process DPI-aware as the VERY FIRST [HopWin] call — before anything (esp. WinForms
+# SystemInformation.WorkingArea, queried later by the gated fallback) locks in this process's DPI context.
+# On a >100% DPI display a non-aware process sees GetWindowRect return scaled-down logical sizes, so the
+# PrintWindow bitmap is too small and the window comes out cropped/scaled. PrintWindow is position-independent,
+# so this is correctness insurance, not the sole cropping cure. If it reports "unchanged" (awareness was already
+# locked by the pwsh host), warn loudly so a silent mis-size is visible in CI.
+$dpi = [HopWin]::MakeDpiAware()
+Write-Host "Capture DPI awareness -> $dpi"
+if ($dpi -eq "unchanged") { Write-Host "##[warning] DPI awareness unchanged; GetWindowRect may be scaled on a >100% DPI runner" }
+
+# Blank-detection threshold: how many DISTINCT colors the content area must show to count as "really painted".
+# The goal is only to reject an UNRENDERED frame (1 flat color), NOT to grade page richness — so keep this
+# conservative. Note this samples a coarse content-only grid (below), which is far fewer points than the .sh
+# imgstat path (which samples ~200k pixels over the whole image), so the SAME number means a much harder bar
+# here; a sparse-but-real page (a mostly-white Form, a single Toggle) can legitimately have few distinct colors.
+# Default 16 robustly separates "unpainted" from "real page" without false-rejecting low-color pages. Override
+# with MIN_COLORS (the .sh counterpart reads the same env, where its denser sampling makes a higher value safe).
+$MinColors = 16
+if ($env:MIN_COLORS -and [int]::TryParse($env:MIN_COLORS, [ref]$null)) { $MinColors = [int]$env:MIN_COLORS }
+
+# Is a captured bitmap effectively blank? Sample a grid and count distinct colors: an unrendered window is a
+# single flat color (1), while any real page (the sidebar tree alone has dozens) passes the threshold. Cheap
+# (early-exits) and far more reliable than a fixed sleep for "did it draw yet".
 function Test-Blank($bmp) {
     # Sample the CONTENT area only — skip the top ~12% (title bar / window chrome) and a thin border — so a
-    # window that drew only its frame counts as blank too. A real page (sidebar + content) has dozens of
-    # colors here; an unrendered/empty window has ~1.
+    # window that drew only its frame counts as blank too. A real page (sidebar + content) has many colors
+    # here; an unrendered/empty window has ~1.
     $seen = @{}
     $x0 = [int]($bmp.Width * 0.02); $y0 = [int]($bmp.Height * 0.12)
     $x1 = $bmp.Width - $x0;         $y1 = $bmp.Height - [int]($bmp.Height * 0.02)
     if ($x1 -le $x0 -or $y1 -le $y0) { return $true }
-    $sx = [Math]::Max(1, [int](($x1 - $x0) / 28))
-    $sy = [Math]::Max(1, [int](($y1 - $y0) / 28))
+    $sx = [Math]::Max(1, [int](($x1 - $x0) / 40))   # finer 40x40 grid -> enough samples to find real variety
+    $sy = [Math]::Max(1, [int](($y1 - $y0) / 40))
     for ($y = $y0; $y -lt $y1; $y += $sy) {
         for ($x = $x0; $x -lt $x1; $x += $sx) {
             $c = $bmp.GetPixel($x, $y)
             $seen[($c.R -shl 16) -bor ($c.G -shl 8) -bor $c.B] = $true
-            if ($seen.Count -ge 6) { return $false }   # enough variety -> real content
+            if ($seen.Count -ge $MinColors) { return $false }   # enough variety -> real content
         }
     }
-    return $true   # < 6 distinct content colors -> effectively blank (or chrome-only)
+    return $true   # < $MinColors distinct content colors -> effectively blank (or chrome-only)
 }
 
-# Capture the WINDOW ITSELF — never the desktop. PrintWindow renders the window's OWN surface into a bitmap
-# sized to the window, completely independent of its screen position, z-order, or whether other windows (or the
-# desktop) are in front of it. So the result is ALWAYS exactly that window, in its entirety, with nothing else in
-# frame — even if it is off-screen, larger than the screen, or occluded. PW_RENDERFULLCONTENT (flag 2) is
-# required to capture DirectComposition/WinUI (and Qt) content. We do NOT screen-capture at all, which is what
-# previously leaked the desktop/other windows and produced cropped/shifted shots when the window overhung the
-# (clamped) screen rect.
+# Capture the WINDOW ITSELF — never the desktop. PrintWindow renders the window's OWN surface into a bitmap sized
+# to the window, completely independent of its screen position, z-order, or whether other windows (or the desktop)
+# are in front of it. So the result is ALWAYS exactly that window, in its entirety, with nothing else in frame —
+# even if it is off-screen, larger than the screen, or occluded. PW_RENDERFULLCONTENT (flag 2) is required to
+# capture DirectComposition/WinUI (and Qt) content. There is NO screen-capture path anywhere in this script, so a
+# screenshot can never contain the desktop or another window.
 function Grab-PrintWindow([IntPtr]$hWnd) {
     $size = [HopWin]::WindowSize($hWnd); $w = $size[0]; $h = $size[1]
-    if ($w -le 0 -or $h -le 0) { return $null }
+    # Dimensions sanity gate FIRST, before allocating any GDI object — so an early return can never leak a
+    # Bitmap/Graphics (GDI+ handle). Reject implausible sizes: a degenerate/zero rect, or anything outside
+    # 200x150..6000x4000 (a DPI-mis-sized tiny window, or a maximized desktop-sized grab) is not a real
+    # 1280x800-ish demo window and must not be captured as success.
+    if ($w -lt 200 -or $h -lt 150 -or $w -gt 6000 -or $h -gt 4000) { return $null }
     # 24bpp RGB (NOT the default 32bpp ARGB): PrintWindow's GDI/DWM copy doesn't write the alpha channel, so a
     # 32bpp bitmap comes out fully transparent and the saved PNG renders blank over the gallery's white tile.
+    # KEEP 24bpp — this is load-bearing, do not "simplify" to 32bpp.
     $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.Clear([System.Drawing.Color]::White)         # any region PrintWindow leaves untouched stays white, not garbage
-    $hdc = $g.GetHdc()
-    $ok = [HopWin]::PrintWindow($hWnd, $hdc, 2)      # 2 = PW_RENDERFULLCONTENT
-    $g.ReleaseHdc($hdc); $g.Dispose()
+    $g = $null; $ok = $false
+    try {
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.Clear([System.Drawing.Color]::White)     # any region PrintWindow leaves untouched stays white, not garbage
+        $hdc = $g.GetHdc()
+        $ok = [HopWin]::PrintWindow($hWnd, $hdc, 2)  # 2 = PW_RENDERFULLCONTENT (DirectComposition/WinUI/Qt)
+        $g.ReleaseHdc($hdc)
+    } finally {
+        if ($g) { $g.Dispose() }                    # always disposed, even if PrintWindow throws
+    }
     if (-not $ok) { $bmp.Dispose(); return $null }
     return $bmp
 }
 
-# Capture a launched app's main window: wait for the window handle, ensure it's shown (un-minimized), then keep
-# PrintWindow-ing until its content has actually painted (non-blank). We deliberately do NOT move, foreground, or
-# screen-capture the window — PrintWindow grabs the window's own pixels, so the shot is always the window, never
-# the desktop or another window. Saves only a non-blank shot; returns $false rather than ever writing an empty
-# (or desktop) image.
+# Capture a launched app's main window via PrintWindow ONLY. PrintWindow grabs the window's OWN pixels independent
+# of position/z-order/occlusion, so the shot is always exactly that window, in its entirety, with nothing else in
+# frame — even off-screen, larger than the screen, or occluded. We NEVER screen-capture, so the result can never
+# contain the desktop or another window. Returns $true if a non-blank window was saved, else $false (no file).
 function Capture-Window([System.Diagnostics.Process]$proc, $path) {
     $hWnd = [IntPtr]::Zero
     for ($i = 0; $i -lt 60; $i++) {                 # up to ~15s for the window to appear
@@ -213,12 +258,15 @@ function Capture-Window([System.Diagnostics.Process]$proc, $path) {
     }
     if ($hWnd -eq [IntPtr]::Zero) { return $false }
 
-    [void][HopWin]::ShowWindow($hWnd, 9)            # SW_RESTORE — un-minimize (PrintWindow can't capture a minimized window)
-    [void][HopWin]::ShowWindow($hWnd, 5)            # SW_SHOW
+    # Un-minimize, then a one-time SW_SHOW nudge: some toolkits (Qt's compositor, WinUI/DirectComposition) defer
+    # their first paint until shown. This only affects WHEN the window paints, not WHAT PrintWindow grabs (it reads
+    # the window's own surface), so it cannot reintroduce desktop/occlusion leakage.
+    if ([HopWin]::IsIconic($hWnd)) { [void][HopWin]::ShowWindow($hWnd, 9) }   # SW_RESTORE
+    [void][HopWin]::ShowWindow($hWnd, 5)                                       # SW_SHOW (one-time first-paint nudge)
 
     for ($a = 0; $a -lt 24; $a++) {                 # up to ~14s for the window to paint its first real frame
         Start-Sleep -Milliseconds 600
-        [void][HopWin]::Redraw($hWnd)               # force a paint so PrintWindow grabs real content, not a blank frame
+        [void][HopWin]::ForcePaint($hWnd)           # invalidate+update+DwmFlush so the composited frame is committed
         $bmp = Grab-PrintWindow $hWnd
         if ($null -eq $bmp) { continue }
         if (-not (Test-Blank $bmp)) {
@@ -226,7 +274,7 @@ function Capture-Window([System.Diagnostics.Process]$proc, $path) {
         }
         $bmp.Dispose()
     }
-    return $false                                   # never painted real content -> no file (better than a blank/desktop)
+    return $false                                    # never painted real content -> no file (better than a blank/desktop)
 }
 
 # The WinUI demo is a framework-dependent, *unpackaged* Windows App SDK app, so launching it needs two
@@ -260,12 +308,6 @@ function Ensure-WinUIRuntime($bin) {
         Write-Host "WinUI: WARNING failed to install Windows App Runtime: $_"
     }
 }
-
-# Make the capture process DPI-aware so GetWindowRect/PrintWindow operate in true physical pixels (otherwise a
-# >100% DPI display yields a cropped/scaled window). We no longer change the display resolution or screen-capture
-# at all: PrintWindow renders the window's own surface, so the window need not even fit on the screen.
-$dpi = [HopWin]::MakeDpiAware()
-Write-Host "Capture DPI awareness -> $dpi"
 
 # Human-readable byte size for the summary table.
 function Human-Size($b) {

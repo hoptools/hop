@@ -361,6 +361,11 @@ public final class AppKitToolkit: AppToolkit {
     private let toolbarController = AppKitToolbarController()
     private var toolbarSignature: String?
     private var menuTrampolines: [ActionTrampoline] = []
+    /// The most recent toolbar items + the resolved navigation title, so either can change independently
+    /// and trigger a single combined rebuild of the unified toolbar (which has no public in-place mutation).
+    private var lastToolbarItems: [ToolbarItemSpec] = []
+    private var navigationTitleString: String?
+    private let navigationTitleItemID = NSToolbarItem.Identifier("hop.navigation-title")
     private var menuSignature: String?
     // Secondary windows (e.g. About) are retained here so they aren't deallocated while open.
     private var secondaryWindows: [NSWindow] = []
@@ -1581,14 +1586,34 @@ public final class AppKitToolkit: AppToolkit {
     }
 
     public func setToolbar(_ items: [ToolbarItemSpec]) {
-        let signature = toolbarSignature(items)
+        lastToolbarItems = items
+        rebuildToolbarChrome()
+    }
+
+    /// AppKit renders the navigation title in the window's unified toolbar (a centered item), not the OS
+    /// window-title string — the idiomatic macOS in-window header.
+    public var handlesNavigationBarNatively: Bool { true }
+
+    public func setNavigationTitle(_ title: String?) {
+        navigationTitleString = (title?.isEmpty == false) ? title : nil
+        rebuildToolbarChrome()
+    }
+
+    /// Build the window's NSToolbar from the current toolbar items plus, when set, a centered navigation
+    /// title item flanked by flexible spaces. NSToolbar has no public in-place item mutation, so it is
+    /// rebuilt wholesale; a combined (items + title) signature guards against rebuilding on every flush.
+    /// The OS `window.title` (set once in `run()`) is never changed; when a nav title is shown the window's
+    /// own titlebar text is hidden so it is not duplicated.
+    private func rebuildToolbarChrome() {
+        guard let window else { return }
+        let signature = toolbarSignature(lastToolbarItems) + "|title:" + (navigationTitleString ?? "")
         guard signature != self.toolbarSignature else { return }
         self.toolbarSignature = signature
 
         toolbarController.itemsByID = [:]
         toolbarController.identifiers = []
         toolbarController.trampolines = []
-        for (index, spec) in items.enumerated() {
+        for (index, spec) in lastToolbarItems.enumerated() {
             let id = NSToolbarItem.Identifier("hop.\(index)")
             let item = NSToolbarItem(itemIdentifier: id)
             switch spec.kind {
@@ -1607,13 +1632,30 @@ public final class AppKitToolkit: AppToolkit {
             toolbarController.itemsByID[id] = item
             toolbarController.identifiers.append(id)
         }
+        if let title = navigationTitleString {
+            let item = NSToolbarItem(itemIdentifier: navigationTitleItemID)
+            let label = NSTextField(labelWithString: title)
+            label.alignment = .center
+            label.font = .systemFont(ofSize: 13, weight: .semibold)
+            label.lineBreakMode = .byTruncatingTail
+            label.toolTip = title
+            item.view = label
+            item.minSize = NSSize(width: 80, height: 22)
+            item.maxSize = NSSize(width: 400, height: 22)
+            toolbarController.itemsByID[navigationTitleItemID] = item
+            // Equal flexible spaces on both sides center the fixed-width title in the toolbar.
+            toolbarController.identifiers.append(.flexibleSpace)
+            toolbarController.identifiers.append(navigationTitleItemID)
+            toolbarController.identifiers.append(.flexibleSpace)
+        }
+        window.titleVisibility = (navigationTitleString != nil) ? .hidden : .visible
 
         let toolbar = NSToolbar(identifier: "HopToolbar")
         toolbar.delegate = toolbarController
         toolbar.allowsUserCustomization = false
         toolbar.displayMode = .iconAndLabel
-        window?.toolbar = toolbar
-        if #available(macOS 11.0, *) { window?.toolbarStyle = .unified }
+        window.toolbar = toolbar
+        if #available(macOS 11.0, *) { window.toolbarStyle = .unified }
     }
 
     public func scheduleOnMainThread(_ work: @escaping @MainActor () -> Void) {

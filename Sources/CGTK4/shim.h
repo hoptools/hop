@@ -120,6 +120,18 @@ static inline void hop_header_bar_pack_start(void *bar, void *child) {
     gtk_header_bar_pack_start(GTK_HEADER_BAR(bar), GTK_WIDGET(child));
 }
 
+// Remove a widget previously packed into the header bar (so the toolbar can be rebuilt in place
+// without recreating the bar, which would drop the centered title widget set below).
+static inline void hop_header_bar_remove(void *bar, void *child) {
+    gtk_header_bar_remove(GTK_HEADER_BAR(bar), GTK_WIDGET(child));
+}
+
+// Put a widget in the header bar's centered title slot (the navigation title). A NULL widget reverts
+// to GTK's default, which shows the window's own title string.
+static inline void hop_header_bar_set_title_widget(void *bar, void *widget) {
+    gtk_header_bar_set_title_widget(GTK_HEADER_BAR(bar), widget ? GTK_WIDGET(widget) : NULL);
+}
+
 // --- Menu bar (GMenu model + GActions) -------------------------------------
 
 typedef void (*hop_action_fn)(void *action, void *param, void *user_data);

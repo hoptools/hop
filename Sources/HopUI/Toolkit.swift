@@ -103,6 +103,17 @@ public protocol AppToolkit: RenderToolkit {
     /// whenever `.preferredColorScheme` changes.
     func setColorScheme(_ colorScheme: ColorScheme?)
 
+    /// Whether this toolkit renders the navigation bar (the title from an enclosing `NavigationStack`) in
+    /// native window chrome (e.g. a GtkHeaderBar) via ``setNavigationTitle(_:)``. When false (the
+    /// default), `NavigationStack` renders a portable inline title instead — so toolkits that have not
+    /// adopted native nav chrome keep working unchanged.
+    var handlesNavigationBarNatively: Bool { get }
+
+    /// Set the navigation title shown in the window's native header chrome (the resolved title from the
+    /// enclosing `NavigationStack`); `nil` clears it. Only consulted when `handlesNavigationBarNatively`
+    /// is true. Called on mount and whenever the resolved title changes.
+    func setNavigationTitle(_ title: String?)
+
     /// The window's current content size (the layout engine's root proposal).
     func contentSize() -> CGSize
     /// Install a handler the toolkit calls whenever the window content size changes, so the runtime can
@@ -119,4 +130,11 @@ public extension RenderToolkit {
     func setDragHandler(_ handle: Handle, _ spec: DragGestureSpec?) {}
     func setMagnifyHandler(_ handle: Handle, _ spec: MagnifyGestureSpec?) {}
     func setRotateHandler(_ handle: Handle, _ spec: RotateGestureSpec?) {}
+}
+
+/// Default navigation-chrome behavior: a toolkit renders the navigation bar inline (via `NavigationStack`)
+/// and has no native nav chrome. A backend that has one (e.g. GTK's header bar) overrides both members.
+public extension AppToolkit {
+    var handlesNavigationBarNatively: Bool { false }
+    func setNavigationTitle(_ title: String?) {}
 }
