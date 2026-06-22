@@ -22,6 +22,9 @@ final class MockWidget {
     var listSpec: ListSpec?
     var isEnabled: Bool?
     var opacity: Double?
+    var italic: Bool?
+    var monospaced: Bool?
+    var textAlignment: TextAlignment?
     var onSubmit: (@MainActor () -> Void)?
     var foregroundColor: Color?
     var backgroundColor: Color?
@@ -232,6 +235,9 @@ final class MockToolkit: AppToolkit {
         if let traits = patch.accessibilityTraits { handle.axTraits = traits }
         if let enabled = patch.isEnabled { handle.isEnabled = enabled }
         if let opacity = patch.opacity { handle.opacity = opacity }
+        if let italic = patch.italic { handle.italic = italic }
+        if let monospaced = patch.monospaced { handle.monospaced = monospaced }
+        if let alignment = patch.textAlignment { handle.textAlignment = alignment }
         // Progress: kind tells us it's a bar; a nil progressValue means indeterminate.
         if handle.kind == .progress { handle.hasProgress = true; handle.progressValue = patch.progressValue }
     }
@@ -864,6 +870,41 @@ private struct SimpleNavDemo: View {
                 Text(submitted)
             }
         }
+    }
+
+    // MARK: typography
+
+    private struct ItalicDemo: View { var body: some View { Text("hi").italic() } }
+    private struct MonoDemo: View { var body: some View { Text("hi").monospaced() } }
+    private struct FontItalicDemo: View { var body: some View { Text("hi").font(.system(size: 14).italic()) } }
+    private struct AlignDemo: View { var body: some View { Text("hi").multilineTextAlignment(.center) } }
+    private struct PlainTextDemo: View { var body: some View { Text("hi") } }
+
+    @Test func testFontTraitMethods() {
+        #expect(Font.system(size: 14).italic().isItalic)
+        #expect(!Font.system(size: 14).italic().isMonospaced)
+        #expect(Font.system(size: 14).monospaced().isMonospaced)
+        let both = Font.system(size: 14).italic().monospaced()
+        #expect(both.isItalic && both.isMonospaced)
+        #expect(Font.system(size: 14, weight: .bold).italic().weight == .bold)   // trait preserves weight
+    }
+
+    @Test func testItalicAndMonospacedReachPatch() {
+        let t1 = MockToolkit(); runHopApp(ItalicDemo(), toolkit: t1, title: "t")
+        #expect(t1.firstLiveWidget { $0.text == "hi" }?.italic == true)
+        let t2 = MockToolkit(); runHopApp(MonoDemo(), toolkit: t2, title: "t")
+        #expect(t2.firstLiveWidget { $0.text == "hi" }?.monospaced == true)
+        let t3 = MockToolkit(); runHopApp(FontItalicDemo(), toolkit: t3, title: "t")
+        #expect(t3.firstLiveWidget { $0.text == "hi" }?.italic == true)   // Font-level .italic() path
+    }
+
+    @Test func testMultilineTextAlignment() {
+        let t = MockToolkit(); runHopApp(AlignDemo(), toolkit: t, title: "t")
+        #expect(t.firstLiveWidget { $0.text == "hi" }?.textAlignment == .center)
+        // Plain text carries no alignment override (keeps the toolkit default).
+        let p = MockToolkit(); runHopApp(PlainTextDemo(), toolkit: p, title: "t")
+        #expect(p.firstLiveWidget { $0.text == "hi" }?.textAlignment == nil)
+        #expect(p.firstLiveWidget { $0.text == "hi" }?.italic == nil)
     }
 
     @Test func testOnSubmitFiresHandler() {

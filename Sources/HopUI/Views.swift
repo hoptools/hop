@@ -14,12 +14,18 @@ public struct Text: View, PrimitiveView {
         // .foregroundStyle on an ancestor), baking it into the node so the toolkit can apply it.
         // Reading through the graph records a dependency, so this body re-runs when its styling changes.
         let environment = currentEnvironment()
-        return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(.label,
-                              patch: WidgetPatch(text: content,
-                                                 foregroundColor: environment.foregroundColor?.resolve(in: environment.colorScheme),
-                                                 font: environment.font,
-                                                 fontWeight: environment.fontWeightOverride)))
+        var patch = WidgetPatch(text: content,
+                                foregroundColor: environment.foregroundColor?.resolve(in: environment.colorScheme),
+                                font: environment.font,
+                                fontWeight: environment.fontWeightOverride)
+        // `.italic()`/`.monospaced()` come from the environment override OR a trait baked into the font
+        // (e.g. `.font(.system(size: 16).italic())`). Carried as separate flags so they apply on top of the
+        // resolved (possibly default-size) font.
+        if environment.fontItalicOverride || (environment.font?.isItalic ?? false) { patch.italic = true }
+        if environment.fontMonospacedOverride || (environment.font?.isMonospaced ?? false) { patch.monospaced = true }
+        // Only carry a non-default alignment, so default labels keep each toolkit's current alignment.
+        if environment.multilineTextAlignment != .leading { patch.textAlignment = environment.multilineTextAlignment }
+        return RenderNode(id: context.id, component: PrimitiveLeafComponent(.label, patch: patch))
     }
 }
 

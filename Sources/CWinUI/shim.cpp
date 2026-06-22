@@ -273,11 +273,20 @@ void hopwinui_textblock_set_text(void* h, const char* u) { if (auto t = as<muxc:
 void hopwinui_textblock_set_foreground(void* h, double r, double g2, double b, double a) {
     if (auto t = as<muxc::TextBlock>(h)) t.Foreground(brush(r, g2, b, a));
 }
-void hopwinui_textblock_set_font(void* h, double size, const char* family, int32_t weight) {
+void hopwinui_textblock_set_font(void* h, double size, const char* family, int32_t weight, int32_t is_italic) {
     auto t = as<muxc::TextBlock>(h); if (!t) return;
     if (size > 0) t.FontSize(size);
     if (family && *family) t.FontFamily(muxm::FontFamily(hs(family)));
     if (weight > 0) { winrt::Windows::UI::Text::FontWeight w; w.Weight = static_cast<uint16_t>(weight); t.FontWeight(w); }
+    t.FontStyle(is_italic ? winrt::Windows::UI::Text::FontStyle::Italic : winrt::Windows::UI::Text::FontStyle::Normal);
+}
+
+// `.multilineTextAlignment` — 0=left, 1=center, 2=right.
+void hopwinui_textblock_set_alignment(void* h, int32_t alignment) {
+    auto t = as<muxc::TextBlock>(h); if (!t) return;
+    t.TextAlignment(alignment == 1 ? mux::TextAlignment::Center
+                  : alignment == 2 ? mux::TextAlignment::Right
+                                   : mux::TextAlignment::Left);
 }
 
 // ---------------------------------------------------------------------------------------------------

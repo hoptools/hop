@@ -560,10 +560,15 @@ public final class WinUIToolkit: AppToolkit {
         case .label:
             if let text = patch.text { hopwinui_textblock_set_text(h, text) }
             if let fg = patch.foregroundColor { hopwinui_textblock_set_foreground(h, fg.red, fg.green, fg.blue, fg.opacity) }
-            if patch.font != nil || patch.fontWeight != nil {
+            if let align = patch.textAlignment {
+                hopwinui_textblock_set_alignment(h, align == .leading ? 0 : align == .center ? 1 : 2)
+            }
+            if patch.font != nil || patch.fontWeight != nil || patch.italic != nil || patch.monospaced != nil {
                 let font = patch.font
                 let weight = patch.fontWeight ?? font?.weight
-                hopwinui_textblock_set_font(h, font?.size ?? 0, font?.family ?? "", Int32(weight?.cssValue ?? 0))
+                // `.monospaced` → Consolas (universally available on Windows).
+                let family = (patch.monospaced == true) ? "Consolas" : (font?.family ?? "")
+                hopwinui_textblock_set_font(h, font?.size ?? 0, family, Int32(weight?.cssValue ?? 0), (patch.italic == true) ? 1 : 0)
             }
         case .button:
             if let title = patch.title { hopwinui_button_set_text(h, title) }

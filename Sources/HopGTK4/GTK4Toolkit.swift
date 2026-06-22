@@ -897,10 +897,18 @@ public final class GTK4Toolkit: AppToolkit {
         if let bg = patch.backgroundColor { rules.append("background-color: \(bg.cssRGBA)") }
         if let font = patch.font {
             rules.append("font-size: \(Int(font.size.rounded()))px")
-            if let family = font.family { rules.append("font-family: \"\(family)\"") }
+            // `.monospaced` overrides any named family with the generic monospace family.
+            if patch.monospaced == true { rules.append("font-family: monospace") }
+            else if let family = font.family { rules.append("font-family: \"\(family)\"") }
+        } else if patch.monospaced == true {
+            rules.append("font-family: monospace")   // monospaced default-size text (no explicit font)
         }
         if let weight = patch.fontWeight ?? patch.font?.weight {
             rules.append("font-weight: \(weight.cssValue)")
+        }
+        if patch.italic == true { rules.append("font-style: italic") }
+        if let align = patch.textAlignment {
+            rules.append("text-align: \(align == .leading ? "start" : align == .center ? "center" : "end")")
         }
         guard !rules.isEmpty else { return nil }
         return "* { " + rules.joined(separator: "; ") + "; }"

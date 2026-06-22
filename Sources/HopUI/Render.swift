@@ -132,6 +132,12 @@ public struct WidgetPatch: Equatable {
     /// Enabled state (`.disabled`); nil/true = interactive, false = dimmed + non-interactive. Applied to the
     /// widget; on GTK/Qt/WinUI the toolkit's hierarchical enabled state cascades it to descendant controls.
     public var isEnabled: Bool?
+    /// Italic / monospaced text traits (`.italic()` / `.monospaced()`). Separate from `font` so they apply on
+    /// top of the resolved (possibly default-size) font without forcing a size.
+    public var italic: Bool?
+    public var monospaced: Bool?
+    /// Multi-line text alignment (`.multilineTextAlignment`); nil = the toolkit's default. Paragraph-level.
+    public var textAlignment: TextAlignment?
 
     public init(text: String? = nil, title: String? = nil, spacing: Double? = nil,
                 value: String? = nil, placeholder: String? = nil,
@@ -224,6 +230,9 @@ extension WidgetPatch {
         if let v = other.accessibilityTraits { accessibilityTraits = v }
         if let v = other.opacity { opacity = v }
         if let v = other.isEnabled { isEnabled = v }
+        if let v = other.italic { italic = v }
+        if let v = other.monospaced { monospaced = v }
+        if let v = other.textAlignment { textAlignment = v }
     }
 }
 

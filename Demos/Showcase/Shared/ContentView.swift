@@ -351,6 +351,17 @@ struct ModifiersPlayground: View {
                     }
                 }
             }
+
+            VStack(spacing: 8) {
+                Text(".italic / .monospaced / .multilineTextAlignment").font(.headline)
+                Text("Italicized text").italic()
+                Text("Monospaced 0123 == ||").monospaced()
+                Text("Bold + italic combined").fontWeight(.bold).italic()
+                Text("Centered text that\nwraps across\nthree lines")
+                    .multilineTextAlignment(.center).frame(width: 240)
+                Text("Trailing-aligned text\non the right edge")
+                    .multilineTextAlignment(.trailing).frame(width: 240)
+            }
         }
         .padding(24)
     }

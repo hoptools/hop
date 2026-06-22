@@ -77,6 +77,11 @@ public nonisolated struct EnvironmentValues {
     public var font: Font?
     public var fontWeightOverride: Font.Weight?
     public var foregroundColor: Color?
+    /// Inherited italic / monospaced traits (set by `.italic()` / `.monospaced()`) and multi-line text
+    /// alignment (set by `.multilineTextAlignment(_:)`), all read by `Text`.
+    public var fontItalicOverride: Bool = false
+    public var fontMonospacedOverride: Bool = false
+    public var multilineTextAlignment: TextAlignment = .leading
 
     /// The light/dark appearance, settable via `.environment(\.colorScheme, _)` and readable via
     /// `@Environment(\.colorScheme)`. Mirrors SwiftUI's `\.colorScheme`.
@@ -117,6 +122,9 @@ public nonisolated struct EnvironmentValues {
         guard font == other.font,
               fontWeightOverride == other.fontWeightOverride,
               foregroundColor == other.foregroundColor,
+              fontItalicOverride == other.fontItalicOverride,
+              fontMonospacedOverride == other.fontMonospacedOverride,
+              multilineTextAlignment == other.multilineTextAlignment,
               colorScheme == other.colorScheme,
               pickerStyle == other.pickerStyle,
               (navigationPush == nil) == (other.navigationPush == nil),

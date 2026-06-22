@@ -82,7 +82,8 @@ void hopwinui_scrollviewer_offset(void* sv, double* out_x, double* out_y);
 // MARK: TextBlock
 void hopwinui_textblock_set_text(void* h, const char* utf8);
 void hopwinui_textblock_set_foreground(void* h, double r, double g, double b, double a);
-void hopwinui_textblock_set_font(void* h, double size, const char* family_or_null, int32_t weight);
+void hopwinui_textblock_set_font(void* h, double size, const char* family_or_null, int32_t weight, int32_t is_italic);
+void hopwinui_textblock_set_alignment(void* h, int32_t alignment);  // 0=left, 1=center, 2=right
 
 // MARK: Button
 void hopwinui_button_set_text(void* h, const char* utf8);

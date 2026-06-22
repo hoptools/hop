@@ -93,12 +93,22 @@ public nonisolated struct Color: Equatable, Sendable {
     }
 }
 
-/// A font, mirroring SwiftUI's `Font`. Carries a point size, a weight, and an optional custom family
-/// (nil = the system font).
+/// Horizontal alignment of multi-line text, mirroring SwiftUI's `TextAlignment`. A styling property (set
+/// by `.multilineTextAlignment(_:)`), not a layout guide.
+public nonisolated enum TextAlignment: Equatable, Sendable, CaseIterable {
+    case leading, center, trailing
+}
+
+/// A font, mirroring SwiftUI's `Font`. Carries a point size, a weight, an optional custom family
+/// (nil = the system font), and italic/monospaced traits.
 public nonisolated struct Font: Equatable, Sendable {
     public var size: Double
     public var weight: Weight
     public var family: String?
+    /// `.italic()` trait.
+    public var isItalic: Bool = false
+    /// `.monospaced()` trait (use the system monospaced font family).
+    public var isMonospaced: Bool = false
 
     public enum Weight: Equatable, Sendable {
         case ultraLight, thin, light, regular, medium, semibold, bold, heavy, black
@@ -148,8 +158,14 @@ public nonisolated struct Font: Equatable, Sendable {
     public static let caption = Font(size: 12, weight: .regular)
 
     func with(weight: Weight) -> Font {
-        Font(size: size, weight: weight, family: family)
+        var f = self; f.weight = weight; return f
     }
+
+    /// This font, italicized. Mirrors SwiftUI's `Font.italic()`.
+    public func italic() -> Font { var f = self; f.isItalic = true; return f }
+
+    /// This font in a monospaced face. Mirrors SwiftUI's `Font.monospaced()`.
+    public func monospaced() -> Font { var f = self; f.isMonospaced = true; return f }
 }
 
 /// A modifier that draws a color behind a view. Per-view (not inherited). Mirrors a common form of
@@ -196,5 +212,21 @@ extension View {
     /// Draws `color` behind this view. Mirrors a common form of SwiftUI's `.background(_:)`.
     public func background(_ color: Color) -> some View {
         _BackgroundModifier(content: self, color: color)
+    }
+
+    /// Italicizes text in this view and its descendants. Mirrors SwiftUI's `.italic()`.
+    public func italic() -> some View {
+        _EnvironmentWritingView(content: self) { $0.fontItalicOverride = true }
+    }
+
+    /// Applies a monospaced font to text in this view and its descendants. Mirrors SwiftUI's `.monospaced()`.
+    public func monospaced() -> some View {
+        _EnvironmentWritingView(content: self) { $0.fontMonospacedOverride = true }
+    }
+
+    /// Sets the horizontal alignment of multi-line text in this view and its descendants. Mirrors SwiftUI's
+    /// `.multilineTextAlignment(_:)`.
+    public func multilineTextAlignment(_ alignment: TextAlignment) -> some View {
+        _EnvironmentWritingView(content: self) { $0.multilineTextAlignment = alignment }
     }
 }

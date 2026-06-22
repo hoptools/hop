@@ -874,7 +874,8 @@ public final class AppKitToolkit: AppToolkit {
     public func configure(_ handle: AppKitWidget, _ patch: WidgetPatch) {
         if let text = patch.text, let label = handle.view as? NSTextField {
             label.stringValue = text
-            label.alignment = .center
+            // `.multilineTextAlignment` when set; otherwise HopUI's centered-label default.
+            label.alignment = patch.textAlignment.map(Self.nsTextAlignment) ?? .center
         }
         if let title = patch.title, let button = handle.view as? NSButton {
             button.title = title
@@ -903,8 +904,11 @@ public final class AppKitToolkit: AppToolkit {
         if let fg = patch.foregroundColor, let label = handle.view as? NSTextField {
             label.textColor = Self.nsColor(fg)
         }
-        if (patch.font != nil || patch.fontWeight != nil), let label = handle.view as? NSTextField {
-            label.font = Self.nsFont(patch.font, weight: patch.fontWeight, current: label.font)
+        if (patch.font != nil || patch.fontWeight != nil || patch.italic != nil || patch.monospaced != nil),
+           let label = handle.view as? NSTextField {
+            label.font = Self.nsFont(patch.font, weight: patch.fontWeight,
+                                     italic: patch.italic ?? false, monospaced: patch.monospaced ?? false,
+                                     current: label.font)
             // Setting the font can re-enable single-line mode; re-assert wrapping for HopUI labels.
             if let hop = label as? HopLabel { configureLabelWrapping(hop) }
         }
@@ -963,14 +967,35 @@ public final class AppKitToolkit: AppToolkit {
         NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: color.opacity)
     }
 
-    private static func nsFont(_ font: Font?, weight: Font.Weight?, current: NSFont?) -> NSFont {
-        let size = font.map { CGFloat($0.size) } ?? (current?.pointSize ?? NSFont.systemFontSize)
-        // A named family ignores the weight override (weight is selected by the family name on macOS).
-        if let family = font?.family, let named = NSFont(name: family, size: size) {
-            return named
+    private static func nsTextAlignment(_ alignment: TextAlignment) -> NSTextAlignment {
+        switch alignment {
+        case .leading: return .left
+        case .center: return .center
+        case .trailing: return .right
         }
-        let resolved = weight ?? font?.weight ?? .regular
-        return NSFont.systemFont(ofSize: size, weight: nsWeight(resolved))
+    }
+
+    /// Apply the `.italic` symbolic trait to a font via its descriptor, preserving size/weight/family.
+    private static func italicized(_ font: NSFont, size: CGFloat) -> NSFont {
+        var traits = font.fontDescriptor.symbolicTraits
+        traits.insert(.italic)
+        let descriptor = font.fontDescriptor.withSymbolicTraits(traits)
+        return NSFont(descriptor: descriptor, size: size) ?? font
+    }
+
+    private static func nsFont(_ font: Font?, weight: Font.Weight?, italic: Bool, monospaced: Bool,
+                              current: NSFont?) -> NSFont {
+        let size = font.map { CGFloat($0.size) } ?? (current?.pointSize ?? NSFont.systemFontSize)
+        // Base face: a named family (its name selects weight on macOS), else monospaced system, else system.
+        var base: NSFont
+        if let family = font?.family, !monospaced, let named = NSFont(name: family, size: size) {
+            base = named
+        } else if monospaced {
+            base = NSFont.monospacedSystemFont(ofSize: size, weight: nsWeight(weight ?? font?.weight ?? .regular))
+        } else {
+            base = NSFont.systemFont(ofSize: size, weight: nsWeight(weight ?? font?.weight ?? .regular))
+        }
+        return italic ? italicized(base, size: size) : base
     }
 
     private static func nsWeight(_ weight: Font.Weight) -> NSFont.Weight {

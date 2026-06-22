@@ -738,10 +738,18 @@ public final class QtToolkit: AppToolkit {
         if let bg = patch.backgroundColor { rules.append("background-color: \(bg.cssRGBA)") }
         if let font = patch.font {
             rules.append("font-size: \(Int(font.size.rounded()))px")
-            if let family = font.family { rules.append("font-family: \"\(family)\"") }
+            if patch.monospaced == true { rules.append("font-family: monospace") }
+            else if let family = font.family { rules.append("font-family: \"\(family)\"") }
+        } else if patch.monospaced == true {
+            rules.append("font-family: monospace")
         }
         if let weight = patch.fontWeight ?? patch.font?.weight {
             rules.append("font-weight: \(weight.cssValue)")
+        }
+        if patch.italic == true { rules.append("font-style: italic") }
+        // Qt QLabel alignment is set via the qproperty (not CSS text-align).
+        if let align = patch.textAlignment {
+            rules.append("qproperty-alignment: \(align == .leading ? "AlignLeft" : align == .center ? "AlignCenter" : "AlignRight")")
         }
         guard !rules.isEmpty else { return nil }
         return rules.joined(separator: "; ") + ";"
