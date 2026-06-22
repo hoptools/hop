@@ -18,6 +18,7 @@
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QNativeGestureEvent>
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QFileDialog>
 #include <QtGui/QColor>
@@ -475,6 +476,45 @@ public:
         return false;
     }
 };
+
+// Pinch (magnify) via macOS-trackpad QNativeGestureEvent. ZoomNativeGesture carries a per-event DELTA, so we
+// accumulate it into a cumulative scale (1.0 = start). Begin resets; End reports onEnded (only if any zoom
+// actually occurred, so a pure-rotate gesture doesn't spuriously fire magnify-ended).
+class HopPinchFilter : public QObject {
+public:
+    hopqt_pinch_cb cb; void *ud; double scale = 1.0; bool active = false;
+    HopPinchFilter(hopqt_pinch_cb f, void *d) : cb(f), ud(d) {}
+    bool eventFilter(QObject *, QEvent *ev) override {
+        if (ev->type() != QEvent::NativeGesture) return false;
+        QNativeGestureEvent *nev = static_cast<QNativeGestureEvent *>(ev);
+        switch (nev->gestureType()) {
+        case Qt::BeginNativeGesture: scale = 1.0; active = false; break;
+        case Qt::ZoomNativeGesture: scale *= (1.0 + nev->value()); active = true; if (cb) cb(ud, scale, 0); break;
+        case Qt::EndNativeGesture: if (active && cb) cb(ud, scale, 1); active = false; break;
+        default: break;
+        }
+        return false;
+    }
+};
+
+// Rotation via QNativeGestureEvent. RotateNativeGesture carries a per-event delta in DEGREES (counter-
+// clockwise positive); we negate to SwiftUI's clockwise-positive convention, accumulate, and report radians.
+class HopRotateFilter : public QObject {
+public:
+    hopqt_rotate_cb cb; void *ud; double radians = 0.0; bool active = false;
+    HopRotateFilter(hopqt_rotate_cb f, void *d) : cb(f), ud(d) {}
+    bool eventFilter(QObject *, QEvent *ev) override {
+        if (ev->type() != QEvent::NativeGesture) return false;
+        QNativeGestureEvent *nev = static_cast<QNativeGestureEvent *>(ev);
+        switch (nev->gestureType()) {
+        case Qt::BeginNativeGesture: radians = 0.0; active = false; break;
+        case Qt::RotateNativeGesture: radians += -nev->value() * M_PI / 180.0; active = true; if (cb) cb(ud, radians, 0); break;
+        case Qt::EndNativeGesture: if (active && cb) cb(ud, radians, 1); active = false; break;
+        default: break;
+        }
+        return false;
+    }
+};
 }  // namespace
 
 void *hopqt_longpress_install(void *widget, int ms, hopqt_void_cb cb, void *user_data) {
@@ -493,6 +533,18 @@ void *hopqt_hover_install(void *widget, hopqt_bool_cb cb, void *user_data) {
 void *hopqt_drag_install(void *widget, hopqt_drag_cb cb, void *user_data) {
     QWidget *w = static_cast<QWidget *>(widget);
     HopDragFilter *f = new HopDragFilter(cb, user_data);
+    w->installEventFilter(f);
+    return f;
+}
+void *hopqt_pinch_install(void *widget, hopqt_pinch_cb cb, void *user_data) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    HopPinchFilter *f = new HopPinchFilter(cb, user_data);
+    w->installEventFilter(f);
+    return f;
+}
+void *hopqt_rotate_install(void *widget, hopqt_rotate_cb cb, void *user_data) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    HopRotateFilter *f = new HopRotateFilter(cb, user_data);
     w->installEventFilter(f);
     return f;
 }

@@ -97,6 +97,10 @@ void hopwinui_hover_connect(void* h, hopwinui_hover_cb cb, void* user_data);
 // `.gesture(DragGesture())`: wire PointerPressed/Moved/Released; cb gets start + current point + ended flag.
 typedef void (*hopwinui_drag_cb)(void* user_data, double sx, double sy, double cx, double cy, int ended);
 void hopwinui_drag_connect(void* h, hopwinui_drag_cb cb, void* user_data);
+// `.gesture(MagnifyGesture()/RotateGesture())`: ManipulationMode(Scale|Rotate|Translate) + ManipulationDelta.
+// cb gets CUMULATIVE scale (1.0 = no change) + rotation in DEGREES; ended: 0 = ongoing, 1 = completed.
+typedef void (*hopwinui_manip_cb)(void* user_data, double cum_scale, double cum_rotation_degrees, int ended);
+void hopwinui_manip_connect(void* h, hopwinui_manip_cb cb, void* user_data);
 
 // MARK: TextBox / PasswordBox
 char* hopwinui_textbox_text(void* h);  // malloc'd UTF-8; caller frees

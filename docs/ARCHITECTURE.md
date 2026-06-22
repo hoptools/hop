@@ -115,3 +115,29 @@ simplifications, each with a clear upgrade path:
    `Color`/`Font`/`Shape` (via `GtkDrawingArea` + Cairo).
 4. `Environment`, `@Binding` to nested state, `ForEach` identity, animations.
 5. Cross-OS hardening (Linux apt, Windows MSYS2); the AppKit and WinUI 3 toolkits are the real seam test.
+
+## Known limitations
+
+These are deliberate boundaries that follow from compositing **real native widgets** rather than rendering
+everything onto a custom canvas (the same trade-off SwiftCrossUI makes):
+
+1. **View transforms apply to `Shape`s only.** `.rotationEffect(_:)`, `.scaleEffect(_:)`, and `.offset(_:)`
+   are implemented via `_ShapeNodeModifier` (`Sources/HopUI/Shape.swift`), which folds the transform into
+   the `ShapeSpec` that the backend paints. They are declared on `extension View` so call sites still
+   compile against Apple's SwiftUI, but on a **non-shape** view (`Text`, `Image`, `Button`, a container, …)
+   the modifier is a **silent no-op** — a rotated `Text` renders upright. This holds on *every* backend
+   (AppKit included), because native toolkits can't apply an arbitrary 2D transform to a live widget (Qt
+   cannot rotate a `QLabel`; doing so would require a `QGraphicsView`/proxy or a non-native canvas).
+   SwiftCrossUI draws the same line — its transform is a painted `Path.Action`, and it offers no
+   `rotationEffect`/`scaleEffect`/`offset` view modifiers at all. Transforming arbitrary views is therefore
+   out of scope for the native-widget model.
+
+2. **Qt clips shape overflow to the frame.** When a `Shape`'s transform (or a drag) pushes its drawing
+   beyond its layout frame, AppKit (non-clipping `NSView`), GTK4 (its `GtkFixed` layout containers are set
+   to `GTK_OVERFLOW_VISIBLE`), and SwiftUI all draw the overflow. **Qt does not** — a child `QWidget` is
+   always clipped to its parent's geometry, with no opt-out flag, so the bleed-enlarged shape widget is cut
+   off at its container (which the layout engine sizes to the frame, not the overflow). Reaching parity
+   would require painting shapes onto a separate content-sized, non-clipping overlay (keeping an invisible
+   shape widget as the gesture hit-target, preserving z-order, and repositioning during drag) — a sizable,
+   fragile change deferred for now. Real clipping boundaries (window, split pane, scroll viewport) clip on
+   every toolkit, as intended.

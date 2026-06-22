@@ -103,6 +103,15 @@ typedef void (*hopqt_drag_cb)(void *user_data, double sx, double sy, double cx, 
 void *hopqt_drag_install(void *widget, hopqt_drag_cb cb, void *user_data);
 void hopqt_filter_remove(void *widget, void *filter);
 
+// Pinch (magnify) / rotate via macOS-trackpad QNativeGestureEvent. The callback receives the CUMULATIVE
+// value since the gesture started: scale (1.0 = no change) for pinch, angle in RADIANS for rotate.
+// `ended`: 0 = ongoing, 1 = gesture finished. On non-macOS Qt these native events do not arrive, so the
+// filter is simply inert (it ignores everything but NativeGesture events).
+typedef void (*hopqt_pinch_cb)(void *user_data, double cumulative_scale, int ended);
+void *hopqt_pinch_install(void *widget, hopqt_pinch_cb cb, void *user_data);
+typedef void (*hopqt_rotate_cb)(void *user_data, double cumulative_radians, int ended);
+void *hopqt_rotate_install(void *widget, hopqt_rotate_cb cb, void *user_data);
+
 // Text field
 void *hopqt_lineedit_new(const char *placeholder);
 void hopqt_lineedit_set_text(void *edit, const char *text);

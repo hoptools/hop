@@ -62,6 +62,12 @@ public final class WinUIWidget {
     var dragChanged: (@MainActor (DragGesture.Value) -> Void)?
     var dragEnded: (@MainActor (DragGesture.Value) -> Void)?
     var dragConnected = false
+    // Magnify + rotate both come from one ManipulationDelta stream (cumulative scale + rotation), wired once.
+    var magnifyChanged: (@MainActor (MagnifyGesture.Value) -> Void)?
+    var magnifyEnded: (@MainActor (MagnifyGesture.Value) -> Void)?
+    var rotateChanged: (@MainActor (RotateGesture.Value) -> Void)?
+    var rotateEnded: (@MainActor (RotateGesture.Value) -> Void)?
+    var manipConnected = false
 
     /// Suppresses change callbacks while reflecting a bound value programmatically.
     var suppress = false
@@ -136,6 +142,17 @@ private let cbDrag: @convention(c) (UnsafeMutableRawPointer?, Double, Double, Do
                                   location: CGPoint(x: cx, y: cy),
                                   translation: CGSize(width: cx - sx, height: cy - sy))
     MainActor.assumeIsolated { if ended != 0 { w.dragEnded?(value) } else { w.dragChanged?(value) } }
+}
+// One ManipulationDelta stream carries cumulative scale + rotation (degrees). We fan it out to both the
+// magnify and rotate handlers; the inactive axis reports identity (scale 1.0 / rotation 0), which is a no-op.
+private let cbManip: @convention(c) (UnsafeMutableRawPointer?, Double, Double, Int32) -> Void = { ud, cumScale, cumRotationDegrees, ended in
+    guard let w = widget(ud) else { return }
+    let mag = MagnifyGesture.Value(magnification: CGFloat(cumScale))
+    let rot = RotateGesture.Value(rotation: Angle(degrees: cumRotationDegrees))
+    MainActor.assumeIsolated {
+        if ended != 0 { w.magnifyEnded?(mag); w.rotateEnded?(rot) }
+        else { w.magnifyChanged?(mag); w.rotateChanged?(rot) }
+    }
 }
 private let cbString: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { s, ud in
     guard let w = widget(ud), let s else { return }
@@ -635,6 +652,28 @@ public final class WinUIToolkit: AppToolkit {
             hopwinui_drag_connect(handle.handle, cbDrag, unmanaged(handle))
             handle.dragConnected = true
         }
+    }
+
+    public func setMagnifyHandler(_ handle: WinUIWidget, _ spec: MagnifyGestureSpec?) {
+        handle.magnifyChanged = spec?.onChanged
+        handle.magnifyEnded = spec?.onEnded
+        ensureManipConnected(handle)
+    }
+
+    public func setRotateHandler(_ handle: WinUIWidget, _ spec: RotateGestureSpec?) {
+        handle.rotateChanged = spec?.onChanged
+        handle.rotateEnded = spec?.onEnded
+        ensureManipConnected(handle)
+    }
+
+    /// Wire the element's ManipulationMode + ManipulationDelta once (it feeds both magnify and rotate).
+    /// Like drag, it stays connected for the element's lifetime; clearing a handler just nils the closure.
+    private func ensureManipConnected(_ handle: WinUIWidget) {
+        let wanted = handle.magnifyChanged != nil || handle.magnifyEnded != nil
+            || handle.rotateChanged != nil || handle.rotateEnded != nil
+        guard wanted, !handle.manipConnected else { return }
+        hopwinui_manip_connect(handle.handle, cbManip, unmanaged(handle))
+        handle.manipConnected = true
     }
 
     // MARK: - Composite configuration

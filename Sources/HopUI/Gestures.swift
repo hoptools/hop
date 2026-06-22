@@ -97,6 +97,23 @@ extension View {
 }
 
 // MARK: - Value-carrying gestures (the `Gesture` protocol + `.gesture(_:)`)
+//
+// Per-toolkit support for DragGesture / MagnifyGesture / RotateGesture:
+//   AppKit — all three (NSPan/NSMagnification/NSRotation gesture recognizers).
+//   GTK4   — drag via GtkGestureDrag (mouse). Magnify/rotate are wired (GtkGestureZoom/GtkGestureRotate)
+//            but those require TWO simultaneous touch points, so they only fire on a real touchscreen
+//            (e.g. Linux Wayland); on mouse-only desktops, X11, and the macOS GDK backend they never fire.
+//            This is a GDK/platform limitation, not a wiring bug.
+//   Qt     — drag via a mouse event filter; magnify/rotate via macOS-trackpad QNativeGestureEvent (on
+//            Linux/Windows Qt the native events don't arrive, so those gestures are inert there).
+//   WinUI  — drag via Pointer events; magnify/rotate via ManipulationMode + ManipulationDelta (trackpad
+//            or touch).
+//
+// IMPORTANT — all toolkits: the gesture recognizer is attached to the target view's widget at its LAYOUT
+// frame, but shapes render their .offset/.scaleEffect/.rotationEffect as draw-time transforms. A single
+// continuous gesture works (the recognizer holds the pointer grab for the whole sequence), but after a
+// gesture has moved/scaled the shape away from its layout frame, a SUBSEQUENT gesture started on the moved
+// visual may miss the (unmoved) hit region. Fully tracking the transformed bounds is a future refinement.
 
 /// The toolkit-facing payload a ``Gesture`` lands on a node via `.gesture(_:)`.
 public enum GestureAttachment {

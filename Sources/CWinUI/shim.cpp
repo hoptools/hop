@@ -328,6 +328,25 @@ void hopwinui_drag_connect(void* h, hopwinui_drag_cb cb, void* ud) {
     });
 }
 
+void hopwinui_manip_connect(void* h, hopwinui_manip_cb cb, void* ud) {
+    auto e = elem(h);
+    // ManipulationMode must be set before the events fire. Scale + Rotate cover magnify/rotate; TranslateX/Y
+    // let the manipulation engine recognize the two-finger gesture even when the fingers also pan slightly.
+    e.ManipulationMode(mux::Input::ManipulationModes::Scale | mux::Input::ManipulationModes::Rotate |
+                       mux::Input::ManipulationModes::TranslateX | mux::Input::ManipulationModes::TranslateY);
+    // ManipulationDelta.Cumulative is already cumulative-since-start (Scale 1.0 = none; Rotation in degrees).
+    e.ManipulationDelta([cb, ud](winrt::Windows::Foundation::IInspectable const&,
+                                 mux::Input::ManipulationDeltaRoutedEventArgs const& args) {
+        auto c = args.Cumulative();
+        if (cb) cb(ud, c.Scale, c.Rotation, 0);
+    });
+    e.ManipulationCompleted([cb, ud](winrt::Windows::Foundation::IInspectable const&,
+                                     mux::Input::ManipulationCompletedRoutedEventArgs const& args) {
+        auto c = args.Cumulative();
+        if (cb) cb(ud, c.Scale, c.Rotation, 1);
+    });
+}
+
 // ---------------------------------------------------------------------------------------------------
 // TextBox / PasswordBox
 // ---------------------------------------------------------------------------------------------------

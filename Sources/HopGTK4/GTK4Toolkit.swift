@@ -1312,26 +1312,44 @@ public final class GTK4Toolkit: AppToolkit {
                                                          Unmanaged.passUnretained(box).toOpaque())
     }
 
+    // The gesture handlers are IDEMPOTENT: the reconciler re-applies them on every render, so the native
+    // controller is created ONCE and kept alive — only the box's closures are refreshed (they capture the
+    // latest @State). Tearing the controller down + re-adding it on each render would cancel an in-flight
+    // gesture mid-drag (the new controller never saw the button-press), which is why drag/magnify/rotate
+    // appeared dead. Create/destroy only on a nil↔non-nil transition.
     public func setDragHandler(_ handle: GTK4Widget, _ spec: DragGestureSpec?) {
-        if let g = handle.dragGestureController { hop_controller_remove(handle.widget, g); handle.dragGestureController = nil; handle.dragBox = nil }
-        guard let spec else { return }
+        guard let spec else {
+            if let g = handle.dragGestureController { hop_controller_remove(handle.widget, g); handle.dragGestureController = nil; handle.dragBox = nil }
+            return
+        }
+        if let box = handle.dragBox { box.dragChanged = spec.onChanged; box.dragEnded = spec.onEnded; return }
         let box = GTK4ActionBox(); box.dragChanged = spec.onChanged; box.dragEnded = spec.onEnded
         handle.dragBox = box
         handle.dragGestureController = hop_drag_gesture_new(handle.widget, gtk4DragUpdateCallback, gtk4DragEndCallback,
                                                            Unmanaged.passUnretained(box).toOpaque())
     }
 
+    // NOTE: GtkGestureZoom/GtkGestureRotate need two simultaneous touch points, so they only fire on a real
+    // touchscreen (Linux Wayland). On mouse-only desktops, X11, and the macOS GDK backend they never fire —
+    // a GDK/platform limitation, not a wiring bug (see Gestures.swift). The wiring below is correct so they
+    // work where touch is available.
     public func setMagnifyHandler(_ handle: GTK4Widget, _ spec: MagnifyGestureSpec?) {
-        if let g = handle.zoomGesture { hop_controller_remove(handle.widget, g); handle.zoomGesture = nil; handle.zoomBox = nil }
-        guard let spec else { return }
+        guard let spec else {
+            if let g = handle.zoomGesture { hop_controller_remove(handle.widget, g); handle.zoomGesture = nil; handle.zoomBox = nil }
+            return
+        }
+        if let box = handle.zoomBox { box.magnifyChanged = spec.onChanged; return }
         let box = GTK4ActionBox(); box.magnifyChanged = spec.onChanged   // GtkGestureZoom reports onChanged via scale-changed
         handle.zoomBox = box
         handle.zoomGesture = hop_zoom_gesture_new(handle.widget, gtk4ZoomCallback, Unmanaged.passUnretained(box).toOpaque())
     }
 
     public func setRotateHandler(_ handle: GTK4Widget, _ spec: RotateGestureSpec?) {
-        if let g = handle.rotateGestureController { hop_controller_remove(handle.widget, g); handle.rotateGestureController = nil; handle.rotateBox = nil }
-        guard let spec else { return }
+        guard let spec else {
+            if let g = handle.rotateGestureController { hop_controller_remove(handle.widget, g); handle.rotateGestureController = nil; handle.rotateBox = nil }
+            return
+        }
+        if let box = handle.rotateBox { box.rotateChanged = spec.onChanged; return }
         let box = GTK4ActionBox(); box.rotateChanged = spec.onChanged
         handle.rotateBox = box
         handle.rotateGestureController = hop_rotate_gesture_new(handle.widget, gtk4RotateCallback, Unmanaged.passUnretained(box).toOpaque())

@@ -1171,12 +1171,16 @@ public final class AppKitToolkit: AppToolkit {
         handle.hoverTarget = target
     }
 
+    // Idempotent: the reconciler re-applies gesture handlers on every render, so the recognizer is created
+    // ONCE and kept alive — only the target's closures are refreshed. Removing + re-adding the recognizer
+    // each render would cancel an in-flight gesture (the new recognizer never saw the mouse-down), so a
+    // continuous drag/magnify/rotate would die after its first event. Create/destroy only on nil↔non-nil.
     public func setDragHandler(_ handle: AppKitWidget, _ spec: DragGestureSpec?) {
-        if let existing = handle.panRecognizer {
-            handle.view.removeGestureRecognizer(existing)
-            handle.panRecognizer = nil; handle.panTarget = nil
+        guard let spec else {
+            if let existing = handle.panRecognizer { handle.view.removeGestureRecognizer(existing); handle.panRecognizer = nil; handle.panTarget = nil }
+            return
         }
-        guard let spec else { return }
+        if let target = handle.panTarget { target.onChanged = spec.onChanged; target.onEnded = spec.onEnded; return }
         let target = PanTarget()
         target.onChanged = spec.onChanged
         target.onEnded = spec.onEnded
@@ -1187,11 +1191,11 @@ public final class AppKitToolkit: AppToolkit {
     }
 
     public func setMagnifyHandler(_ handle: AppKitWidget, _ spec: MagnifyGestureSpec?) {
-        if let existing = handle.magnifyRecognizer {
-            handle.view.removeGestureRecognizer(existing)
-            handle.magnifyRecognizer = nil; handle.magnifyTarget = nil
+        guard let spec else {
+            if let existing = handle.magnifyRecognizer { handle.view.removeGestureRecognizer(existing); handle.magnifyRecognizer = nil; handle.magnifyTarget = nil }
+            return
         }
-        guard let spec else { return }
+        if let target = handle.magnifyTarget { target.onChanged = spec.onChanged; target.onEnded = spec.onEnded; return }
         let target = MagnifyTarget()
         target.onChanged = spec.onChanged
         target.onEnded = spec.onEnded
@@ -1202,11 +1206,11 @@ public final class AppKitToolkit: AppToolkit {
     }
 
     public func setRotateHandler(_ handle: AppKitWidget, _ spec: RotateGestureSpec?) {
-        if let existing = handle.rotateRecognizer {
-            handle.view.removeGestureRecognizer(existing)
-            handle.rotateRecognizer = nil; handle.rotateTarget = nil
+        guard let spec else {
+            if let existing = handle.rotateRecognizer { handle.view.removeGestureRecognizer(existing); handle.rotateRecognizer = nil; handle.rotateTarget = nil }
+            return
         }
-        guard let spec else { return }
+        if let target = handle.rotateTarget { target.onChanged = spec.onChanged; target.onEnded = spec.onEnded; return }
         let target = RotateTarget()
         target.onChanged = spec.onChanged
         target.onEnded = spec.onEnded

@@ -1083,10 +1083,16 @@ static inline void hop_widget_set_size_request(void *w, int width, int height) {
 
 // --- Framework-owned layout (GtkFixed absolute positioning) ----------------
 
-// A plain absolute-positioning container; HopUI's layout engine sets every child's frame. GtkFixed
-// neither lays out nor (with a non-clip default) clips its children — exactly what we want.
+// A plain absolute-positioning container; HopUI's layout engine sets every child's frame. GtkFixed runs
+// no layout — but it does NOT default to non-clipping: GtkWidget's overflow defaults to GTK_OVERFLOW_HIDDEN,
+// so a child's draw-time transform overflow (a rotated/scaled/offset shape drawn beyond its frame) gets
+// clipped at the container. Set OVERFLOW_VISIBLE so the layout containers don't clip — matching AppKit
+// (whose NSViews don't clip) and SwiftUI. Real clipping boundaries (the window, GtkPaned split, and
+// GtkScrolledWindow viewport) keep their own clipping, so ScrollView/split content still clips correctly.
 static inline void *hop_fixed_new(void) {
-    return gtk_fixed_new();
+    GtkWidget *w = gtk_fixed_new();
+    gtk_widget_set_overflow(w, GTK_OVERFLOW_VISIBLE);
+    return w;
 }
 
 // --- Root container: a GtkFixed driven by a custom GtkLayoutManager ----------------------------------
@@ -1159,6 +1165,7 @@ static inline GType hop_root_layout_get_type(void) {
 // set via hop_root_container_set_child; the engine's nested GtkFixeds remain ordinary.)
 static inline void *hop_root_container_new(void) {
     GtkWidget *w = gtk_fixed_new();
+    gtk_widget_set_overflow(w, GTK_OVERFLOW_VISIBLE);  // don't clip transform overflow (see hop_fixed_new)
     gtk_widget_set_layout_manager(w, GTK_LAYOUT_MANAGER(g_object_new(hop_root_layout_get_type(), NULL)));
     return w;
 }

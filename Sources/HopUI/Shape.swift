@@ -188,8 +188,16 @@ extension Shape {
     }
 }
 
+// LIMITATION — view transforms apply to `Shape`s only. These are declared on `extension View` so call
+// sites compile against Apple's SwiftUI, but they fold the transform into a `ShapeSpec` via
+// `_ShapeNodeModifier`, which only acts when the node is a `ShapeComponent`. On a non-shape view (`Text`,
+// `Image`, `Button`, a container, …) the modifier is a SILENT NO-OP on every backend — native toolkits
+// cannot apply an arbitrary 2D transform to a live widget (Qt cannot rotate a `QLabel`). Transforming
+// arbitrary views is out of scope for the native-widget model (SwiftCrossUI draws the same line). See
+// docs/ARCHITECTURE.md → Known limitations.
 extension View {
     /// Rotates the view's shape around its center. Mirrors SwiftUI's `.rotationEffect(_:)`.
+    /// Shapes only — a no-op on non-shape views (see the note above and docs/ARCHITECTURE.md).
     public func rotationEffect(_ angle: Angle) -> some View {
         _ShapeNodeModifier(content: self) { spec in spec.rotation = spec.rotation + angle }
     }

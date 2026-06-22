@@ -44,6 +44,10 @@ public final class QtWidget {
     var hoverFilter: UnsafeMutableRawPointer?
     var dragBox: QtActionBox?
     var dragFilter: UnsafeMutableRawPointer?
+    var magnifyBox: QtActionBox?
+    var magnifyFilter: UnsafeMutableRawPointer?
+    var rotateBox: QtActionBox?
+    var rotateFilter: UnsafeMutableRawPointer?
     init(_ ptr: UnsafeMutableRawPointer) { self.ptr = ptr }
 }
 
@@ -55,6 +59,10 @@ final class QtActionBox {
     var onHover: (@MainActor (Bool) -> Void)?
     var dragChanged: (@MainActor (DragGesture.Value) -> Void)?
     var dragEnded: (@MainActor (DragGesture.Value) -> Void)?
+    var magnifyChanged: (@MainActor (MagnifyGesture.Value) -> Void)?
+    var magnifyEnded: (@MainActor (MagnifyGesture.Value) -> Void)?
+    var rotateChanged: (@MainActor (RotateGesture.Value) -> Void)?
+    var rotateEnded: (@MainActor (RotateGesture.Value) -> Void)?
     var onChange: (@MainActor (String) -> Void)?
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
@@ -130,6 +138,21 @@ private let qtDragCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Do
                                   location: CGPoint(x: cx, y: cy),
                                   translation: CGSize(width: cx - sx, height: cy - sy))
     MainActor.assumeIsolated { if ended != 0 { box.dragEnded?(value) } else { box.dragChanged?(value) } }
+}
+
+// Pinch (magnify) and rotate arrive as macOS-trackpad QNativeGestureEvents; the shim accumulates them into
+// a cumulative scale (1.0 = no change) / cumulative angle in radians, matching SwiftUI's gesture values.
+private let qtPinchCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Int32) -> Void = { userData, cumulativeScale, ended in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    let value = MagnifyGesture.Value(magnification: CGFloat(cumulativeScale))
+    MainActor.assumeIsolated { if ended != 0 { box.magnifyEnded?(value) } else { box.magnifyChanged?(value) } }
+}
+private let qtRotateCallback: @convention(c) (UnsafeMutableRawPointer?, Double, Int32) -> Void = { userData, cumulativeRadians, ended in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    let value = RotateGesture.Value(rotation: Angle(radians: cumulativeRadians))
+    MainActor.assumeIsolated { if ended != 0 { box.rotateEnded?(value) } else { box.rotateChanged?(value) } }
 }
 
 private let qtChangedCallback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { text, userData in
@@ -997,6 +1020,12 @@ public final class QtToolkit: AppToolkit {
         if handle.isShape, let box = handle.actionBox {
             // A QWidget clips painting to its bounds, so enlarge it to fit any transform overflow and
             // offset its origin by the bleed so the frame-sized shape still lands at (minX, minY).
+            // LIMITATION (Qt only): this bleed lets the shape draw its overflow WITHIN its own widget, but a
+            // child QWidget is ALSO always clipped to its parent's geometry — a fundamental Qt rule with no
+            // opt-out flag. So a transform/drag that pushes the shape past its frame is still cut off at the
+            // container (which the layout engine sizes to the frame). AppKit (non-clipping NSView) and GTK4
+            // (GtkFixed set to OVERFLOW_VISIBLE) draw the overflow; Qt parity would need a non-clipping shape
+            // overlay. See docs/ARCHITECTURE.md → Known limitations.
             box.frameWidth = Double(rect.width)
             box.frameHeight = Double(rect.height)
             let bleed = box.shape.map { $0.transformBleed(width: rect.width, height: rect.height) }
@@ -1092,12 +1121,43 @@ public final class QtToolkit: AppToolkit {
         handle.hoverFilter = hopqt_hover_install(handle.ptr, qtHoverCallback, Unmanaged.passUnretained(box).toOpaque())
     }
 
+    // Idempotent: keep the event filter alive across re-renders, only refreshing the closures. The previous
+    // code removed + reinstalled the filter on every render; the fresh HopDragFilter had pressed=false, so an
+    // in-flight drag stopped getting MouseMove after the first update — that was the real "drag doesn't work".
     public func setDragHandler(_ handle: QtWidget, _ spec: DragGestureSpec?) {
-        if let f = handle.dragFilter { hopqt_filter_remove(handle.ptr, f); handle.dragFilter = nil; handle.dragBox = nil }
-        guard let spec else { return }
+        guard let spec else {
+            if let f = handle.dragFilter { hopqt_filter_remove(handle.ptr, f); handle.dragFilter = nil; handle.dragBox = nil }
+            return
+        }
+        if let box = handle.dragBox { box.dragChanged = spec.onChanged; box.dragEnded = spec.onEnded; return }
         let box = QtActionBox(); box.dragChanged = spec.onChanged; box.dragEnded = spec.onEnded
         handle.dragBox = box
         handle.dragFilter = hopqt_drag_install(handle.ptr, qtDragCallback, Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    // Magnify/rotate use macOS-trackpad QNativeGestureEvents (the shim accumulates cumulative scale/angle).
+    // On Linux/Windows Qt these native events don't arrive, so the gesture is simply inert there (no crash) —
+    // cross-platform QGestureEvent support is a later addition.
+    public func setMagnifyHandler(_ handle: QtWidget, _ spec: MagnifyGestureSpec?) {
+        guard let spec else {
+            if let f = handle.magnifyFilter { hopqt_filter_remove(handle.ptr, f); handle.magnifyFilter = nil; handle.magnifyBox = nil }
+            return
+        }
+        if let box = handle.magnifyBox { box.magnifyChanged = spec.onChanged; box.magnifyEnded = spec.onEnded; return }
+        let box = QtActionBox(); box.magnifyChanged = spec.onChanged; box.magnifyEnded = spec.onEnded
+        handle.magnifyBox = box
+        handle.magnifyFilter = hopqt_pinch_install(handle.ptr, qtPinchCallback, Unmanaged.passUnretained(box).toOpaque())
+    }
+
+    public func setRotateHandler(_ handle: QtWidget, _ spec: RotateGestureSpec?) {
+        guard let spec else {
+            if let f = handle.rotateFilter { hopqt_filter_remove(handle.ptr, f); handle.rotateFilter = nil; handle.rotateBox = nil }
+            return
+        }
+        if let box = handle.rotateBox { box.rotateChanged = spec.onChanged; box.rotateEnded = spec.onEnded; return }
+        let box = QtActionBox(); box.rotateChanged = spec.onChanged; box.rotateEnded = spec.onEnded
+        handle.rotateBox = box
+        handle.rotateFilter = hopqt_rotate_install(handle.ptr, qtRotateCallback, Unmanaged.passUnretained(box).toOpaque())
     }
 
     public func contentSize() -> CGSize {
