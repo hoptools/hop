@@ -28,6 +28,7 @@
 #include <QtGui/QFont>
 #include <QtGui/QFontMetrics>
 #include <QtWidgets/QListView>
+#include <QtWidgets/QListWidget>   // inline picker (single-selection item list)
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QTreeWidgetItemIterator>
 #include <QtWidgets/QComboBox>
@@ -414,7 +415,8 @@ void *hopqt_button_new(const char *text) {
 }
 
 void hopqt_button_set_text(void *button, const char *text) {
-    static_cast<QPushButton *>(button)->setText(QString::fromUtf8(text));
+    // QAbstractButton base covers QPushButton (regular/menu/toggle button) and QCheckBox (checkbox toggle).
+    static_cast<QAbstractButton *>(button)->setText(QString::fromUtf8(text));
 }
 
 void hopqt_button_connect(void *button, hopqt_void_cb cb, void *user_data) {
@@ -1149,6 +1151,43 @@ void hopqt_buttongroup_set_selected(void *widget, int index) {
     }
 }
 
+// --- Inline picker (QListWidget) ------------------------------------------
+// `.pickerStyle(.inline)` = a single-selection item list shown in line with surrounding content.
+// Programmatic selection is wrapped in QSignalBlocker so reflecting state never echoes back as a user pick.
+
+void *hopqt_listwidget_new(void) {
+    QListWidget *w = new QListWidget();
+    w->setSelectionMode(QAbstractItemView::SingleSelection);
+    w->setUniformItemSizes(true);
+    return w;
+}
+
+void hopqt_listwidget_set_items(void *widget, int count, hopqt_row_cb row_cb, int selected,
+                                hopqt_int_cb cb, void *user_data) {
+    QListWidget *w = static_cast<QListWidget *>(widget);
+    {
+        QSignalBlocker block(w);   // repopulating + reflecting selection must not fire currentRowChanged
+        w->clear();
+        for (int i = 0; i < count; i++) {
+            char *label = row_cb ? row_cb(i, user_data) : nullptr;
+            w->addItem(QString::fromUtf8(label ? label : ""));
+            if (label) free(label);   // row_cb hands ownership to us
+        }
+        w->setCurrentRow(selected);   // -1 clears selection
+    }
+    if (!w->property("hop-connected").toBool()) {   // wire once
+        QObject::connect(w, &QListWidget::currentRowChanged, w,
+            [cb, user_data](int row) { if (cb) cb(row, user_data); });
+        w->setProperty("hop-connected", true);
+    }
+}
+
+void hopqt_listwidget_set_selected(void *widget, int index) {
+    QListWidget *w = static_cast<QListWidget *>(widget);
+    QSignalBlocker block(w);   // programmatic reflection — no callback
+    w->setCurrentRow(index);   // -1 clears
+}
+
 void *hopqt_list_new(void) {
     QListView *v = new QListView();
     v->setUniformItemSizes(true);  // big perf win for large, fixed-height rows
@@ -1373,23 +1412,33 @@ void hopqt_image_natural_size(void *view, int *out_w, int *out_h) {
     *out_h = s.height();
 }
 
-// --- Switch (Toggle: QCheckBox) + password line edit (SecureField) ----------
+// --- Toggle (QCheckBox for switch/checkbox; checkable QPushButton for .button) + SecureField ----
+// Qt has no native switch widget, so `.switch` and `.checkbox` both render as a QCheckBox. The state
+// accessors cast to QAbstractButton so a checkable QPushButton (`.button` style) works through the
+// same code path (QAbstractButton has setChecked/isChecked/toggled).
 
 void *hopqt_switch_new(void) { return new QCheckBox(); }
 
+// `.toggleStyle(.button)`: a checkable push button that stays "pressed in" while on.
+void *hopqt_toggle_button_new(void) {
+    QPushButton *b = new QPushButton();
+    b->setCheckable(true);
+    return b;
+}
+
 void hopqt_switch_set_checked(void *box, int on) {
-    QCheckBox *cb = static_cast<QCheckBox *>(box);
-    QSignalBlocker block(cb);  // don't re-fire toggled for the state we're reflecting
-    cb->setChecked(on != 0);
+    QAbstractButton *b = static_cast<QAbstractButton *>(box);
+    QSignalBlocker block(b);  // don't re-fire toggled for the state we're reflecting
+    b->setChecked(on != 0);
 }
 
 int hopqt_switch_checked(void *box) {
-    return static_cast<QCheckBox *>(box)->isChecked() ? 1 : 0;
+    return static_cast<QAbstractButton *>(box)->isChecked() ? 1 : 0;
 }
 
 void hopqt_switch_connect(void *box, hopqt_int_cb cb, void *user_data) {
-    QCheckBox *checkbox = static_cast<QCheckBox *>(box);
-    QObject::connect(checkbox, &QCheckBox::toggled, checkbox,
+    QAbstractButton *button = static_cast<QAbstractButton *>(box);
+    QObject::connect(button, &QAbstractButton::toggled, button,
                      [cb, user_data](bool on) { if (cb) cb(on ? 1 : 0, user_data); });
 }
 

@@ -304,7 +304,8 @@ public final class WinUIToolkit: AppToolkit {
     /// Simple leaves (Text/Button/TextField/SecureField/Slider/Toggle/ProgressView/Divider): a native
     /// widget + a ``WidgetPatch`` + optional change handlers, all carried by ``PrimitiveLeafComponent``.
     private func registerLeafComponents() {
-        let leaves: [WidgetKey] = [.label, .button, .textField, .secureField, .slider, .toggle, .progress, .separator]
+        let leaves: [WidgetKey] = [.label, .button, .textField, .secureField, .slider, .progress, .separator]
+            + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
                 make: { [unowned self] component in let h = makeNativeWidget(key); applyLeaf(h, component); return h },
@@ -421,6 +422,38 @@ public final class WinUIToolkit: AppToolkit {
                 measure: { [unowned self] h, _, p in measure(h, p) }
             ), for: .picker(style))
         }
+
+        // .inline → a ListView (every option a selectable row). Reuses the List shims, but wires
+        // cbComboSelect so the SelectionChanged routes to `pickerOnSelect` (cbListSelect routes to a List's
+        // onSelectIndex instead).
+        components.register(.init(
+            make: { [unowned self] c in
+                let w = WinUIWidget(hopwinui_listview_new(), kind: .picker)
+                hopwinui_listview_connect(w.handle, cbComboSelect, unmanaged(w))
+                if let s = (c as? PickerComponent)?.spec { configureInlinePicker(w, s) }
+                return w
+            },
+            update: { [unowned self] h, c in if let s = (c as? PickerComponent)?.spec { configureInlinePicker(h, s) } },
+            measure: { [unowned self] h, _, p in measure(h, p) }
+        ), for: .picker(.inline))
+    }
+
+    /// Configure the inline picker: (re)populate the ListView when options change, otherwise reflect the
+    /// bound selection. Mirrors `configurePicker` but backed by the ListView shims.
+    public func configureInlinePicker(_ handle: WinUIWidget, _ spec: PickerSpec) {
+        handle.pickerOnSelect = spec.onSelect
+        if handle.pickerOptions != spec.options {
+            handle.pickerOptions = spec.options
+            handle.suppress = true
+            withCStrings(spec.options) { hopwinui_listview_set_items(handle.handle, $0, Int32(spec.options.count)) }
+            handle.suppress = false
+        }
+        let target = Int32(spec.selectedIndex ?? -1)
+        if hopwinui_listview_selected(handle.handle) != target {
+            handle.suppress = true
+            hopwinui_listview_set_selected(handle.handle, target)
+            handle.suppress = false
+        }
     }
 
     /// Configure a segmented / radio-group picker: (re)populate when the options change, otherwise reflect
@@ -446,7 +479,24 @@ public final class WinUIToolkit: AppToolkit {
 
     /// Create the native element for a built-in ``WidgetKey`` (registered renderers call this with the keys
     /// the switch knows; picker styles route through `.picker`).
-    private func makeNativeWidget(_ key: WidgetKey) -> WinUIWidget { makeWidget(kind(for: key)) }
+    private func makeNativeWidget(_ key: WidgetKey) -> WinUIWidget {
+        // Toggle styles ("toggle.<style>") pick a distinct native control; the style is lost by `kind(for:)`
+        // (all toggles share `.toggle`), so resolve it here. Idiomatic: switch=ToggleSwitch, checkbox=CheckBox,
+        // button=ToggleButton — all driven through the same `.toggle` configure path.
+        if key.rawValue.hasPrefix("toggle.") {
+            let style = ToggleStyle(rawValue: String(key.rawValue.dropFirst("toggle.".count))) ?? .automatic
+            let ptr: UnsafeMutableRawPointer
+            switch style {
+            case .checkbox: ptr = hopwinui_checkbox_new()
+            case .button: ptr = hopwinui_togglebutton_new()
+            case .switch, .automatic: ptr = hopwinui_toggleswitch_new()
+            }
+            let w = WinUIWidget(ptr, kind: .toggle)
+            hopwinui_toggle_connect(w.handle, cbBool, unmanaged(w))
+            return w
+        }
+        return makeWidget(kind(for: key))
+    }
 
     private func kind(for key: WidgetKey) -> WidgetKind {
         switch key {
@@ -597,6 +647,7 @@ public final class WinUIToolkit: AppToolkit {
                 handle.suppress = true; hopwinui_slider_set_value(h, v); handle.suppress = false
             }
         case .toggle:
+            if let title = patch.title { hopwinui_toggle_set_label(h, title) }  // checkbox/button carry their own label
             if let on = patch.boolValue, (hopwinui_toggle_is_on(h) != 0) != on {
                 handle.suppress = true; hopwinui_toggle_set_on(h, on ? 1 : 0); handle.suppress = false
             }

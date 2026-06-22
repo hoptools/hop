@@ -185,6 +185,8 @@ void* hopwinui_button_new(void) { return mk(muxc::Button()); }
 void* hopwinui_textbox_new(void) { return mk(muxc::TextBox()); }
 void* hopwinui_passwordbox_new(void) { return mk(muxc::PasswordBox()); }
 void* hopwinui_toggleswitch_new(void) { return mk(muxc::ToggleSwitch()); }
+void* hopwinui_checkbox_new(void) { return mk(muxc::CheckBox()); }                       // .toggleStyle(.checkbox)
+void* hopwinui_togglebutton_new(void) { return mk(muxc::Primitives::ToggleButton()); }   // .toggleStyle(.button)
 void* hopwinui_slider_new(void) {
     muxc::Slider s; s.Minimum(0); s.Maximum(1); s.StepFrequency(0.0001); return mk(s);
 }
@@ -405,12 +407,35 @@ void hopwinui_passwordbox_connect(void* h, hopwinui_string_cb cb, void* ud) {
 // ---------------------------------------------------------------------------------------------------
 // ToggleSwitch / Slider / ProgressBar
 // ---------------------------------------------------------------------------------------------------
-int32_t hopwinui_toggle_is_on(void* h) { auto t = as<muxc::ToggleSwitch>(h); return t && t.IsOn() ? 1 : 0; }
-void hopwinui_toggle_set_on(void* h, int32_t on) { if (auto t = as<muxc::ToggleSwitch>(h)) t.IsOn(on != 0); }
-void hopwinui_toggle_connect(void* h, hopwinui_bool_cb cb, void* ud) {
-    auto t = as<muxc::ToggleSwitch>(h); if (!t) return;
-    t.Toggled([cb, ud](wf::IInspectable const& s, auto&&) { if (cb) cb(s.as<muxc::ToggleSwitch>().IsOn() ? 1 : 0, ud); });
+// State accessors span all three toggle controls: ToggleSwitch (IsOn) and the ToggleButton family —
+// CheckBox derives from Primitives::ToggleButton, so one `as<ToggleButton>` covers both (IsChecked is a
+// nullable bool; treat null as off).
+int32_t hopwinui_toggle_is_on(void* h) {
+    if (auto t = as<muxc::ToggleSwitch>(h)) return t.IsOn() ? 1 : 0;
+    if (auto b = as<muxc::Primitives::ToggleButton>(h)) { auto v = b.IsChecked(); return (v && v.Value()) ? 1 : 0; }
+    return 0;
 }
+void hopwinui_toggle_set_on(void* h, int32_t on) {
+    if (auto t = as<muxc::ToggleSwitch>(h)) { t.IsOn(on != 0); return; }
+    if (auto b = as<muxc::Primitives::ToggleButton>(h)) b.IsChecked(on != 0);
+}
+void hopwinui_toggle_connect(void* h, hopwinui_bool_cb cb, void* ud) {
+    if (auto t = as<muxc::ToggleSwitch>(h)) {
+        t.Toggled([cb, ud](wf::IInspectable const& s, auto&&) { if (cb) cb(s.as<muxc::ToggleSwitch>().IsOn() ? 1 : 0, ud); });
+        return;
+    }
+    if (auto b = as<muxc::Primitives::ToggleButton>(h)) {
+        auto handler = [cb, ud](wf::IInspectable const& s, auto&&) {
+            auto v = s.as<muxc::Primitives::ToggleButton>().IsChecked();
+            if (cb) cb((v && v.Value()) ? 1 : 0, ud);
+        };
+        b.Checked(handler);    // Checked / Unchecked both report the new state via IsChecked
+        b.Unchecked(handler);
+    }
+}
+// Checkbox/button carry their own label as ContentControl.Content; ToggleSwitch is not a ContentControl
+// (its label sits beside it via an HStack), so this is a no-op for the switch style.
+void hopwinui_toggle_set_label(void* h, const char* u) { if (auto c = as<muxc::ContentControl>(h)) c.Content(box_value(hs(u))); }
 void hopwinui_slider_set_range(void* h, double mn, double mx) { if (auto s = as<muxc::Slider>(h)) { s.Minimum(mn); s.Maximum(mx); } }
 double hopwinui_slider_value(void* h) { auto s = as<muxc::Slider>(h); return s ? s.Value() : 0; }
 void hopwinui_slider_set_value(void* h, double v) { if (auto s = as<muxc::Slider>(h)) s.Value(v); }

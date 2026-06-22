@@ -46,7 +46,9 @@ void* hopwinui_textblock_new(void);
 void* hopwinui_button_new(void);
 void* hopwinui_textbox_new(void);
 void* hopwinui_passwordbox_new(void);
-void* hopwinui_toggleswitch_new(void);
+void* hopwinui_toggleswitch_new(void);   // switch toggle
+void* hopwinui_checkbox_new(void);       // .toggleStyle(.checkbox)
+void* hopwinui_togglebutton_new(void);   // .toggleStyle(.button)
 void* hopwinui_slider_new(void);
 void* hopwinui_listview_new(void);
 void* hopwinui_combobox_new(void);
@@ -120,6 +122,7 @@ void hopwinui_passwordbox_connect(void* h, hopwinui_string_cb cb, void* user_dat
 int32_t hopwinui_toggle_is_on(void* h);
 void hopwinui_toggle_set_on(void* h, int32_t on);
 void hopwinui_toggle_connect(void* h, hopwinui_bool_cb cb, void* user_data);
+void hopwinui_toggle_set_label(void* h, const char* utf8);  // checkbox/button content label (no-op for switch)
 
 // MARK: Slider
 void hopwinui_slider_set_range(void* h, double minimum, double maximum);

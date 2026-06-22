@@ -641,8 +641,8 @@ public final class GTK4Toolkit: AppToolkit {
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField,
-            .slider, .toggle, .progress, .separator,
-        ]
+            .slider, .progress, .separator,
+        ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
                 make: { [unowned self] component in let handle = makeNativeWidget(key); applyLeaf(handle, component); return handle },
@@ -690,6 +690,46 @@ public final class GTK4Toolkit: AppToolkit {
                 },
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
             ), for: .picker(style))
+        }
+
+        // .inline → a GtkListBox: every option a selectable row (in line with surrounding content).
+        components.register(.init(
+            make: { [unowned self] component in
+                let handle = makeInlinePicker()
+                if let spec = (component as? PickerComponent)?.spec { configureInlinePicker(handle, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let spec = (component as? PickerComponent)?.spec { configureInlinePicker(handle, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+        ), for: .picker(.inline))
+    }
+
+    /// Build an inline-picker widget: a GtkListBox of selectable rows.
+    private func makeInlinePicker() -> GTK4Widget {
+        let widget = hop_listbox_new()!
+        hop_object_ref_sink(widget)
+        let handle = GTK4Widget(widget)
+        handle.actionBox = GTK4ActionBox()
+        return handle
+    }
+
+    /// Configure the inline picker: (re)populate the list rows when options change, otherwise reflect the
+    /// bound selection. Reuses `gtk4ButtonGroupCallback` (it just forwards the selected index).
+    private func configureInlinePicker(_ handle: GTK4Widget, _ spec: PickerSpec) {
+        guard let box = handle.actionBox else { return }
+        box.onSelect = { if let index = $0 { spec.onSelect(index) } }
+        let boxPtr = Unmanaged.passUnretained(box).toOpaque()
+        if box.pickerOptions != spec.options {
+            box.pickerOptions = spec.options
+            box.rowText = { spec.options[$0] }
+            hop_listbox_set_items(handle.widget, UInt32(spec.options.count), gtk4RowCallback,
+                                  Int32(spec.selectedIndex ?? -1), gtk4ButtonGroupCallback, boxPtr)
+            box.lastSelected = spec.selectedIndex
+        } else if box.lastSelected != spec.selectedIndex {
+            box.lastSelected = spec.selectedIndex
+            hop_listbox_set_selected(handle.widget, Int32(spec.selectedIndex ?? -1))
         }
     }
 
@@ -758,7 +798,12 @@ public final class GTK4Toolkit: AppToolkit {
         case .splitView: widget = hop_paned_new()!
         case .tabView: widget = hop_notebook_new()!
         case .image: widget = hop_picture_new()!
-        case .toggle: widget = hop_switch_new()!
+        case let k where k.rawValue.hasPrefix("toggle."):
+            switch ToggleStyle(rawValue: String(k.rawValue.dropFirst("toggle.".count))) ?? .automatic {
+            case .checkbox: widget = hop_check_button_new()!
+            case .button: widget = hop_toggle_button_new()!
+            case .switch, .automatic: widget = hop_switch_new()!
+            }
         case .secureField:
             widget = hop_entry_new()!
             hop_entry_set_visibility(widget, 0)  // mask typed characters (password field)
@@ -789,7 +834,8 @@ public final class GTK4Toolkit: AppToolkit {
             handle.actionBox = box
             _ = hop_connect_changed(widget, gtk4ChangedCallback, Unmanaged.passUnretained(box).toOpaque())
             _ = hop_connect_activate(widget, gtk4ActivateEntryCallback, Unmanaged.passUnretained(box).toOpaque())
-        } else if key == .toggle {
+        } else if key.rawValue.hasPrefix("toggle.") {
+            // switch / checkbox / push-toggle button — all expose "active" (notify::active), read type-aware.
             handle.isToggle = true
             let box = GTK4ActionBox()
             handle.actionBox = box

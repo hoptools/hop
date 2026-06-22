@@ -145,7 +145,20 @@ public struct Picker<SelectionValue: Hashable, Content: View>: View, PrimitiveVi
 /// How a ``Picker`` is presented. Each case maps to a different native widget (and possibly a different
 /// layout role), so it is part of the component's ``WidgetKey``. Mirrors SwiftUI's `PickerStyle`.
 public enum PickerStyle: String, Hashable, Sendable, CaseIterable {
-    case automatic, menu, segmented, radioGroup
+    case automatic, menu, segmented, radioGroup, inline
+}
+
+/// How a ``Toggle`` is presented — each case is a different native widget (switch / checkbox / push-toggle
+/// button), so it is part of the component's ``WidgetKey`` (a style change recreates the widget). Mirrors
+/// SwiftUI's `ToggleStyle` cases. (`switch` is a Swift keyword, hence the backticks.)
+public enum ToggleStyle: String, Hashable, Sendable, CaseIterable {
+    case automatic, `switch`, checkbox, button
+}
+
+public extension WidgetKey {
+    /// A `Toggle`'s key for a given style — the native impl identity, so a style change recreates the widget.
+    /// Backends register one renderer per `.toggle(style)`. Parallels `.picker(_:)`.
+    static func toggle(_ style: ToggleStyle) -> WidgetKey { WidgetKey("toggle.\(style.rawValue)") }
 }
 
 public extension WidgetKey {

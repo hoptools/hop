@@ -251,6 +251,12 @@ void hopqt_buttongroup_set_items(void *widget, int count, hopqt_row_cb row_cb, i
                                  hopqt_int_cb cb, void *user_data);
 void hopqt_buttongroup_set_selected(void *widget, int index);
 
+// Inline picker (QListWidget: single-selection item list)
+void *hopqt_listwidget_new(void);
+void hopqt_listwidget_set_items(void *widget, int count, hopqt_row_cb row_cb, int selected,
+                                hopqt_int_cb cb, void *user_data);
+void hopqt_listwidget_set_selected(void *widget, int index);
+
 // Lazy list (QListView + a custom QAbstractListModel that fetches rows on demand)
 void *hopqt_list_new(void);
 void hopqt_list_set_model(void *list, int count, hopqt_row_cb row_cb, void *user_data);
@@ -279,10 +285,11 @@ void hopqt_imageview_set_mode(void *view, int resizable, int mode);  // mode: 0=
 void hopqt_image_natural_size(void *view, int *out_w, int *out_h);
 
 // Switch (Toggle: QCheckBox) and password mode for a line edit (SecureField).
-void *hopqt_switch_new(void);
+void *hopqt_switch_new(void);                  // switch / checkbox toggle (QCheckBox)
+void *hopqt_toggle_button_new(void);           // .toggleStyle(.button): checkable QPushButton
 void hopqt_switch_set_checked(void *box, int on);
 int hopqt_switch_checked(void *box);
-void hopqt_switch_connect(void *box, hopqt_int_cb cb, void *user_data);  // reports 0/1
+void hopqt_switch_connect(void *box, hopqt_int_cb cb, void *user_data);  // reports 0/1; QAbstractButton-based
 void hopqt_lineedit_set_password(void *lineedit, int on);
 
 // Tabbed container (TabView: QTabWidget). Pages are added as child widgets; titles/selection set after.

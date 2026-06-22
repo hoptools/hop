@@ -91,6 +91,10 @@ public nonisolated struct EnvironmentValues {
     /// `Picker` builds its component, so it selects the native implementation (and is part of its widget key).
     public var pickerStyle: PickerStyle = .automatic
 
+    /// The presentation style for `Toggle`s in this subtree, set via `.toggleStyle(_:)`. Read when a `Toggle`
+    /// builds its component (part of its widget key) and when `Toggle.body` lays out the label.
+    public var toggleStyle: ToggleStyle = .automatic
+
     /// Custom values injected by `EnvironmentKey`, keyed by the key type. Accessed through ``subscript(_:)``
     /// from the computed properties an extension adds for each key.
     private var keyedValues: [ObjectIdentifier: StoredEnvironmentValue] = [:]
@@ -127,6 +131,7 @@ public nonisolated struct EnvironmentValues {
               multilineTextAlignment == other.multilineTextAlignment,
               colorScheme == other.colorScheme,
               pickerStyle == other.pickerStyle,
+              toggleStyle == other.toggleStyle,
               (navigationPush == nil) == (other.navigationPush == nil),
               keyedValues.count == other.keyedValues.count,
               objects.count == other.objects.count else { return false }

@@ -29,14 +29,15 @@ import Foundation
     @Test func testToggleBindsAndReflectsState() throws {
         let toolkit = MockToolkit()
         runHopApp(ToggleHost(), toolkit: toolkit, title: "test")
-        let toggle = try #require(toolkit.widgets.first { $0.kind == .toggle })
+        // A default Toggle (no .toggleStyle) is the `.automatic` style.
+        let toggle = try #require(toolkit.widgets.first { $0.kind == .toggle(.automatic) })
         #expect(toggle.boolValue == false)
         #expect(toolkit.liveLabels().contains("Wi-Fi"))  // the composed label
 
         toolkit.clearOps()
         toggle.onChangeBool?(true)            // simulate the user flipping the switch
         toolkit.drainMainThread()
-        #expect(try #require(toolkit.widgets.first { $0.kind == .toggle }).boolValue == true)
+        #expect(try #require(toolkit.widgets.first { $0.kind == .toggle(.automatic) }).boolValue == true)
         #expect(toolkit.makeCount == 0)       // reconfigured, not rebuilt
     }
 

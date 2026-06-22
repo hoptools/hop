@@ -478,9 +478,15 @@ struct ButtonPlayground: View {
     }
 }
 
+/// Demonstrates `Toggle` in its default form plus all three `toggleStyle`s (`.switch`, `.checkbox`,
+/// `.button`), each rendered with the closest toolkit-idiomatic native control. The same source compiles
+/// against HopUI and Apple's SwiftUI (where `.switch`/`.checkbox`/`.button` name the matching styles).
 struct TogglePlayground: View {
     @Binding var wifi: Bool                       // shared with the Form
     @State private var notifications = false       // local to this playground
+    @State private var switchOn = true
+    @State private var checkboxOn = true
+    @State private var buttonOn = false
     var body: some View {
         VStack(spacing: 16) {
             Text("Boolean on/off controls bound to @State")
@@ -490,6 +496,17 @@ struct TogglePlayground: View {
             }
             .frame(width: 260)
             Text("Wi-Fi is \(wifi ? "on" : "off") · Notifications \(notifications ? "on" : "off")")
+
+            Divider().frame(width: 260)
+
+            Text("toggleStyle — each maps to a native idiom")
+            VStack(spacing: 10) {
+                Toggle("Switch style", isOn: $switchOn).toggleStyle(.switch)
+                Toggle("Checkbox style", isOn: $checkboxOn).toggleStyle(.checkbox)
+                Toggle("Button style", isOn: $buttonOn).toggleStyle(.button)
+            }
+            .frame(width: 260)
+            Text("switch \(switchOn ? "on" : "off") · checkbox \(checkboxOn ? "on" : "off") · button \(buttonOn ? "on" : "off")")
         }
     }
 }
@@ -506,9 +523,9 @@ struct StepperPlayground: View {
     }
 }
 
-/// Demonstrates `Picker` across all four styles (`.menu`, `.segmented`, `.radioGroup`, `.automatic`),
-/// different selection value types (enum + Int), `ForEach`-built and statically-tagged options, and a live
-/// readout of every binding. The same source compiles against HopUI and Apple's SwiftUI.
+/// Demonstrates `Picker` across all five styles (`.menu`, `.segmented`, `.radioGroup`, `.inline`,
+/// `.automatic`), different selection value types (enum + Int), `ForEach`-built and statically-tagged
+/// options, and a live readout of every binding. The same source compiles against HopUI and Apple's SwiftUI.
 struct PickerPlayground: View {
     enum Fruit: String, CaseIterable, Identifiable, Hashable {
         case apple, banana, cherry, dragonfruit
@@ -524,6 +541,7 @@ struct PickerPlayground: View {
     @State private var menuFruit: Fruit = .banana
     @State private var segment: Alignment = .center
     @State private var radioFruit: Fruit = .cherry
+    @State private var inlineFruit: Fruit = .apple
     @State private var size: Int = 1
 
     private let sizes = ["Small", "Medium", "Large", "Huge"]
@@ -531,7 +549,7 @@ struct PickerPlayground: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Menu: \(menuFruit.label)  ·  Segmented: \(segment.label)  ·  Radio: \(radioFruit.label)  ·  Size: \(sizes[size])")
+                Text("Menu: \(menuFruit.label)  ·  Segmented: \(segment.label)  ·  Radio: \(radioFruit.label)  ·  Inline: \(inlineFruit.label)  ·  Size: \(sizes[size])")
                     .fontWeight(.semibold)
 
                 GroupBox("Menu (drop-down)") {
@@ -555,6 +573,13 @@ struct PickerPlayground: View {
                     .pickerStyle(.radioGroup)
                 }
 
+                GroupBox("Inline (selectable list)") {
+                    Picker("Fruit", selection: $inlineFruit) {
+                        ForEach(Fruit.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                }
+
                 GroupBox("Automatic (statically-tagged Int options)") {
                     Picker("Size", selection: $size) {
                         Text("Small").tag(0)
@@ -566,7 +591,7 @@ struct PickerPlayground: View {
                 }
 
                 Text("Pick options in any control above and watch the readout — each style is a different "
-                     + "native widget per toolkit (pop-up / segmented control / radio buttons).")
+                     + "native widget per toolkit (pop-up / segmented control / radio buttons / inline list).")
                     .foregroundStyle(.gray)
             }
             .padding(24)

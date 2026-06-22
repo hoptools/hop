@@ -101,8 +101,8 @@ final class MockToolkit: AppToolkit {
         // Leaf widgets: delegate to the legacy makeWidget/configure so existing op-log assertions hold.
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField,
-            .slider, .toggle, .progress, .separator,
-        ]
+            .slider, .progress, .separator,
+        ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
                 make: { [unowned self] component in let handle = makeNativeWidget(key); applyLeaf(handle, component); return handle },
@@ -314,7 +314,7 @@ final class MockToolkit: AppToolkit {
         case .button: return CGSize(width: CGFloat((handle.title ?? "").count) * 8 + 16, height: 24)
         case .textField, .secureField: return CGSize(width: 120, height: 24)
         case .slider: return CGSize(width: 100, height: 20)
-        case .toggle: return CGSize(width: 40, height: 22)
+        case let k where k.rawValue.hasPrefix("toggle."): return CGSize(width: 40, height: 22)  // any toggle style
         case .progress: return CGSize(width: 100, height: 8)
         case .shape: return proposal.resolved(CGSize(width: 10, height: 10))  // shapes are greedy
         case .image:
@@ -919,6 +919,74 @@ private struct SimpleNavDemo: View {
     }
 }
 
+// MARK: - Toggle styles
+
+@MainActor @Suite struct ToggleStyleTests {
+    private struct StyledToggle: View {
+        let style: ToggleStyle
+        @State var on = false
+        var body: some View {
+            VStack {
+                Toggle("Wi-Fi", isOn: $on).toggleStyle(style)
+                Text(on ? "ON" : "OFF")
+            }
+        }
+    }
+    private struct DefaultToggle: View {
+        @State var on = false
+        var body: some View { Toggle("X", isOn: $on) }   // no .toggleStyle → .automatic
+    }
+
+    @Test func testEachStyleDispatchesToItsOwnWidget() {
+        for style in ToggleStyle.allCases {
+            let toolkit = MockToolkit()
+            runHopApp(StyledToggle(style: style), toolkit: toolkit, title: "t")
+            // The style is the native-impl identity, so it ends up in the widget's key.
+            #expect(toolkit.firstLiveWidget { $0.kind == .toggle(style) } != nil)
+        }
+        // Absent an explicit style, a Toggle is `.automatic`.
+        let dflt = MockToolkit()
+        runHopApp(DefaultToggle(), toolkit: dflt, title: "t")
+        #expect(dflt.firstLiveWidget { $0.kind == .toggle(.automatic) } != nil)
+    }
+
+    @Test func testCheckboxAndButtonCarryTheirOwnLabel() {
+        for style in [ToggleStyle.checkbox, .button] {
+            let toolkit = MockToolkit()
+            runHopApp(StyledToggle(style: style), toolkit: toolkit, title: "t")
+            let control = toolkit.firstLiveWidget { $0.kind == .toggle(style) }
+            #expect(control?.title == "Wi-Fi")                 // the label lives on the control itself
+            // …so there's no separate Text label widget beside it (unlike the switch style).
+            #expect(toolkit.firstLiveWidget { $0.kind == .label && $0.text == "Wi-Fi" } == nil)
+        }
+    }
+
+    @Test func testSwitchPlacesLabelBesideABareControl() {
+        for style in [ToggleStyle.switch, .automatic] {
+            let toolkit = MockToolkit()
+            runHopApp(StyledToggle(style: style), toolkit: toolkit, title: "t")
+            let control = toolkit.firstLiveWidget { $0.kind == .toggle(style) }
+            #expect(control?.title == nil)                     // bare switch, no inline title
+            // the label sits beside it as a separate Text widget (HStack)
+            #expect(toolkit.firstLiveWidget { $0.kind == .label && $0.text == "Wi-Fi" } != nil)
+        }
+    }
+
+    @Test func testTogglingRoundTripsBoundState() {
+        for style in ToggleStyle.allCases {
+            let toolkit = MockToolkit()
+            runHopApp(StyledToggle(style: style), toolkit: toolkit, title: "t")
+            #expect(toolkit.liveLabels().contains("OFF"))
+            let control = toolkit.firstLiveWidget { $0.kind == .toggle(style) }
+            #expect(control?.boolValue == false)
+            control?.onChangeBool?(true)                       // user flips it on
+            toolkit.drainMainThread()
+            #expect(toolkit.liveLabels().contains("ON"))       // bound state updated…
+            #expect(toolkit.firstLiveWidget { $0.kind == .toggle(style) }?.boolValue == true)  // …and reflected back
+        }
+    }
+}
+
 // MARK: - @Observable through @Environment
 
 @Observable private final class CounterModel {
@@ -1325,6 +1393,36 @@ private struct MenuDemo: View {
         toolkit.drainMainThread()
         #expect(toolkit.widgets.contains { $0.text == "choice:3" })
         #expect(toolkit.makeCount == 0)  // no widgets rebuilt for the selection change
+    }
+
+    private struct InlinePickerDemo: View {
+        @State var fruit = "apple"
+        var body: some View {
+            Picker("Fruit", selection: $fruit) {
+                Text("Apple").tag("apple")
+                Text("Banana").tag("banana")
+                Text("Cherry").tag("cherry")
+            }
+            .pickerStyle(.inline)
+        }
+    }
+
+    @Test func testInlinePickerDispatchesAndRoundTripsSelection() throws {
+        let toolkit = MockToolkit()
+        runHopApp(InlinePickerDemo(), toolkit: toolkit, title: "test")
+
+        let widget = try #require(toolkit.widgets.first { $0.kind == .picker })
+        #expect(widget.pickerStyleName == "inline")     // the .inline renderer was taken, not another style
+        let picker = try #require(widget.picker)
+        #expect(picker.options == ["Apple", "Banana", "Cherry"])
+        #expect(picker.selectedIndex == 0)               // "apple"
+
+        // User picks index 2 (cherry) → binding updates → reflected back, widget reused (not rebuilt).
+        toolkit.clearOps()
+        picker.onSelect(2)
+        toolkit.drainMainThread()
+        #expect(toolkit.firstLiveWidget { $0.kind == .picker }?.picker?.selectedIndex == 2)
+        #expect(toolkit.makeCount == 0)
     }
 }
 

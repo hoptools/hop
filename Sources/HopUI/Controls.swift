@@ -16,39 +16,68 @@ import Foundation  // URL / Process (Link opens URLs via the platform opener)
 public struct Toggle<Label: View>: View {
     let isOn: Binding<Bool>
     let label: Label
+    /// The label as a plain string (from the `Toggle(_:isOn:)` convenience), used as the native control's own
+    /// title for the `.checkbox`/`.button` styles. `nil` for arbitrary-`View` labels (then the label is shown
+    /// beside the bare control for every style).
+    let titleString: String?
 
     public init(isOn: Binding<Bool>, @ViewBuilder label: () -> Label) {
         self.isOn = isOn
         self.label = label()
+        self.titleString = nil
     }
 
-    public var body: some View {
-        HStack(spacing: 8) {
-            label
-            Spacer()
-            _ToggleControl(isOn: isOn)
+    init(isOn: Binding<Bool>, titleString: String?, label: Label) {
+        self.isOn = isOn
+        self.label = label
+        self.titleString = titleString
+    }
+
+    @ViewBuilder public var body: some View {
+        // A checkbox/button carries its OWN label (idiomatic) → render just the control with the title. The
+        // switch sits beside the label. (Reading the env here is sound — bodies evaluate within the env scope.)
+        if let titleString, currentEnvironment().toggleStyle == .checkbox || currentEnvironment().toggleStyle == .button {
+            _ToggleControl(isOn: isOn, title: titleString)
+        } else {
+            HStack(spacing: 8) {
+                label
+                Spacer()
+                _ToggleControl(isOn: isOn, title: nil)
+            }
         }
     }
 }
 
 extension Toggle where Label == Text {
     public init(_ title: String, isOn: Binding<Bool>) {
-        self.init(isOn: isOn) { Text(title) }
+        self.init(isOn: isOn, titleString: title, label: Text(title))
     }
 }
 
-/// The bare native switch produced by ``Toggle`` (label-less); not constructed directly.
+extension View {
+    /// Sets the presentation style of `Toggle`s within this view (`.switch` / `.checkbox` / `.button`).
+    /// Mirrors SwiftUI's `.toggleStyle(_:)`. Flows through the (graph-tracked) environment.
+    public func toggleStyle(_ style: ToggleStyle) -> some View { environment(\.toggleStyle, style) }
+}
+
+/// The native toggle produced by ``Toggle`` — a switch, checkbox, or push-toggle button per the ambient
+/// `.toggleStyle`. `title` (set for checkbox/button) becomes the control's own label. Not constructed directly.
 struct _ToggleControl: View, PrimitiveView {
     let isOn: Binding<Bool>
+    let title: String?
+    init(isOn: Binding<Bool>, title: String? = nil) { self.isOn = isOn; self.title = title }
 
     typealias Body = Never
     var body: Never { fatalError("_ToggleControl has no body") }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         let binding = isOn
+        let style = currentEnvironment().toggleStyle
+        var patch = WidgetPatch(boolValue: isOn.wrappedValue)
+        if let title { patch.title = title }   // checkbox/button show their own label
         return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(.toggle,
-                              patch: WidgetPatch(boolValue: isOn.wrappedValue),
+                          component: PrimitiveLeafComponent(.toggle(style),
+                              patch: patch,
                               onChangeBool: { binding.wrappedValue = $0 }))
     }
 }

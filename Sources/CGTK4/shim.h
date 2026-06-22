@@ -281,7 +281,9 @@ static inline void *hop_button_new(const char *text) {
 }
 
 static inline void hop_button_set_label(void *button, const char *text) {
-    gtk_button_set_label(GTK_BUTTON(button), text);
+    // GtkCheckButton is NOT a GtkButton in GTK4 (it has its own label setter); GtkToggleButton IS a GtkButton.
+    if (GTK_IS_CHECK_BUTTON(button)) gtk_check_button_set_label(GTK_CHECK_BUTTON(button), text);
+    else gtk_button_set_label(GTK_BUTTON(button), text);
 }
 
 static inline unsigned long hop_connect_clicked(void *button, hop_clicked_fn cb, void *data) {
@@ -690,17 +692,40 @@ static inline void *hop_switch_new(void) {
     return sw;
 }
 
-static inline void hop_switch_set_active(void *sw, int active) {
-    gtk_switch_set_active(GTK_SWITCH(sw), active ? TRUE : FALSE);
+// A checkbox toggle (`.toggleStyle(.checkbox)`): GtkCheckButton, not the deprecated GtkToggleButton-as-check.
+static inline void *hop_check_button_new(void) {
+    GtkWidget *w = gtk_check_button_new();
+    gtk_widget_set_halign(w, GTK_ALIGN_START);
+    gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
+    return w;
 }
 
-static inline int hop_switch_get_active(void *sw) {
-    return gtk_switch_get_active(GTK_SWITCH(sw)) ? 1 : 0;
+// A push-toggle button (`.toggleStyle(.button)`): GtkToggleButton stays "pressed in" while on.
+static inline void *hop_toggle_button_new(void) {
+    GtkWidget *w = gtk_toggle_button_new();
+    gtk_widget_set_halign(w, GTK_ALIGN_START);
+    gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
+    return w;
 }
 
-// notify::active fires (object, pspec, user_data) when the switch flips; read state with hop_switch_get_active.
-static inline unsigned long hop_switch_connect(void *sw, hop_notify_fn cb, void *data) {
-    return g_signal_connect_data(sw, "notify::active", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+// State accessors are type-aware so one code path drives all three toggle widgets (switch / check / toggle button).
+static inline void hop_switch_set_active(void *w, int active) {
+    if (GTK_IS_SWITCH(w)) gtk_switch_set_active(GTK_SWITCH(w), active ? TRUE : FALSE);
+    else if (GTK_IS_CHECK_BUTTON(w)) gtk_check_button_set_active(GTK_CHECK_BUTTON(w), active ? TRUE : FALSE);
+    else if (GTK_IS_TOGGLE_BUTTON(w)) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(w), active ? TRUE : FALSE);
+}
+
+static inline int hop_switch_get_active(void *w) {
+    if (GTK_IS_SWITCH(w)) return gtk_switch_get_active(GTK_SWITCH(w)) ? 1 : 0;
+    if (GTK_IS_CHECK_BUTTON(w)) return gtk_check_button_get_active(GTK_CHECK_BUTTON(w)) ? 1 : 0;
+    if (GTK_IS_TOGGLE_BUTTON(w)) return gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(w)) ? 1 : 0;
+    return 0;
+}
+
+// All three expose an "active" property, so notify::active fires (object, pspec, user_data) for each — one
+// callback signature covers switch, check button, and toggle button. Read state with hop_switch_get_active.
+static inline unsigned long hop_switch_connect(void *w, hop_notify_fn cb, void *data) {
+    return g_signal_connect_data(w, "notify::active", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
 }
 
 // --- Notebook (TabView: GtkNotebook) ---------------------------------------
@@ -1053,6 +1078,71 @@ static inline void hop_buttongroup_set_selected(void *boxp, int index) {
         gboolean on = (i == index);
         if (GTK_IS_CHECK_BUTTON(c)) gtk_check_button_set_active(GTK_CHECK_BUTTON(c), on);
         else gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(c), on);
+    }
+    g_object_set_data(G_OBJECT(box), "hop-building", NULL);
+}
+
+// --- Inline picker (GtkListBox) -------------------------------------------
+//
+// `.pickerStyle(.inline)` is a borderless single-selection list: each option is a GtkListBoxRow holding a
+// GtkLabel. Selection is reported via "row-selected" (reusing the hop_index_fn callback), guarded by the
+// same "hop-building" flag the button group uses so programmatic selection doesn't echo back.
+
+static inline void *hop_listbox_new(void) {
+    GtkWidget *list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(list), GTK_SELECTION_SINGLE);
+    return list;
+}
+
+static inline void hop_listbox_row_selected(GtkListBox *box, GtkListBoxRow *row, gpointer data) {
+    (void)data;
+    if (g_object_get_data(G_OBJECT(box), "hop-building")) return;  // ignore programmatic reflection
+    if (!row) return;
+    hop_index_fn cb = (hop_index_fn)g_object_get_data(G_OBJECT(box), "hop-cb");
+    void *ud = g_object_get_data(G_OBJECT(box), "hop-ud");
+    if (cb) cb(gtk_list_box_row_get_index(row), ud);
+}
+
+static inline void hop_listbox_set_items(void *boxp, unsigned count, hop_row_fn label_cb,
+                                         int selected, hop_index_fn cb, void *user_data) {
+    GtkListBox *box = GTK_LIST_BOX(boxp);
+    g_object_set_data(G_OBJECT(box), "hop-building", GINT_TO_POINTER(1));
+    GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(box));
+    while (child) { GtkWidget *next = gtk_widget_get_next_sibling(child); gtk_list_box_remove(box, child); child = next; }
+    for (unsigned i = 0; i < count; i++) {
+        char *label = label_cb ? label_cb(i, user_data) : NULL;
+        GtkWidget *lbl = gtk_label_new(label ? label : "");
+        if (label) free(label);
+        gtk_widget_set_halign(lbl, GTK_ALIGN_START);
+        gtk_widget_set_margin_start(lbl, 8); gtk_widget_set_margin_end(lbl, 8);
+        gtk_widget_set_margin_top(lbl, 4); gtk_widget_set_margin_bottom(lbl, 4);
+        GtkWidget *row = gtk_list_box_row_new();
+        gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), lbl);
+        gtk_list_box_append(box, row);
+    }
+    g_object_set_data(G_OBJECT(box), "hop-cb", (gpointer)cb);
+    g_object_set_data(G_OBJECT(box), "hop-ud", user_data);
+    if (!g_object_get_data(G_OBJECT(box), "hop-connected")) {
+        g_signal_connect(box, "row-selected", G_CALLBACK(hop_listbox_row_selected), NULL);
+        g_object_set_data(G_OBJECT(box), "hop-connected", GINT_TO_POINTER(1));
+    }
+    if (selected >= 0 && (unsigned)selected < count) {
+        GtkListBoxRow *r = gtk_list_box_get_row_at_index(box, selected);
+        if (r) gtk_list_box_select_row(box, r);
+    } else {
+        gtk_list_box_unselect_all(box);
+    }
+    g_object_set_data(G_OBJECT(box), "hop-building", NULL);
+}
+
+static inline void hop_listbox_set_selected(void *boxp, int index) {
+    GtkListBox *box = GTK_LIST_BOX(boxp);
+    g_object_set_data(G_OBJECT(box), "hop-building", GINT_TO_POINTER(1));
+    if (index >= 0) {
+        GtkListBoxRow *r = gtk_list_box_get_row_at_index(box, index);
+        if (r) gtk_list_box_select_row(box, r); else gtk_list_box_unselect_all(box);
+    } else {
+        gtk_list_box_unselect_all(box);
     }
     g_object_set_data(G_OBJECT(box), "hop-building", NULL);
 }

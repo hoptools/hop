@@ -224,9 +224,13 @@ public final class ColorWellTarget: NSObject {
 }
 
 /// Bridges `NSSwitch`'s target/action to a stored Swift bool closure (for `Toggle`).
-public final class SwitchTarget: NSObject {
+public final class SwitchTarget: NSObject {  // shared by switch / checkbox / push-toggle button
     var onChange: (@MainActor (Bool) -> Void)?
-    @objc func changed(_ sender: NSSwitch) { onChange?(sender.state == .on) }
+    // The sender is an NSSwitch (switch) or NSButton (checkbox/push-toggle); both expose `.state`.
+    @objc func changed(_ sender: NSControl) {
+        let on = (sender as? NSSwitch)?.state == .on || (sender as? NSButton)?.state == .on
+        onChange?(on)
+    }
 }
 
 /// Bridges `NSTabView`'s selection delegate to a stored Swift index closure (for `TabView`). `suppress`
@@ -249,6 +253,10 @@ public final class AppKitListController: NSObject, NSTableViewDataSource, NSTabl
     var onSelect: (@MainActor (Int?) -> Void)?
     var suppressSelectionCallback = false
     weak var tableView: NSTableView?
+    // Used by the `.inline` picker (which reuses this controller) to skip redundant repopulate/reselect on
+    // reconciles where nothing changed — mirrors the GTK4ActionBox / QtActionBox guards.
+    var pickerOptions: [String] = []
+    var lastSelected: Int?
 
     public func numberOfRows(in tableView: NSTableView) -> Int { count }
 
@@ -497,8 +505,8 @@ public final class AppKitToolkit: AppToolkit {
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField,
-            .slider, .toggle, .progress, .separator,
-        ]
+            .slider, .progress, .separator,
+        ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
                 make: { [unowned self] component in let handle = makeNativeWidget(key); applyLeaf(handle, component); return handle },
@@ -515,6 +523,30 @@ public final class AppKitToolkit: AppToolkit {
         setTextHandler(handle, leaf.onChange)
         setValueHandler(handle, leaf.onChangeDouble)
         setBoolHandler(handle, leaf.onChangeBool)
+    }
+
+    /// The native widget for a `.toggleStyle`: a switch (NSSwitch), checkbox, or push-toggle button. All share
+    /// `SwitchTarget` (which reads the control's on/off state) so the bool plumbing is uniform.
+    private func makeToggleWidget(_ style: ToggleStyle) -> AppKitWidget {
+        let target = SwitchTarget()
+        let action = #selector(SwitchTarget.changed(_:))
+        let control: NSControl
+        switch style {
+        case .checkbox:
+            control = NSButton(checkboxWithTitle: "", target: target, action: action)
+        case .button:
+            let b = NSButton(title: "", target: target, action: action)
+            b.setButtonType(.pushOnPushOff)   // stays "pressed" while on
+            b.bezelStyle = .rounded
+            control = b
+        case .switch, .automatic:
+            let sw = NSSwitch()
+            sw.target = target; sw.action = action
+            control = sw
+        }
+        let widget = AppKitWidget(control)
+        widget.switchTarget = target
+        return widget
     }
 
     /// `Picker` renderers — the style-variance pilot. Each style is a *different native widget*, registered
@@ -575,6 +607,20 @@ public final class AppKitToolkit: AppToolkit {
             },
             measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
         ), for: .picker(.radioGroup))
+
+        // .inline → a borderless, content-sized NSTableView: the options shown as a selectable list
+        // (in line with surrounding content), not hidden behind a dropdown. Reuses AppKitListController.
+        components.register(.init(
+            make: { [unowned self] component in
+                let handle = makeInlinePicker()
+                if let spec = (component as? PickerComponent)?.spec { applyInlinePicker(handle, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let spec = (component as? PickerComponent)?.spec { applyInlinePicker(handle, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measureInlinePicker(handle, proposal) }
+        ), for: .picker(.inline))
     }
 
     private func applySegmented(_ seg: NSSegmentedControl, _ target: PickerTarget, _ spec: PickerSpec) {
@@ -600,6 +646,92 @@ public final class AppKitToolkit: AppToolkit {
         for (i, view) in stack.arrangedSubviews.enumerated() {
             (view as? NSButton)?.state = (i == spec.selectedIndex) ? .on : .off
         }
+    }
+
+    /// Build the `.inline` picker's native widget: a borderless, non-scrolling single-column `NSTableView`
+    /// (in an `NSScrollView`) that shows every option as a selectable row. Reuses `AppKitListController` —
+    /// its count/rowText/onSelect surface is exactly what a picker needs, and NSTableView gives correct
+    /// selection highlighting (and text color) for free.
+    private func makeInlinePicker() -> AppKitWidget {
+        let tableView = NSTableView()
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("HopInlinePickerColumn"))
+        column.resizingMask = .autoresizingMask
+        tableView.addTableColumn(column)
+        tableView.headerView = nil
+        tableView.rowHeight = inlinePickerRowHeight
+        tableView.style = .plain
+        tableView.selectionHighlightStyle = .regular
+        tableView.allowsEmptySelection = true   // a nil selection (no tag matches) shows nothing highlighted
+        let controller = AppKitListController()
+        controller.tableView = tableView
+        tableView.dataSource = controller
+        tableView.delegate = controller
+
+        let scroll = NSScrollView()
+        scroll.documentView = tableView
+        scroll.hasVerticalScroller = false   // inline shows all options at once (sized to content, no scroll)
+        scroll.hasHorizontalScroller = false
+        scroll.borderType = .bezelBorder
+        scroll.drawsBackground = true
+        let widget = AppKitWidget(scroll)
+        widget.listController = controller
+        return widget
+    }
+
+    private let inlinePickerRowHeight: CGFloat = 22
+
+    /// Reflect a `PickerSpec` onto the inline picker's table: option labels + the bound selection. Reapplied
+    /// every reconcile (PickerSpec is not Equatable); the selection is set with the callback suppressed so
+    /// reflecting state doesn't echo back as a user selection.
+    private func applyInlinePicker(_ handle: AppKitWidget, _ spec: PickerSpec) {
+        guard let scroll = handle.view as? NSScrollView,
+              let tableView = scroll.documentView as? NSTableView,
+              let controller = handle.listController else { return }
+        controller.onSelect = { index in if let index { spec.onSelect(index) } }
+        let options = spec.options
+        // Repopulate only when the options actually change, and reflect the selection only when it changes —
+        // matching the GTK/Qt/WinUI guard (and this file's own configureList) so a reconcile that touches
+        // neither does no native work (avoids flicker / wasted reloads).
+        if controller.pickerOptions != options {
+            controller.pickerOptions = options
+            controller.count = options.count
+            controller.rowText = { row in (row >= 0 && row < options.count) ? options[row] : "" }
+            tableView.reloadData()
+            reflectInlineSelection(tableView, controller, spec.selectedIndex, options.count)
+        } else if controller.lastSelected != spec.selectedIndex {
+            reflectInlineSelection(tableView, controller, spec.selectedIndex, options.count)
+        }
+    }
+
+    /// Reflect the bound selection onto the table with the selection callback suppressed (so mirroring state
+    /// doesn't echo back as a user pick), recording it so unchanged reconciles skip the work.
+    private func reflectInlineSelection(_ tableView: NSTableView, _ controller: AppKitListController,
+                                        _ index: Int?, _ count: Int) {
+        controller.suppressSelectionCallback = true
+        if let index, index >= 0, index < count {
+            tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        } else {
+            tableView.deselectAll(nil)
+        }
+        controller.suppressSelectionCallback = false
+        controller.lastSelected = index
+    }
+
+    /// Size the inline picker to its content: height = one row per option, width = the widest label (or the
+    /// proposed width, so it fills a frame like SwiftUI's inline picker). No scrolling, so every row is shown.
+    private func measureInlinePicker(_ handle: AppKitWidget, _ proposal: ProposedViewSize) -> CGSize {
+        let controller = handle.listController
+        let count = controller?.count ?? 0
+        let height = CGFloat(max(count, 1)) * inlinePickerRowHeight + 4   // +4 for the bezel insets
+        var intrinsicWidth: CGFloat = 80
+        if let rowText = controller?.rowText {
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]
+            for i in 0 ..< count {
+                let w = (rowText(i) as NSString).size(withAttributes: attrs).width
+                intrinsicWidth = max(intrinsicWidth, w + 20)   // cell padding
+            }
+        }
+        return CGSize(width: proposal.width ?? intrinsicWidth, height: height)
     }
 
     /// `Image` renderer — delegates to the existing image widget creation / configuration / measurement,
@@ -658,14 +790,9 @@ public final class AppKitToolkit: AppToolkit {
             field.delegate = delegate
             widget.textDelegate = delegate
             return widget
-        case .toggle:
-            let toggle = NSSwitch()
-            let widget = AppKitWidget(toggle)
-            let target = SwitchTarget()
-            toggle.target = target
-            toggle.action = #selector(SwitchTarget.changed(_:))
-            widget.switchTarget = target
-            return widget
+        case let k where k.rawValue.hasPrefix("toggle."):
+            let style = ToggleStyle(rawValue: String(k.rawValue.dropFirst("toggle.".count))) ?? .automatic
+            return makeToggleWidget(style)
         case .button:
             let button = NSButton(title: "", target: nil, action: nil)
             button.bezelStyle = .rounded
@@ -895,9 +1022,12 @@ public final class AppKitToolkit: AppToolkit {
                 slider.doubleValue = v
             }
         }
-        if let on = patch.boolValue, let toggle = handle.view as? NSSwitch {
+        if let on = patch.boolValue {
             let target: NSControl.StateValue = on ? .on : .off
-            if toggle.state != target { toggle.state = target }
+            // switch = NSSwitch; checkbox / push-toggle button = NSButton. (Setting .state programmatically
+            // does not fire the target/action, so no feedback-loop guard is needed.)
+            if let sw = handle.view as? NSSwitch, sw.state != target { sw.state = target }
+            else if let button = handle.view as? NSButton, button.state != target { button.state = target }
         }
 
         // Styling: text color / font (labels), and background fill (any view).

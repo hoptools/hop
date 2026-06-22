@@ -479,8 +479,8 @@ public final class QtToolkit: AppToolkit {
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField,
-            .slider, .toggle, .progress, .separator,
-        ]
+            .slider, .progress, .separator,
+        ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
                 make: { [unowned self] component in let handle = makeNativeWidget(key); applyLeaf(handle, component); return handle },
@@ -529,6 +529,38 @@ public final class QtToolkit: AppToolkit {
                 },
                 measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
             ), for: .picker(style))
+        }
+
+        // .inline → a QListWidget: every option a selectable row (in line with surrounding content).
+        components.register(.init(
+            make: { [unowned self] component in
+                let handle = QtWidget(hopqt_listwidget_new()!)
+                handle.actionBox = QtActionBox()
+                if let spec = (component as? PickerComponent)?.spec { configureInlinePicker(handle, spec) }
+                return handle
+            },
+            update: { [unowned self] handle, component in
+                if let spec = (component as? PickerComponent)?.spec { configureInlinePicker(handle, spec) }
+            },
+            measure: { [unowned self] handle, _, proposal in measure(handle, proposal) }
+        ), for: .picker(.inline))
+    }
+
+    /// Configure the inline picker: (re)populate the list when options change, otherwise reflect the bound
+    /// selection. Reuses `qtRowCallback` (row labels) and `qtButtonGroupCallback` (selected index → onSelect).
+    private func configureInlinePicker(_ handle: QtWidget, _ spec: PickerSpec) {
+        guard let box = handle.actionBox else { return }
+        box.pickerOnSelect = spec.onSelect
+        let boxPtr = Unmanaged.passUnretained(box).toOpaque()
+        if box.pickerOptions != spec.options {
+            box.pickerOptions = spec.options
+            box.rowText = { spec.options[$0] }
+            hopqt_listwidget_set_items(handle.ptr, Int32(spec.options.count), qtRowCallback,
+                                       Int32(spec.selectedIndex ?? -1), qtButtonGroupCallback, boxPtr)
+            box.lastSelected = spec.selectedIndex
+        } else if box.lastSelected != spec.selectedIndex {
+            box.lastSelected = spec.selectedIndex
+            hopqt_listwidget_set_selected(handle.ptr, Int32(spec.selectedIndex ?? -1))
         }
     }
 
@@ -608,8 +640,12 @@ public final class QtToolkit: AppToolkit {
             hopqt_lineedit_connect(widget.ptr, qtChangedCallback, Unmanaged.passUnretained(box).toOpaque())
             hopqt_lineedit_connect_return(widget.ptr, qtSubmitCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
-        case .toggle:
-            let widget = QtWidget(hopqt_switch_new()!)
+        case let k where k.rawValue.hasPrefix("toggle."):
+            // Qt has no native switch, so switch/checkbox both use a QCheckBox; .button is a checkable
+            // QPushButton. All drive the same QAbstractButton-based state path (hopqt_switch_*).
+            let style = ToggleStyle(rawValue: String(k.rawValue.dropFirst("toggle.".count))) ?? .automatic
+            let ptr = style == .button ? hopqt_toggle_button_new()! : hopqt_switch_new()!
+            let widget = QtWidget(ptr)
             widget.isToggle = true
             let box = QtActionBox()
             widget.actionBox = box
