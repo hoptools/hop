@@ -217,11 +217,19 @@ void hopwinui_actual_size(void* h, double* ow, double* oh) { auto e = elem(h); *
 void hopwinui_set_visible(void* h, int32_t v) { elem(h).Visibility(v ? mux::Visibility::Visible : mux::Visibility::Collapsed); }
 // `.opacity` — UIElement.Opacity composites the element and its subtree.
 void hopwinui_set_opacity(void* h, double o) { elem(h).Opacity(o); }
-// `.disabled` — Control.IsEnabled (a Panel container isn't a Control, so container-disable doesn't cascade
-// on WinUI; disabling individual controls works). IsEnabled is hierarchical for Controls.
-void hopwinui_set_enabled(void* h, int32_t enabled) {
-    if (auto c = elem(h).try_as<muxc::Control>()) c.IsEnabled(enabled != 0);
+// `.disabled` — Control.IsEnabled. A Panel container (HopUI lays everything out in Canvases) isn't a
+// Control, so setting IsEnabled on it does nothing and doesn't cascade. To match SwiftUI's subtree
+// semantics — and AppKit/GTK/Qt, where disabling a container dims the controls within — recurse the visual
+// tree and toggle IsEnabled on every descendant Control (WinUI then cascades it through that control's own
+// template). Stops at each Control, mirroring AppKit's `applyEnabled`.
+static void apply_enabled(Element const& e, bool enabled) {
+    if (auto c = e.try_as<muxc::Control>()) { c.IsEnabled(enabled); return; }
+    if (auto p = e.try_as<muxc::Panel>()) {
+        for (auto const& child : p.Children())
+            if (auto fe = child.try_as<Element>()) apply_enabled(fe, enabled);
+    }
 }
+void hopwinui_set_enabled(void* h, int32_t enabled) { apply_enabled(elem(h), enabled != 0); }
 void hopwinui_set_min_width(void* h, double w) { elem(h).MinWidth(w); }
 void hopwinui_set_background(void* h, double r, double g2, double b, double a) {
     auto e = elem(h);

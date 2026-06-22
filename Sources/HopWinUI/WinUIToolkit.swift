@@ -75,6 +75,9 @@ public final class WinUIWidget {
 
     // Caches.
     var lastValue: String?
+    // `.disabled` state set on this node (nil = not specified). Stashed so `didInsertChildren` can re-cascade
+    // a container's disable to children that are inserted after `configure` ran.
+    var enabledState: Bool?
     var listCount = -1
     var pickerOptions: [String] = []
     var outlineSignature: String?
@@ -280,6 +283,12 @@ public final class WinUIToolkit: AppToolkit {
     }
 
     public func didInsertChildren(_ handle: WinUIWidget, _ component: any WidgetComponent) {
+        // A container with `.disabled(true)` must cascade to the controls within it, but `configure` ran in
+        // `realize` *before* the children were inserted — so re-apply the disable now that the subtree exists
+        // (this hook fires after children are inserted/reconciled, on both mount and update). Only re-apply
+        // *disable*, never force-enable, so a descendant's own `.disabled` is preserved — matching SwiftUI's
+        // rule that an ancestor's disable can't be re-enabled by a descendant.
+        if handle.enabledState == false { hopwinui_set_enabled(handle.handle, 0) }
         components.renderer(for: component.widgetKey)?.afterChildren?(handle, component)
     }
 
@@ -599,9 +608,11 @@ public final class WinUIToolkit: AppToolkit {
         if let bg = patch.backgroundColor { hopwinui_set_background(h, bg.red, bg.green, bg.blue, bg.opacity) }
         if let label = patch.accessibilityLabel { hopwinui_set_automation_name(h, label) }
         if let identifier = patch.accessibilityIdentifier { hopwinui_set_automation_id(h, identifier) }
-        // `.opacity` (UIElement.Opacity composites the subtree) and `.disabled` (Control.IsEnabled).
+        // `.opacity` (UIElement.Opacity composites the subtree) and `.disabled` (Control.IsEnabled, which the
+        // shim cascades through descendant Controls since a Canvas container isn't itself a Control). The state
+        // is also stashed so `didInsertChildren` can re-cascade it once a disabled container's children exist.
         hopwinui_set_opacity(h, patch.opacity ?? 1)
-        if let enabled = patch.isEnabled { hopwinui_set_enabled(h, enabled ? 1 : 0) }
+        if let enabled = patch.isEnabled { handle.enabledState = enabled; hopwinui_set_enabled(h, enabled ? 1 : 0) }
     }
 
     // MARK: - Tree mutation
