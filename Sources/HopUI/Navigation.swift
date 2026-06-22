@@ -92,9 +92,13 @@ public struct NavigationStack<Content: View>: View, PrimitiveView {
                     action: { var p = pathGet(); if !p.isEmpty { p.removeLast() }; pathSet(p) })))
         }
         if !routeTitleToChrome {
+            // Render the title as a prominent header (large, semibold) rather than a plain label — the
+            // idiomatic in-content page header for toolkits without native nav chrome (e.g. WinUI). It sits
+            // above the stack's content, inside the pane the stack occupies, so e.g. a NavigationSplitView's
+            // detail title stays within the detail column and never displaces the sidebar.
             barChildren.append(RenderNode(id: context.id + "·title",
                                           component: PrimitiveLeafComponent(.label,
-                                              patch: WidgetPatch(text: title ?? ""))))
+                                              patch: WidgetPatch(text: title ?? "", font: .title, fontWeight: .semibold))))
         }
         var body = bodyNodes.first ?? RenderNode(id: context.id + "·body", component: ContainerComponent.vstack())
         // The content area fills the space below the bar and centers its content — matching SwiftUI, where

@@ -1113,6 +1113,9 @@ public final class WinUIToolkit: AppToolkit {
 
     public func setToolbar(_ items: [ToolbarItemSpec]) {}  // WinUI windows have no system toolbar (MVP no-op)
     public func setMenu(_ menus: [MenuSpec]) {}            // nor a native menu bar; edit commands are native
+    // No `handlesNavigationBarNatively`: a full-width window header band would displace the sidebar (and the
+    // shim can't confine it to the detail column). Instead `NavigationStack` renders its title as a styled
+    // in-content header inside the detail pane, leaving the sidebar full-height.
 
     public func scheduleOnMainThread(_ work: @escaping @MainActor () -> Void) {
         hopwinui_schedule_on_main(cbScheduleWork, Unmanaged.passRetained(ScheduledWork(work)).toOpaque())
