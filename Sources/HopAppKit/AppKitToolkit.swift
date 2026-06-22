@@ -938,6 +938,18 @@ public final class AppKitToolkit: AppToolkit {
             if traits.contains(.isButton) { view.setAccessibilityRole(.button) }
             else if traits.contains(.isImage) { view.setAccessibilityRole(.image) }
         }
+
+        // `.opacity` — alphaValue composites the whole subtree. `.disabled` — NSControls toggle isEnabled;
+        // a non-control container has no enabled state, so recurse to its descendant controls.
+        view.alphaValue = CGFloat(patch.opacity ?? 1)
+        if let enabled = patch.isEnabled { Self.applyEnabled(view, enabled) }
+    }
+
+    /// Apply `.disabled` on AppKit: an `NSControl` toggles its own `isEnabled`; any other view (a container)
+    /// has no enabled state, so disable/enable its descendant controls.
+    private static func applyEnabled(_ view: NSView, _ enabled: Bool) {
+        if let control = view as? NSControl { control.isEnabled = enabled }
+        else { for sub in view.subviews { applyEnabled(sub, enabled) } }
     }
 
     private static func nsColor(_ color: Color) -> NSColor {

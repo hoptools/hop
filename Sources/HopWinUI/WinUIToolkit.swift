@@ -586,6 +586,9 @@ public final class WinUIToolkit: AppToolkit {
         if let bg = patch.backgroundColor { hopwinui_set_background(h, bg.red, bg.green, bg.blue, bg.opacity) }
         if let label = patch.accessibilityLabel { hopwinui_set_automation_name(h, label) }
         if let identifier = patch.accessibilityIdentifier { hopwinui_set_automation_id(h, identifier) }
+        // `.opacity` (UIElement.Opacity composites the subtree) and `.disabled` (Control.IsEnabled).
+        hopwinui_set_opacity(h, patch.opacity ?? 1)
+        if let enabled = patch.isEnabled { hopwinui_set_enabled(h, enabled ? 1 : 0) }
     }
 
     // MARK: - Tree mutation

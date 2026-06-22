@@ -1330,6 +1330,17 @@ static inline void hop_widget_add_css_class(void *widget, const char *cls) {
     gtk_widget_add_css_class(GTK_WIDGET(widget), cls);
 }
 
+// `.opacity` — 0..1, composites the widget and its descendants.
+static inline void hop_widget_set_opacity(void *widget, double opacity) {
+    gtk_widget_set_opacity(GTK_WIDGET(widget), opacity);
+}
+
+// `.disabled` — GTK sensitivity is hierarchical, so setting it on a container cascades to descendants
+// (a descendant stays insensitive while any ancestor is insensitive).
+static inline void hop_widget_set_sensitive(void *widget, int sensitive) {
+    gtk_widget_set_sensitive(GTK_WIDGET(widget), sensitive ? TRUE : FALSE);
+}
+
 static inline void hop_widget_set_css(void *widget, const char *css) {
     GtkCssProvider *provider = gtk_css_provider_new();
     gtk_css_provider_load_from_string(provider, css);

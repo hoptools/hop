@@ -20,6 +20,8 @@ final class MockWidget {
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
     var listSpec: ListSpec?
+    var isEnabled: Bool?
+    var opacity: Double?
     var foregroundColor: Color?
     var backgroundColor: Color?
     var font: Font?
@@ -227,8 +229,20 @@ final class MockToolkit: AppToolkit {
         if let identifier = patch.accessibilityIdentifier { handle.axIdentifier = identifier }
         if let hidden = patch.accessibilityHidden { handle.axHidden = hidden }
         if let traits = patch.accessibilityTraits { handle.axTraits = traits }
+        if let enabled = patch.isEnabled { handle.isEnabled = enabled }
+        if let opacity = patch.opacity { handle.opacity = opacity }
         // Progress: kind tells us it's a bar; a nil progressValue means indeterminate.
         if handle.kind == .progress { handle.hasProgress = true; handle.progressValue = patch.progressValue }
+    }
+
+    /// First widget in the live tree matching `match` (depth-first), for modifier assertions.
+    func firstLiveWidget(where match: (MockWidget) -> Bool) -> MockWidget? {
+        func walk(_ w: MockWidget) -> MockWidget? {
+            if match(w) { return w }
+            for c in w.children { if let r = walk(c) { return r } }
+            return nil
+        }
+        return rootContainer.flatMap(walk)
     }
 
     func insert(_ child: MockWidget, into parent: MockWidget, at index: Int) {
@@ -795,6 +809,47 @@ private struct SimpleNavDemo: View {
             .navigationTitle("Home")
             .navigationDestination(for: String.self) { _ in Text("DeepBody").navigationTitle("Detail") }
         }
+    }
+}
+
+// MARK: - .disabled / .opacity modifiers
+
+@MainActor @Suite struct ModifierTests {
+    private struct DisabledDemo: View {
+        let off: Bool
+        var body: some View { Button("Tap") {}.disabled(off) }
+    }
+    private struct OpacityDemo: View {
+        var body: some View { Text("faded").opacity(0.4) }
+    }
+    private struct EnabledDefaultDemo: View {
+        var body: some View { Button("Tap") {} }   // no .disabled → enabled (isEnabled nil)
+    }
+
+    @Test func testDisabledSetsEnabledFalse() {
+        let toolkit = MockToolkit()
+        runHopApp(DisabledDemo(off: true), toolkit: toolkit, title: "t")
+        let button = toolkit.firstLiveWidget { $0.title == "Tap" }
+        #expect(button?.isEnabled == false)
+    }
+
+    @Test func testDisabledFalseLeavesEnabled() {
+        let toolkit = MockToolkit()
+        runHopApp(DisabledDemo(off: false), toolkit: toolkit, title: "t")
+        let button = toolkit.firstLiveWidget { $0.title == "Tap" }
+        #expect(button?.isEnabled != false)   // .disabled(false) → enabled (nil or true)
+    }
+
+    @Test func testNoModifierLeavesEnabledNil() {
+        let toolkit = MockToolkit()
+        runHopApp(EnabledDefaultDemo(), toolkit: toolkit, title: "t")
+        #expect(toolkit.firstLiveWidget { $0.title == "Tap" }?.isEnabled == nil)
+    }
+
+    @Test func testOpacitySetsValue() {
+        let toolkit = MockToolkit()
+        runHopApp(OpacityDemo(), toolkit: toolkit, title: "t")
+        #expect(toolkit.firstLiveWidget { $0.text == "faded" }?.opacity == 0.4)
     }
 }
 

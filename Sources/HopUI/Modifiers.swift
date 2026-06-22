@@ -59,3 +59,36 @@ extension View {
             alignment: alignment)))
     }
 }
+
+/// A per-view modifier that records a property on the wrapped view's node patch (mirrors
+/// `_AccessibilityModifier`). The patch lands on the view's first rendered node — and via
+/// ``RenderNode/applyWrapperState(from:)`` onto a composite's first node — so it behaves uniformly on
+/// primitives and composites.
+struct _PatchModifier<Content: View>: View, PrimitiveView {
+    let content: Content
+    let apply: (inout WidgetPatch) -> Void
+    typealias Body = Never
+    var body: Never { fatalError() }
+    func makeNode(_ context: RenderContext) -> RenderNode {
+        let nodes = evaluate(content, context.appending(0))
+        var node = nodes.first ?? RenderNode(id: context.id, component: ContainerComponent.vstack(), children: nodes)
+        apply(&node.patch)
+        return node
+    }
+}
+
+extension View {
+    /// Sets the transparency of this view and its subtree: 0 = fully transparent, 1 = opaque. Mirrors
+    /// SwiftUI's `.opacity(_:)`. The toolkit applies a native, compositing opacity, so it dims the whole
+    /// subtree (not just the immediate widget).
+    public func opacity(_ opacity: Double) -> some View {
+        _PatchModifier(content: self) { $0.opacity = opacity }
+    }
+
+    /// Disables (or enables) this view and the controls within it. A disabled control is dimmed and does
+    /// not respond to input. Mirrors SwiftUI's `.disabled(_:)`; like SwiftUI, once an ancestor disables a
+    /// subtree a descendant cannot re-enable it (the values accumulate).
+    public func disabled(_ disabled: Bool) -> some View {
+        _PatchModifier(content: self) { $0.isEnabled = ($0.isEnabled ?? true) && !disabled }
+    }
+}

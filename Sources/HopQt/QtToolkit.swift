@@ -699,6 +699,11 @@ public final class QtToolkit: AppToolkit {
         }
         if let css = Self.styleSheet(patch) { hopqt_widget_set_style(handle.ptr, css) }
 
+        // `.opacity` (a QGraphicsOpacityEffect composites the subtree) and `.disabled` (Qt's enabled state is
+        // hierarchical, so disabling a container cascades to its descendant widgets).
+        hopqt_widget_set_opacity(handle.ptr, patch.opacity ?? 1)
+        if let enabled = patch.isEnabled { hopqt_widget_set_enabled(handle.ptr, enabled ? 1 : 0) }
+
         // Progress bar: a fraction is determinate; nil shows Qt's built-in indeterminate busy animation.
         if handle.isProgress {
             if let value = patch.progressValue {

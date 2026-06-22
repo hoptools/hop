@@ -127,6 +127,11 @@ public struct WidgetPatch: Equatable {
     public var accessibilityIdentifier: String?
     public var accessibilityHidden: Bool?
     public var accessibilityTraits: AccessibilityTraits?
+    /// Transparency 0...1 (`.opacity`); nil = fully opaque. Applied to the widget (and its subtree).
+    public var opacity: Double?
+    /// Enabled state (`.disabled`); nil/true = interactive, false = dimmed + non-interactive. Applied to the
+    /// widget; on GTK/Qt/WinUI the toolkit's hierarchical enabled state cascades it to descendant controls.
+    public var isEnabled: Bool?
 
     public init(text: String? = nil, title: String? = nil, spacing: Double? = nil,
                 value: String? = nil, placeholder: String? = nil,
@@ -217,6 +222,8 @@ extension WidgetPatch {
         if let v = other.accessibilityIdentifier { accessibilityIdentifier = v }
         if let v = other.accessibilityHidden { accessibilityHidden = v }
         if let v = other.accessibilityTraits { accessibilityTraits = v }
+        if let v = other.opacity { opacity = v }
+        if let v = other.isEnabled { isEnabled = v }
     }
 }
 

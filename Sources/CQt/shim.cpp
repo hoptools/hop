@@ -19,6 +19,7 @@
 #include <QtCore/QTimer>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QNativeGestureEvent>
+#include <QtWidgets/QGraphicsOpacityEffect>
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QFileDialog>
 #include <QtGui/QColor>
@@ -288,6 +289,24 @@ void hopqt_toolbar_add_title(void *toolbar, const char *text) {
 
 void hopqt_widget_set_visible(void *widget, int visible) {
     static_cast<QWidget *>(widget)->setVisible(visible != 0);
+}
+
+// `.disabled` — Qt's enabled state is hierarchical, so disabling a container cascades to its descendants.
+void hopqt_widget_set_enabled(void *widget, int enabled) {
+    static_cast<QWidget *>(widget)->setEnabled(enabled != 0);
+}
+
+// `.opacity` — QWidget has no intrinsic opacity, so use a QGraphicsOpacityEffect (composites the widget and
+// its children). Opacity >= 1 clears the effect (cheaper, and restores native rendering).
+void hopqt_widget_set_opacity(void *widget, double opacity) {
+    QWidget *w = static_cast<QWidget *>(widget);
+    if (opacity >= 1.0) {
+        if (w->graphicsEffect()) w->setGraphicsEffect(nullptr);
+        return;
+    }
+    QGraphicsOpacityEffect *effect = qobject_cast<QGraphicsOpacityEffect *>(w->graphicsEffect());
+    if (!effect) { effect = new QGraphicsOpacityEffect(w); w->setGraphicsEffect(effect); }
+    effect->setOpacity(opacity);
 }
 
 void *hopqt_vbox_new(int spacing) {

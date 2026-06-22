@@ -168,6 +168,8 @@ void hopqt_toolbar_clear(void *toolbar);
 void hopqt_toolbar_add_stretch(void *toolbar);
 void hopqt_toolbar_add_title(void *toolbar, const char *text);
 void hopqt_widget_set_visible(void *widget, int visible);
+void hopqt_widget_set_enabled(void *widget, int enabled);
+void hopqt_widget_set_opacity(void *widget, double opacity);
 
 // Split view (QSplitter)
 void *hopqt_splitter_new(void);

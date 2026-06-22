@@ -854,6 +854,11 @@ public final class GTK4Toolkit: AppToolkit {
         }
         if let css = Self.cssStyle(patch) { hop_widget_set_css(handle.widget, css) }
 
+        // `.opacity` (composites the subtree) and `.disabled` (GTK's sensitivity is hierarchical, so setting
+        // it on a container cascades to descendant controls).
+        hop_widget_set_opacity(handle.widget, patch.opacity ?? 1)
+        if let enabled = patch.isEnabled { hop_widget_set_sensitive(handle.widget, enabled ? 1 : 0) }
+
         // Progress bar: a fraction is determinate; nil pulses an indeterminate bar via a repeating timer.
         if handle.isProgress {
             if let value = patch.progressValue {

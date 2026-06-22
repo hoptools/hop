@@ -86,7 +86,7 @@ enum Playground: String, CaseIterable, Hashable {
     case shapes, images, color, gradient
     case layout, disclosure, groupBox, form, tabs
     case observable, environment, menus, files
-    case gesture
+    case gesture, modifiers
 
     var title: String {
         switch self {
@@ -119,6 +119,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .menus: return "Menus"
         case .files: return "Files"
         case .gesture: return "Gestures"
+        case .modifiers: return "Modifiers"
         }
     }
 
@@ -151,7 +152,7 @@ let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "graphics", title: "Graphics",
                    items: [.shapes, .images, .color, .gradient]),
     SidebarSection(id: "containers", title: "Containers",
-                   items: [.layout, .disclosure, .groupBox, .form, .tabs]),
+                   items: [.layout, .modifiers, .disclosure, .groupBox, .form, .tabs]),
     SidebarSection(id: "data", title: "Data & Menus",
                    items: [.observable, .environment, .menus, .files]),
 ]
@@ -291,6 +292,8 @@ public struct ContentView: View {
                 FilePlayground()
             } else if selection == .gesture {
                 GesturePlayground()
+            } else if selection == .modifiers {
+                ModifiersPlayground()
             } else {
                 LayoutPlayground()
             }
@@ -301,6 +304,48 @@ public struct ContentView: View {
 }
 
 // MARK: - Playgrounds
+
+/// Demonstrates `.disabled(_:)` — dims and blocks input for a control or a whole subtree (the toggle
+/// disables the group below it) — and `.opacity(_:)`, which composites transparency over a view and its
+/// children. The same source compiles against HopUI and Apple's SwiftUI.
+struct ModifiersPlayground: View {
+    @State private var controlsDisabled = false
+    @State private var name = "Ada"
+    @State private var notifications = true
+    @State private var level = 0.5
+
+    var body: some View {
+        VStack(spacing: 24) {
+            VStack(spacing: 12) {
+                Text(".disabled — flip the switch to dim and block the controls below").font(.headline)
+                Toggle("Disable the controls", isOn: $controlsDisabled)
+                VStack(spacing: 12) {
+                    Button("Save") { }
+                    TextField("Name", text: $name)
+                    Toggle("Notifications", isOn: $notifications)
+                    Slider(value: $level, in: 0 ... 1)
+                }
+                .frame(width: 300)
+                .padding(16)
+                .disabled(controlsDisabled)
+            }
+
+            VStack(spacing: 12) {
+                Text(".opacity — a view and its subtree composited at 100% / 60% / 30%").font(.headline)
+                HStack(spacing: 16) {
+                    ForEach([1.0, 0.6, 0.3], id: \.self) { fraction in
+                        Text("\(Int(fraction * 100))%")
+                            .frame(width: 84, height: 56)
+                            .background(Color.blue)
+                            .foregroundStyle(.white)
+                            .opacity(fraction)
+                    }
+                }
+            }
+        }
+        .padding(24)
+    }
+}
 
 // A tiny FileDocument for the native-SwiftUI build's `.fileExporter` (SwiftUI requires a FileDocument;
 // HopUI's exporter takes the bytes directly). Only compiled in the SwiftUI build.

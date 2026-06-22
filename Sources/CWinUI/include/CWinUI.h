@@ -64,6 +64,8 @@ void hopwinui_canvas_setpos(void* h, double x, double y);                       
 void hopwinui_measure(void* h, double avail_w, double avail_h, double* out_w, double* out_h);
 void hopwinui_actual_size(void* h, double* out_w, double* out_h);
 void hopwinui_set_visible(void* h, int32_t visible);
+void hopwinui_set_opacity(void* h, double opacity);
+void hopwinui_set_enabled(void* h, int32_t enabled);
 void hopwinui_set_min_width(void* h, double w);
 void hopwinui_set_background(void* h, double r, double g, double b, double a);
 void hopwinui_set_automation_name(void* h, const char* utf8);

@@ -213,6 +213,13 @@ void hopwinui_measure(void* h, double aw, double ah, double* ow, double* oh) {
 }
 void hopwinui_actual_size(void* h, double* ow, double* oh) { auto e = elem(h); *ow = e.ActualWidth(); *oh = e.ActualHeight(); }
 void hopwinui_set_visible(void* h, int32_t v) { elem(h).Visibility(v ? mux::Visibility::Visible : mux::Visibility::Collapsed); }
+// `.opacity` — UIElement.Opacity composites the element and its subtree.
+void hopwinui_set_opacity(void* h, double o) { elem(h).Opacity(o); }
+// `.disabled` — Control.IsEnabled (a Panel container isn't a Control, so container-disable doesn't cascade
+// on WinUI; disabling individual controls works). IsEnabled is hierarchical for Controls.
+void hopwinui_set_enabled(void* h, int32_t enabled) {
+    if (auto c = elem(h).try_as<muxc::Control>()) c.IsEnabled(enabled != 0);
+}
 void hopwinui_set_min_width(void* h, double w) { elem(h).MinWidth(w); }
 void hopwinui_set_background(void* h, double r, double g2, double b, double a) {
     auto e = elem(h);
