@@ -55,6 +55,8 @@ public protocol RenderToolkit: AnyObject {
     func setMagnifyHandler(_ handle: Handle, _ spec: MagnifyGestureSpec?)
     /// Install a rotation recognizer (`.gesture(RotateGesture())`). Default: no-op.
     func setRotateHandler(_ handle: Handle, _ spec: RotateGestureSpec?)
+    /// Install a submit handler (`.onSubmit`) fired when the user presses Return in a text field. Default: no-op.
+    func setSubmitHandler(_ handle: Handle, _ handler: (@MainActor () -> Void)?)
     /// Drive a `.fileImporter` presentation attached to `handle` (cross-cutting; can wrap any widget): when
     /// `spec.isPresented` transitions true, show the native open panel, then call `onCompletion` + reset.
     func configureFileImporter(_ handle: Handle, _ spec: FileImporterSpec)
@@ -130,6 +132,7 @@ public extension RenderToolkit {
     func setDragHandler(_ handle: Handle, _ spec: DragGestureSpec?) {}
     func setMagnifyHandler(_ handle: Handle, _ spec: MagnifyGestureSpec?) {}
     func setRotateHandler(_ handle: Handle, _ spec: RotateGestureSpec?) {}
+    func setSubmitHandler(_ handle: Handle, _ handler: (@MainActor () -> Void)?) {}
 }
 
 /// Default navigation-chrome behavior: a toolkit renders the navigation bar inline (via `NavigationStack`)

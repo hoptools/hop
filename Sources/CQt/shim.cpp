@@ -596,6 +596,12 @@ const char *hopqt_lineedit_text(void *edit) {
     return buffer.c_str();
 }
 
+// `.onSubmit` — fire when the user presses Return in the line edit.
+void hopqt_lineedit_connect_return(void *edit, hopqt_void_cb cb, void *user_data) {
+    QLineEdit *e = static_cast<QLineEdit *>(edit);
+    QObject::connect(e, &QLineEdit::returnPressed, e, [cb, user_data]() { if (cb) cb(user_data); });
+}
+
 void hopqt_lineedit_connect(void *edit, hopqt_text_cb cb, void *user_data) {
     QLineEdit *e = static_cast<QLineEdit *>(edit);
     QObject::connect(e, &QLineEdit::textChanged, e, [cb, user_data](const QString &text) {

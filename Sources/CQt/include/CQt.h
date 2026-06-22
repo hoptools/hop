@@ -118,6 +118,7 @@ void hopqt_lineedit_set_text(void *edit, const char *text);
 void hopqt_lineedit_set_placeholder(void *edit, const char *text);
 const char *hopqt_lineedit_text(void *edit);
 void hopqt_lineedit_connect(void *edit, hopqt_text_cb cb, void *user_data);
+void hopqt_lineedit_connect_return(void *edit, hopqt_void_cb cb, void *user_data);
 
 // Slider
 void *hopqt_slider_new(double min, double max);

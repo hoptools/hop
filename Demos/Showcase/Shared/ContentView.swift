@@ -313,9 +313,18 @@ struct ModifiersPlayground: View {
     @State private var name = "Ada"
     @State private var notifications = true
     @State private var level = 0.5
+    @State private var draft = ""
+    @State private var submitted = "(nothing yet)"
 
     var body: some View {
         VStack(spacing: 24) {
+            VStack(spacing: 12) {
+                Text(".onSubmit — type and press Return").font(.headline)
+                TextField("Type, then press Return", text: $draft)
+                    .frame(width: 300)
+                    .onSubmit { submitted = draft.isEmpty ? "(empty)" : draft; draft = "" }
+                Text("Last submitted: \(submitted)").foregroundStyle(.secondary)
+            }
             VStack(spacing: 12) {
                 Text(".disabled — flip the switch to dim and block the controls below").font(.headline)
                 Toggle("Disable the controls", isOn: $controlsDisabled)

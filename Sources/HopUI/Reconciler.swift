@@ -104,6 +104,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
         toolkit.setDragHandler(handle, node.dragGesture)
         toolkit.setMagnifyHandler(handle, node.magnifyGesture)
         toolkit.setRotateHandler(handle, node.rotateGesture)
+        toolkit.setSubmitHandler(handle, node.onSubmit)
         if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
         if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
     }

@@ -22,6 +22,7 @@ final class MockWidget {
     var listSpec: ListSpec?
     var isEnabled: Bool?
     var opacity: Double?
+    var onSubmit: (@MainActor () -> Void)?
     var foregroundColor: Color?
     var backgroundColor: Color?
     var font: Font?
@@ -234,6 +235,8 @@ final class MockToolkit: AppToolkit {
         // Progress: kind tells us it's a bar; a nil progressValue means indeterminate.
         if handle.kind == .progress { handle.hasProgress = true; handle.progressValue = patch.progressValue }
     }
+
+    func setSubmitHandler(_ handle: MockWidget, _ handler: (@MainActor () -> Void)?) { handle.onSubmit = handler }
 
     /// First widget in the live tree matching `match` (depth-first), for modifier assertions.
     func firstLiveWidget(where match: (MockWidget) -> Bool) -> MockWidget? {
@@ -850,6 +853,28 @@ private struct SimpleNavDemo: View {
         let toolkit = MockToolkit()
         runHopApp(OpacityDemo(), toolkit: toolkit, title: "t")
         #expect(toolkit.firstLiveWidget { $0.text == "faded" }?.opacity == 0.4)
+    }
+
+    private struct SubmitDemo: View {
+        @State var draft = ""
+        @State var submitted = "none"
+        var body: some View {
+            VStack {
+                TextField("x", text: $draft).onSubmit { submitted = "submitted!" }
+                Text(submitted)
+            }
+        }
+    }
+
+    @Test func testOnSubmitFiresHandler() {
+        let toolkit = MockToolkit()
+        runHopApp(SubmitDemo(), toolkit: toolkit, title: "t")
+        #expect(toolkit.liveLabels().contains("none"))
+        let field = toolkit.firstLiveWidget { $0.kind == .textField }
+        #expect(field?.onSubmit != nil)         // .onSubmit landed on the text field's node
+        field?.onSubmit?()                       // simulate Return
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("submitted!"))   // the handler ran and updated state
     }
 }
 

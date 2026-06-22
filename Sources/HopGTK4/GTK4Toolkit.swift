@@ -77,6 +77,7 @@ final class GTK4ActionBox {
     var magnifyChanged: (@MainActor (MagnifyGesture.Value) -> Void)?
     var rotateChanged: (@MainActor (RotateGesture.Value) -> Void)?
     var onChange: (@MainActor (String) -> Void)?
+    var onSubmit: (@MainActor () -> Void)?
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
     var lastBool: Bool?
@@ -254,6 +255,13 @@ private let gtk4ChangedCallback: @convention(c) (UnsafeMutableRawPointer?, Unsaf
     let text = String(cString: cText)
     let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.onChange?(text) }
+}
+
+// GtkEntry "activate" (Return pressed) → `.onSubmit`.
+private let gtk4ActivateEntryCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onSubmit?() }
 }
 
 private let gtk4ValueChangedCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { scale, userData in
@@ -780,6 +788,7 @@ public final class GTK4Toolkit: AppToolkit {
             let box = GTK4ActionBox()
             handle.actionBox = box
             _ = hop_connect_changed(widget, gtk4ChangedCallback, Unmanaged.passUnretained(box).toOpaque())
+            _ = hop_connect_activate(widget, gtk4ActivateEntryCallback, Unmanaged.passUnretained(box).toOpaque())
         } else if key == .toggle {
             handle.isToggle = true
             let box = GTK4ActionBox()
@@ -953,6 +962,10 @@ public final class GTK4Toolkit: AppToolkit {
 
     public func setTextHandler(_ handle: GTK4Widget, _ handler: (@MainActor (String) -> Void)?) {
         handle.actionBox?.onChange = handler
+    }
+
+    public func setSubmitHandler(_ handle: GTK4Widget, _ handler: (@MainActor () -> Void)?) {
+        handle.actionBox?.onSubmit = handler
     }
 
     public func setValueHandler(_ handle: GTK4Widget, _ handler: (@MainActor (Double) -> Void)?) {

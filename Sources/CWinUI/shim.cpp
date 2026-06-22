@@ -22,6 +22,8 @@
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
+#include <winrt/Microsoft.UI.Xaml.Input.h>
+#include <winrt/Windows.System.h>
 // Full (not just consuming) Input header: defines the TappedEventHandler / DoubleTappedEventHandler
 // delegate constructor templates used by hopwinui_tap_connect. Without it only the `.2.h` forward-decl is
 // pulled in, so the constructor is declared-but-not-defined and Clang rejects instantiating it with a
@@ -364,6 +366,13 @@ void hopwinui_textbox_connect(void* h, hopwinui_string_cb cb, void* ud) {
     auto t = as<muxc::TextBox>(h); if (!t) return;
     t.TextChanged([cb, ud](wf::IInspectable const& s, auto&&) {
         auto tb = s.as<muxc::TextBox>(); if (cb) { auto p = dup(tb.Text()); cb(p, ud); std::free(p); }
+    });
+}
+
+// `.onSubmit` — fire when the user presses Enter in the TextBox/PasswordBox (KeyDown is a UIElement event).
+void hopwinui_textbox_connect_submit(void* h, hopwinui_void_cb cb, void* ud) {
+    elem(h).KeyDown([cb, ud](wf::IInspectable const&, mux::Input::KeyRoutedEventArgs const& e) {
+        if (e.Key() == winrt::Windows::System::VirtualKey::Enter && cb) cb(ud);
     });
 }
 char* hopwinui_passwordbox_text(void* h) { auto t = as<muxc::PasswordBox>(h); return dup(t ? t.Password() : hstring{}); }

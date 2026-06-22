@@ -186,9 +186,16 @@ public final class HoverTarget: NSObject {
 /// Bridges `NSTextField`'s live-edit notifications to a stored Swift closure.
 public final class TextFieldDelegate: NSObject, NSTextFieldDelegate {
     var onChange: (@MainActor (String) -> Void)?
+    var onSubmit: (@MainActor () -> Void)?
     public func controlTextDidChange(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         onChange?(field.stringValue)
+    }
+    // `.onSubmit` fires only on Return (not Tab or focus-loss), matching SwiftUI.
+    public func controlTextDidEndEditing(_ notification: Notification) {
+        guard let movement = notification.userInfo?["NSTextMovement"] as? Int,
+              movement == NSTextMovement.return.rawValue else { return }
+        onSubmit?()
     }
 }
 
@@ -1051,6 +1058,10 @@ public final class AppKitToolkit: AppToolkit {
 
     public func setBoolHandler(_ handle: AppKitWidget, _ handler: (@MainActor (Bool) -> Void)?) {
         handle.switchTarget?.onChange = handler
+    }
+
+    public func setSubmitHandler(_ handle: AppKitWidget, _ handler: (@MainActor () -> Void)?) {
+        handle.textDelegate?.onSubmit = handler
     }
 
     // MARK: - Framework-owned layout

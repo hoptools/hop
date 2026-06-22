@@ -264,6 +264,9 @@ public struct RenderNode {
     public var dragGesture: DragGestureSpec?
     public var magnifyGesture: MagnifyGestureSpec?
     public var rotateGesture: RotateGestureSpec?
+    /// Submit handler attached via `.onSubmit`; the toolkit fires it when the user presses Return in this
+    /// node's text field (`.textField`/`.secureField`). Not part of equality.
+    public var onSubmit: (@MainActor () -> Void)?
     /// For a `.lazyStack` node: called by the layout engine with a materialized row's measured extent, so
     /// the lazy stack can refine its (uniform) row-size estimate. Not part of equality.
     public var onRowExtent: (@MainActor (Double) -> Void)?
@@ -334,7 +337,7 @@ extension RenderNode {
         !layout.modifiers.isEmpty || preferences != nil || tag != nil || tabLabel != nil
             || fileImporter != nil || fileExporter != nil || onTap != nil || patch != WidgetPatch()
             || onLongPress != nil || onHover != nil || dragGesture != nil || magnifyGesture != nil
-            || rotateGesture != nil
+            || rotateGesture != nil || onSubmit != nil
     }
 
     /// Overlay onto `self` the modifier state a wrapping modifier accumulated on a composite reference
@@ -355,6 +358,7 @@ extension RenderNode {
         if let dg = ref.dragGesture { dragGesture = dg }
         if let mg = ref.magnifyGesture { magnifyGesture = mg }
         if let rg = ref.rotateGesture { rotateGesture = rg }
+        if let os = ref.onSubmit { onSubmit = os }
         patch.overlay(ref.patch)
     }
 }

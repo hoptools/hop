@@ -91,4 +91,26 @@ extension View {
     public func disabled(_ disabled: Bool) -> some View {
         _PatchModifier(content: self) { $0.isEnabled = ($0.isEnabled ?? true) && !disabled }
     }
+
+    /// Runs `action` when the user submits the text field this is applied to (presses Return). Mirrors
+    /// SwiftUI's `.onSubmit(_:)`. The handler lands on the wrapped view's node, so apply it to a
+    /// `TextField`/`SecureField` (e.g. `TextField(...).onSubmit { ... }`).
+    public func onSubmit(perform action: @escaping @MainActor () -> Void) -> some View {
+        _OnSubmitModifier(content: self, action: action)
+    }
+}
+
+/// Lands an `.onSubmit` handler on the wrapped view's node (like `_AccessibilityModifier`, but the handler
+/// is a `RenderNode` field rather than a patch field — closures aren't part of `WidgetPatch` equality).
+struct _OnSubmitModifier<Content: View>: View, PrimitiveView {
+    let content: Content
+    let action: @MainActor () -> Void
+    typealias Body = Never
+    var body: Never { fatalError() }
+    func makeNode(_ context: RenderContext) -> RenderNode {
+        var node = evaluate(content, context.appending(0)).first
+            ?? RenderNode(id: context.id, component: ContainerComponent.vstack())
+        node.onSubmit = action
+        return node
+    }
 }

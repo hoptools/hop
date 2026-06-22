@@ -43,6 +43,7 @@ public final class WinUIWidget {
     // Stored callbacks (installed by setAction / set*Handler / configure*).
     var action: (@MainActor () -> Void)?
     var onChangeString: (@MainActor (String) -> Void)?
+    var onSubmit: (@MainActor () -> Void)?
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
     var onSelectIndex: (@MainActor (Int?) -> Void)?
@@ -131,6 +132,11 @@ private let cbTap: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
 private let cbLongPress: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
     guard let w = widget(ud) else { return }
     MainActor.assumeIsolated { w.longPressAction?() }
+}
+// TextBox/PasswordBox Enter key → `.onSubmit`.
+private let cbSubmit: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
+    guard let w = widget(ud) else { return }
+    MainActor.assumeIsolated { w.onSubmit?() }
 }
 private let cbHover: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void = { ud, entered in
     guard let w = widget(ud) else { return }
@@ -488,10 +494,12 @@ public final class WinUIToolkit: AppToolkit {
         case .textField:
             let w = WinUIWidget(hopwinui_textbox_new(), kind: kind); w.flexibleWidth = true
             hopwinui_textbox_connect(w.handle, cbString, unmanaged(w))
+            hopwinui_textbox_connect_submit(w.handle, cbSubmit, unmanaged(w))
             return w
         case .secureField:
             let w = WinUIWidget(hopwinui_passwordbox_new(), kind: kind); w.flexibleWidth = true
             hopwinui_passwordbox_connect(w.handle, cbString, unmanaged(w))
+            hopwinui_textbox_connect_submit(w.handle, cbSubmit, unmanaged(w))
             return w
         case .toggle:
             let w = WinUIWidget(hopwinui_toggleswitch_new(), kind: kind)
@@ -655,6 +663,10 @@ public final class WinUIToolkit: AppToolkit {
             hopwinui_drag_connect(handle.handle, cbDrag, unmanaged(handle))
             handle.dragConnected = true
         }
+    }
+
+    public func setSubmitHandler(_ handle: WinUIWidget, _ handler: (@MainActor () -> Void)?) {
+        handle.onSubmit = handler   // the TextBox/PasswordBox Enter handler is wired once at creation
     }
 
     public func setMagnifyHandler(_ handle: WinUIWidget, _ spec: MagnifyGestureSpec?) {

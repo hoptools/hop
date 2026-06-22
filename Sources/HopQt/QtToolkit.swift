@@ -64,6 +64,7 @@ final class QtActionBox {
     var rotateChanged: (@MainActor (RotateGesture.Value) -> Void)?
     var rotateEnded: (@MainActor (RotateGesture.Value) -> Void)?
     var onChange: (@MainActor (String) -> Void)?
+    var onSubmit: (@MainActor () -> Void)?
     var onChangeDouble: (@MainActor (Double) -> Void)?
     var onChangeBool: (@MainActor (Bool) -> Void)?
     var lastBool: Bool?
@@ -119,6 +120,13 @@ private let qtClickCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void =
     guard let userData else { return }
     let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.action?() }
+}
+
+// QLineEdit::returnPressed (Return) → `.onSubmit`.
+private let qtSubmitCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { userData in
+    guard let userData else { return }
+    let box = Unmanaged<QtActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated { box.onSubmit?() }
 }
 
 private let qtLongPressCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { userData in
@@ -589,6 +597,7 @@ public final class QtToolkit: AppToolkit {
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_lineedit_connect(widget.ptr, qtChangedCallback, Unmanaged.passUnretained(box).toOpaque())
+            hopqt_lineedit_connect_return(widget.ptr, qtSubmitCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
         case .secureField:
             let widget = QtWidget(hopqt_lineedit_new("")!)
@@ -597,6 +606,7 @@ public final class QtToolkit: AppToolkit {
             let box = QtActionBox()
             widget.actionBox = box
             hopqt_lineedit_connect(widget.ptr, qtChangedCallback, Unmanaged.passUnretained(box).toOpaque())
+            hopqt_lineedit_connect_return(widget.ptr, qtSubmitCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
         case .toggle:
             let widget = QtWidget(hopqt_switch_new()!)
@@ -788,6 +798,10 @@ public final class QtToolkit: AppToolkit {
 
     public func setTextHandler(_ handle: QtWidget, _ handler: (@MainActor (String) -> Void)?) {
         handle.actionBox?.onChange = handler
+    }
+
+    public func setSubmitHandler(_ handle: QtWidget, _ handler: (@MainActor () -> Void)?) {
+        handle.actionBox?.onSubmit = handler
     }
 
     public func setValueHandler(_ handle: QtWidget, _ handler: (@MainActor (Double) -> Void)?) {
