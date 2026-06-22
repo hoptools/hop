@@ -26,6 +26,7 @@ public final class QtWidget {
     var imageResizable = false
     var isProgress = false
     var isLabel = false   // a QLabel (Text) — measured with width-for-wrap
+    var isTextEditor = false  // a QPlainTextEdit (TextEditor) — measured greedily (fills both axes)
     var flexibleWidth = false  // text fields / sliders / progress bars fill the offered width (SwiftUI-like)
     // Guards re-entrant file-dialog presentation (a nested modal event loop can re-run a flush).
     var importerPresenting = false
@@ -478,7 +479,7 @@ public final class QtToolkit: AppToolkit {
 
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
-            .label, .button, .textField, .secureField,
+            .label, .button, .textField, .secureField, .textEditor,
             .slider, .progress, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
@@ -631,6 +632,13 @@ public final class QtToolkit: AppToolkit {
             hopqt_lineedit_connect(widget.ptr, qtChangedCallback, Unmanaged.passUnretained(box).toOpaque())
             hopqt_lineedit_connect_return(widget.ptr, qtSubmitCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
+        case .textEditor:
+            let widget = QtWidget(hopqt_textedit_new()!)
+            widget.isTextEditor = true
+            let box = QtActionBox()
+            widget.actionBox = box
+            hopqt_textedit_connect(widget.ptr, qtChangedCallback, Unmanaged.passUnretained(box).toOpaque())
+            return widget
         case .secureField:
             let widget = QtWidget(hopqt_lineedit_new("")!)
             hopqt_lineedit_set_password(widget.ptr, 1)  // mask typed characters
@@ -725,7 +733,12 @@ public final class QtToolkit: AppToolkit {
         if let text = patch.text { hopqt_label_set_text(handle.ptr, text) }
         if let title = patch.title { hopqt_button_set_text(handle.ptr, title) }
         if let placeholder = patch.placeholder { hopqt_lineedit_set_placeholder(handle.ptr, placeholder) }
-        if let value = patch.value {
+        if let value = patch.value, handle.isTextEditor {
+            // QPlainTextEdit (not a QLineEdit) — reflect via its own getter/setter (the setter blocks the
+            // change signal, so reflecting state doesn't echo back or move the cursor).
+            let current = hopqt_textedit_text(handle.ptr).map { String(cString: $0) } ?? ""
+            if current != value { hopqt_textedit_set_text(handle.ptr, value) }
+        } else if let value = patch.value {
             // Guard against resetting the text (and the cursor) to what's already shown, which also
             // prevents a feedback loop when our own edit triggers a re-render.
             let current = hopqt_lineedit_text(handle.ptr).map { String(cString: $0) } ?? ""
@@ -1116,6 +1129,8 @@ public final class QtToolkit: AppToolkit {
     public func measure(_ handle: QtWidget, _ proposal: ProposedViewSize) -> CGSize {
         // Shapes are greedy: they fill whatever they're offered (default 100×100 when unspecified).
         if handle.isShape { return proposal.resolved(CGSize(width: 100, height: 100)) }
+        // TextEditor (role .fill) greedily fills the offered space along both axes (default when unconstrained).
+        if handle.isTextEditor { return proposal.resolved(CGSize(width: 240, height: 140)) }
         // Images: natural pixel size, greedy when `.resizable()`.
         if handle.isImage {
             var iw: Int32 = 0, ih: Int32 = 0

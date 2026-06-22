@@ -21,6 +21,8 @@ public final class AppKitWidget {
     let view: NSView
     var trampoline: ActionTrampoline?
     var textDelegate: TextFieldDelegate?
+    var textViewDelegate: TextEditorDelegate?   // the `.textEditor` (NSTextView) change delegate
+    var isTextEditor = false                     // measure greedily (fills both axes) when true
     var sliderTarget: SliderTarget?
     var switchTarget: SwitchTarget?
     var tabDelegate: TabViewDelegate?
@@ -196,6 +198,18 @@ public final class TextFieldDelegate: NSObject, NSTextFieldDelegate {
         guard let movement = notification.userInfo?["NSTextMovement"] as? Int,
               movement == NSTextMovement.return.rawValue else { return }
         onSubmit?()
+    }
+}
+
+/// Bridges an `NSTextView`'s change notification to a stored Swift closure (for `TextEditor`). `suppress`
+/// is raised while reflecting the bound value so a programmatic `string` set doesn't echo back as an edit
+/// (and doesn't move the insertion point).
+public final class TextEditorDelegate: NSObject, NSTextViewDelegate {
+    var onChange: (@MainActor (String) -> Void)?
+    var suppress = false
+    public func textDidChange(_ notification: Notification) {
+        guard !suppress, let textView = notification.object as? NSTextView else { return }
+        onChange?(textView.string)
     }
 }
 
@@ -504,7 +518,7 @@ public final class AppKitToolkit: AppToolkit {
     /// "native widget + patch + handler". One renderer per key; `makeNativeWidget(key)` creates the widget.
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
-            .label, .button, .textField, .secureField,
+            .label, .button, .textField, .secureField, .textEditor,
             .slider, .progress, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
@@ -734,6 +748,40 @@ public final class AppKitToolkit: AppToolkit {
         return CGSize(width: proposal.width ?? intrinsicWidth, height: height)
     }
 
+    /// Build the `.textEditor` native widget: a plain-text, word-wrapping `NSTextView` in a scrolling,
+    /// bordered `NSScrollView`. The view fills its frame (set by the layout engine); see the `isTextEditor`
+    /// branch of `measure` for greedy both-axis sizing.
+    private func makeTextEditor() -> AppKitWidget {
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.isRichText = false                      // plain text only
+        textView.allowsUndo = true
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.textContainerInset = NSSize(width: 4, height: 6)
+        textView.textContainer?.widthTracksTextView = true   // wrap at the view width
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+
+        let scroll = NSScrollView()
+        scroll.documentView = textView
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.borderType = .bezelBorder
+        scroll.drawsBackground = true
+
+        let widget = AppKitWidget(scroll)
+        widget.isTextEditor = true
+        let delegate = TextEditorDelegate()
+        textView.delegate = delegate
+        widget.textViewDelegate = delegate
+        return widget
+    }
+
     /// `Image` renderer — delegates to the existing image widget creation / configuration / measurement,
     /// so the migration onto the component path is behavior-preserving (the native code moves later).
     private func registerImageComponent() {
@@ -780,6 +828,8 @@ public final class AppKitToolkit: AppToolkit {
             field.delegate = delegate
             widget.textDelegate = delegate
             return widget
+        case .textEditor:
+            return makeTextEditor()
         case .secureField:
             let field = NSSecureTextField(string: "")
             field.isEditable = true
@@ -1015,6 +1065,16 @@ public final class AppKitToolkit: AppToolkit {
             // also prevents a feedback loop when our own edit triggers a re-render.
             if field.stringValue != value { field.stringValue = value }
         }
+        if let value = patch.value, handle.isTextEditor,
+           let scroll = handle.view as? NSScrollView, let textView = scroll.documentView as? NSTextView {
+            // Same guard as the text field; suppress the change delegate so reflecting the bound value
+            // doesn't move the insertion point or echo back as an edit.
+            if textView.string != value {
+                handle.textViewDelegate?.suppress = true
+                textView.string = value
+                handle.textViewDelegate?.suppress = false
+            }
+        }
         if let slider = handle.view as? NSSlider {
             if let minV = patch.minValue { slider.minValue = minV }
             if let maxV = patch.maxValue { slider.maxValue = maxV }
@@ -1204,7 +1264,8 @@ public final class AppKitToolkit: AppToolkit {
     }
 
     public func setTextHandler(_ handle: AppKitWidget, _ handler: (@MainActor (String) -> Void)?) {
-        handle.textDelegate?.onChange = handler
+        handle.textDelegate?.onChange = handler      // text field / secure field
+        handle.textViewDelegate?.onChange = handler  // text editor (NSTextView)
     }
 
     public func setValueHandler(_ handle: AppKitWidget, _ handler: (@MainActor (Double) -> Void)?) {
@@ -1265,6 +1326,10 @@ public final class AppKitToolkit: AppToolkit {
             let bounds = NSRect(x: 0, y: 0, width: maxWidth, height: .greatestFiniteMagnitude)
             let size = (label.cell as? NSTextFieldCell)?.cellSize(forBounds: bounds) ?? label.intrinsicContentSize
             return CGSize(width: ceil(size.width), height: ceil(size.height))
+        }
+        // TextEditor (role .fill) greedily fills the offered space along both axes (default size when unconstrained).
+        if handle.isTextEditor {
+            return proposal.resolved(CGSize(width: 240, height: 140))
         }
         let fitting = handle.view.fittingSize
         // Flexible-width controls (text fields, sliders, progress bars) expand to the offered width.

@@ -386,6 +386,55 @@ static inline unsigned long hop_connect_changed(void *editable, hop_clicked_fn c
     return g_signal_connect_data(editable, "changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
 }
 
+// --- Multi-line text editor (GtkTextView in a GtkScrolledWindow) -----------
+// hop_textview_new returns the SCROLLED WINDOW (which goes into the layout tree); the GtkTextView is
+// stashed on it. The text lives in the view's GtkTextBuffer, and the editable "changed" signal fires there.
+
+static inline void *hop_textview_new(void) {
+    GtkWidget *tv = gtk_text_view_new();
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(tv), GTK_WRAP_WORD_CHAR);
+    gtk_widget_set_hexpand(tv, TRUE);
+    gtk_widget_set_vexpand(tv, TRUE);
+    GtkWidget *sw = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(sw), tv);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_hexpand(sw, TRUE);
+    gtk_widget_set_vexpand(sw, TRUE);
+    gtk_widget_add_css_class(sw, "frame");   // a bordered card look
+    g_object_set_data(G_OBJECT(sw), "hop-textview", tv);
+    return sw;
+}
+
+static inline GtkTextView *hop_textview_view(void *sw) {
+    return GTK_TEXT_VIEW(g_object_get_data(G_OBJECT(sw), "hop-textview"));
+}
+
+// Buffer text in a static cache freed on the next call; the Swift caller copies it immediately (single
+// main-thread access, like the Qt static-buffer pattern), so there's no leak and no use-after-free.
+static inline const char *hop_text_buffer_get_text(void *bufferp) {
+    static char *cached = NULL;
+    if (cached) { g_free(cached); cached = NULL; }
+    GtkTextBuffer *buf = GTK_TEXT_BUFFER(bufferp);
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(buf, &start, &end);
+    cached = gtk_text_buffer_get_text(buf, &start, &end, FALSE);
+    return cached;
+}
+
+static inline const char *hop_textview_get_text(void *sw) {
+    return hop_text_buffer_get_text(gtk_text_view_get_buffer(hop_textview_view(sw)));
+}
+
+static inline void hop_textview_set_text(void *sw, const char *text) {
+    gtk_text_buffer_set_text(gtk_text_view_get_buffer(hop_textview_view(sw)), text ? text : "", -1);
+}
+
+// Wire the buffer's "changed" signal — fires (GtkTextBuffer*, user_data); the buffer is the callback's first arg.
+static inline unsigned long hop_textview_connect_changed(void *sw, hop_clicked_fn cb, void *data) {
+    GtkTextBuffer *buf = gtk_text_view_get_buffer(hop_textview_view(sw));
+    return g_signal_connect_data(buf, "changed", G_CALLBACK(cb), data, NULL, (GConnectFlags)0);
+}
+
 static inline void *hop_scale_new(double min, double max) {
     GtkWidget *s = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, min, max, 1.0);
     gtk_widget_set_size_request(s, 200, -1);

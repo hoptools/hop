@@ -29,6 +29,7 @@
 #include <QtGui/QFontMetrics>
 #include <QtWidgets/QListView>
 #include <QtWidgets/QListWidget>   // inline picker (single-selection item list)
+#include <QtWidgets/QPlainTextEdit>   // TextEditor (multi-line plain-text editor)
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QTreeWidgetItemIterator>
 #include <QtWidgets/QComboBox>
@@ -611,6 +612,30 @@ void hopqt_lineedit_connect(void *edit, hopqt_text_cb cb, void *user_data) {
             std::string s = text.toStdString();
             cb(s.c_str(), user_data);
         }
+    });
+}
+
+// --- TextEditor (QPlainTextEdit: multi-line, word-wrapping, scrollable) ----
+void *hopqt_textedit_new(void) {
+    QPlainTextEdit *e = new QPlainTextEdit();
+    e->setLineWrapMode(QPlainTextEdit::WidgetWidth);   // wrap at the widget width (no horizontal scroll)
+    e->setMinimumSize(120, 60);
+    return e;
+}
+void hopqt_textedit_set_text(void *edit, const char *text) {
+    QPlainTextEdit *e = static_cast<QPlainTextEdit *>(edit);
+    QSignalBlocker block(e);   // a programmatic set must not re-fire textChanged (no echo / cursor jump)
+    e->setPlainText(QString::fromUtf8(text));
+}
+const char *hopqt_textedit_text(void *edit) {
+    static std::string buffer;   // valid until the next call; the reconciler reads it immediately
+    buffer = static_cast<QPlainTextEdit *>(edit)->toPlainText().toStdString();
+    return buffer.c_str();
+}
+void hopqt_textedit_connect(void *edit, hopqt_text_cb cb, void *user_data) {
+    QPlainTextEdit *e = static_cast<QPlainTextEdit *>(edit);
+    QObject::connect(e, &QPlainTextEdit::textChanged, e, [e, cb, user_data]() {
+        if (cb) { std::string s = e->toPlainText().toStdString(); cb(s.c_str(), user_data); }
     });
 }
 

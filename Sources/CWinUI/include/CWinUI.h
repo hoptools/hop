@@ -111,6 +111,7 @@ void hopwinui_manip_connect(void* h, hopwinui_manip_cb cb, void* user_data);
 char* hopwinui_textbox_text(void* h);  // malloc'd UTF-8; caller frees
 void hopwinui_textbox_set_text(void* h, const char* utf8);
 void hopwinui_textbox_set_placeholder(void* h, const char* utf8);
+void hopwinui_textbox_set_multiline(void* h, int32_t enabled);   // TextEditor: AcceptsReturn + Wrap + scroll + stretch
 void hopwinui_textbox_connect(void* h, hopwinui_string_cb cb, void* user_data);
 void hopwinui_textbox_connect_submit(void* h, hopwinui_void_cb cb, void* user_data);
 char* hopwinui_passwordbox_text(void* h);

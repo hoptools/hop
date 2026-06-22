@@ -70,6 +70,28 @@ public struct TextField: View, PrimitiveView {
     }
 }
 
+/// An editable, multi-line, scrollable plain-text editor bound to a `String`. Mirrors SwiftUI's
+/// `TextEditor(text:)`. Unlike ``TextField`` it greedily fills the space it's offered along both axes
+/// (`role: .fill`) — constrain it with `.frame(...)` as in SwiftUI. Edits flow back through the binding;
+/// reading `text.wrappedValue` registers a dependency so external changes re-render it.
+public struct TextEditor: View, PrimitiveView {
+    let text: Binding<String>
+    public init(text: Binding<String>) {
+        self.text = text
+    }
+
+    public typealias Body = Never
+    public var body: Never { fatalError() }
+
+    func makeNode(_ context: RenderContext) -> RenderNode {
+        let binding = text
+        return RenderNode(id: context.id,
+                          component: PrimitiveLeafComponent(.textEditor, role: .fill,
+                              patch: WidgetPatch(value: text.wrappedValue),
+                              onChange: { binding.wrappedValue = $0 }))
+    }
+}
+
 /// A two-column navigation container with a sidebar and a detail area, mirroring SwiftUI's
 /// `NavigationSplitView`. The sidebar typically holds a selection-bound `List`; the detail shows
 /// content for the current selection. Backed by a native split widget (NSSplitView / GtkPaned /

@@ -48,6 +48,7 @@ public extension WidgetKey {
     static let button = WidgetKey("button")
     static let textField = WidgetKey("textField")
     static let secureField = WidgetKey("secureField")
+    static let textEditor = WidgetKey("textEditor")   // multiline, scrollable, space-filling editor
     static let slider = WidgetKey("slider")
     static let toggle = WidgetKey("toggle")
     static let progress = WidgetKey("progress")

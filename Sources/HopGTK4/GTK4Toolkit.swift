@@ -18,6 +18,7 @@ public final class GTK4Widget {
     var imageResizable = false
     var isProgress = false
     var isScroll = false  // a GtkScrolledWindow (its single child is the scrollable content)
+    var isTextEditor = false  // a GtkTextView-in-GtkScrolledWindow (TextEditor) — measured greedily (fills both axes)
     var flexibleWidth = false  // text fields / sliders / progress bars fill the offered width (SwiftUI-like)
     var scrollHandler: (@MainActor (CGSize) -> Void)?
     var scrollConnected = false
@@ -98,6 +99,7 @@ final class GTK4ActionBox {
     var dateWidget: UnsafeMutableRawPointer?
     var dateConnected = false
     var suppressDate = false
+    var suppressTextEditor = false   // raised while reflecting the bound value into a TextEditor's buffer
     /// Color-picker change callback (RGBA, each 0..1). "color-set" only fires on a user pick, so no guard.
     var onChangeColor: (@MainActor (Double, Double, Double, Double) -> Void)?
     /// Outline (tree) state: the pre-order flattened rows the C row callbacks read, a structure signature
@@ -255,6 +257,18 @@ private let gtk4ChangedCallback: @convention(c) (UnsafeMutableRawPointer?, Unsaf
     let text = String(cString: cText)
     let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
     MainActor.assumeIsolated { box.onChange?(text) }
+}
+
+// TextEditor buffer "changed" callback — fires (GtkTextBuffer*, user_data); read the buffer's text. Suppressed
+// while reflecting the bound value so a programmatic set doesn't echo back as a user edit.
+private let gtk4TextViewChangedCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = { buffer, userData in
+    guard let buffer, let userData, let cText = hop_text_buffer_get_text(buffer) else { return }
+    let text = String(cString: cText)
+    let box = Unmanaged<GTK4ActionBox>.fromOpaque(userData).takeUnretainedValue()
+    MainActor.assumeIsolated {
+        guard !box.suppressTextEditor else { return }
+        box.onChange?(text)
+    }
 }
 
 // GtkEntry "activate" (Return pressed) → `.onSubmit`.
@@ -640,7 +654,7 @@ public final class GTK4Toolkit: AppToolkit {
 
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
-            .label, .button, .textField, .secureField,
+            .label, .button, .textField, .secureField, .textEditor,
             .slider, .progress, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
@@ -786,6 +800,7 @@ public final class GTK4Toolkit: AppToolkit {
         case .label:  widget = hop_label_new("")!
         case .button: widget = hop_button_new("")!
         case .textField: widget = hop_entry_new()!
+        case .textEditor: widget = hop_textview_new()!
         case .slider: widget = hop_scale_new(0, 1)!
         case .list: widget = hop_list_new()!
         case .sidebarList:
@@ -834,6 +849,11 @@ public final class GTK4Toolkit: AppToolkit {
             handle.actionBox = box
             _ = hop_connect_changed(widget, gtk4ChangedCallback, Unmanaged.passUnretained(box).toOpaque())
             _ = hop_connect_activate(widget, gtk4ActivateEntryCallback, Unmanaged.passUnretained(box).toOpaque())
+        } else if key == .textEditor {
+            handle.isTextEditor = true
+            let box = GTK4ActionBox()
+            handle.actionBox = box
+            _ = hop_textview_connect_changed(widget, gtk4TextViewChangedCallback, Unmanaged.passUnretained(box).toOpaque())
         } else if key.rawValue.hasPrefix("toggle.") {
             // switch / checkbox / push-toggle button — all expose "active" (notify::active), read type-aware.
             handle.isToggle = true
@@ -887,7 +907,16 @@ public final class GTK4Toolkit: AppToolkit {
         if let text = patch.text { hop_label_set_text(handle.widget, text) }
         if let title = patch.title { hop_button_set_label(handle.widget, title) }
         if let placeholder = patch.placeholder { hop_entry_set_placeholder(handle.widget, placeholder) }
-        if let value = patch.value {
+        if let value = patch.value, handle.isTextEditor, let box = handle.actionBox {
+            // The widget is a GtkScrolledWindow (not editable) — reflect via the buffer, suppressing the
+            // "changed" callback so it doesn't echo back / move the cursor.
+            let current = hop_textview_get_text(handle.widget).map { String(cString: $0) } ?? ""
+            if current != value {
+                box.suppressTextEditor = true
+                hop_textview_set_text(handle.widget, value)
+                box.suppressTextEditor = false
+            }
+        } else if let value = patch.value {
             // Guard against resetting the text (and the cursor) to what's already shown, which also
             // prevents a feedback loop when our own edit triggers a re-render.
             let current = hop_editable_get_text(handle.widget).map { String(cString: $0) } ?? ""
@@ -1316,6 +1345,10 @@ public final class GTK4Toolkit: AppToolkit {
             hop_picture_natural_size(handle.widget, &iw, &ih)
             let natural = CGSize(width: Double(iw), height: Double(ih))
             return handle.imageResizable ? proposal.resolved(natural) : natural
+        }
+        // TextEditor (role .fill) greedily fills the offered space along both axes (default when unconstrained).
+        if handle.isTextEditor {
+            return proposal.resolved(CGSize(width: 240, height: 140))
         }
         // A label (Text) wraps to the proposed width: report the wrapped height, not the single-line width.
         if handle.isLabel {

@@ -381,6 +381,16 @@ void hopwinui_manip_connect(void* h, hopwinui_manip_cb cb, void* ud) {
 char* hopwinui_textbox_text(void* h) { auto t = as<muxc::TextBox>(h); return dup(t ? t.Text() : hstring{}); }
 void hopwinui_textbox_set_text(void* h, const char* u) { if (auto t = as<muxc::TextBox>(h)) t.Text(hs(u)); }
 void hopwinui_textbox_set_placeholder(void* h, const char* u) { if (auto t = as<muxc::TextBox>(h)) t.PlaceholderText(hs(u)); }
+// TextEditor: turn a TextBox multiline (Enter inserts a newline; wrap; auto vertical scrollbar; fill its frame).
+void hopwinui_textbox_set_multiline(void* h, int32_t enabled) {
+    auto t = as<muxc::TextBox>(h); if (!t) return;
+    t.AcceptsReturn(enabled != 0);
+    t.TextWrapping(enabled != 0 ? mux::TextWrapping::Wrap : mux::TextWrapping::NoWrap);
+    muxc::ScrollViewer::SetVerticalScrollBarVisibility(t, enabled != 0 ? muxc::ScrollBarVisibility::Auto
+                                                                       : muxc::ScrollBarVisibility::Disabled);
+    t.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
+    t.VerticalAlignment(mux::VerticalAlignment::Stretch);
+}
 void hopwinui_textbox_connect(void* h, hopwinui_string_cb cb, void* ud) {
     auto t = as<muxc::TextBox>(h); if (!t) return;
     t.TextChanged([cb, ud](wf::IInspectable const& s, auto&&) {

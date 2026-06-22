@@ -120,6 +120,12 @@ const char *hopqt_lineedit_text(void *edit);
 void hopqt_lineedit_connect(void *edit, hopqt_text_cb cb, void *user_data);
 void hopqt_lineedit_connect_return(void *edit, hopqt_void_cb cb, void *user_data);
 
+// TextEditor (QPlainTextEdit: multi-line plain-text)
+void *hopqt_textedit_new(void);
+void hopqt_textedit_set_text(void *edit, const char *text);
+const char *hopqt_textedit_text(void *edit);
+void hopqt_textedit_connect(void *edit, hopqt_text_cb cb, void *user_data);
+
 // Slider
 void *hopqt_slider_new(double min, double max);
 void hopqt_slider_set_range(void *slider, double min, double max);

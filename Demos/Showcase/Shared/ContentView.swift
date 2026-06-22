@@ -81,7 +81,7 @@ enum DemoTab: String, Hashable, CaseIterable {
 /// of the components HopUI implements so far. They are grouped into desktop UI categories by
 /// ``sidebarSections`` and presented as a native sectioned list with group headers (``SidebarView``).
 enum Playground: String, CaseIterable, Hashable {
-    case slider, button, toggle, stepper, picker, comboBox, datePicker, colorPicker, textField, secureField, progress
+    case slider, button, toggle, stepper, picker, comboBox, datePicker, colorPicker, textField, secureField, textEditor, progress
     case text, accessibility, label, link
     case shapes, images, color, gradient
     case layout, disclosure, groupBox, form, tabs
@@ -99,6 +99,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .colorPicker: return "Color Picker"
         case .textField: return "Text Field"
         case .secureField: return "Secure Field"
+        case .textEditor: return "Text Editor"
         case .progress: return "Progress"
         case .comboBox: return "ComboBox"
         case .text: return "Text Styles"
@@ -146,7 +147,7 @@ struct SidebarSection: Identifiable, Hashable {
 let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "controls", title: "Controls",
                    items: [.slider, .button, .toggle, .stepper, .picker, .comboBox, .datePicker, .colorPicker,
-                           .textField, .secureField, .progress, .gesture]),
+                           .textField, .secureField, .textEditor, .progress, .gesture]),
     SidebarSection(id: "text", title: "Text & Accessibility",
                    items: [.text, .accessibility, .label, .link]),
     SidebarSection(id: "graphics", title: "Graphics",
@@ -209,6 +210,7 @@ public struct ContentView: View {
     // same name / password / Wi-Fi / volume the individual control playgrounds edit, so those four are shared.
     @State private var name = ""
     @State private var password = ""
+    @State private var editorText = "Edit me…\nI'm a multi-line, scrollable text editor that fills my frame."
     @State private var wifiOn = true
     @State private var sliderValue = 50.0
 
@@ -254,6 +256,8 @@ public struct ContentView: View {
                 TextFieldPlayground(text: $name)
             } else if selection == .secureField {
                 SecureFieldPlayground(password: $password)
+            } else if selection == .textEditor {
+                TextEditorPlayground(text: $editorText)
             } else if selection == .label {
                 LabelPlayground()
             } else if selection == .link {
@@ -639,6 +643,18 @@ struct TextFieldPlayground: View {
             Text("Type your name")
             TextField("Name", text: $text)
             Text(text.isEmpty ? "Hello there!" : "Hello, \(text)!")
+        }
+    }
+}
+
+struct TextEditorPlayground: View {
+    @Binding var text: String
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Multi-line, scrollable plain-text editing bound to @State")
+            TextEditor(text: $text)
+                .frame(width: 360, height: 200)
+            Text("\(text.count) characters · \(text.split(separator: "\n", omittingEmptySubsequences: false).count) lines")
         }
     }
 }

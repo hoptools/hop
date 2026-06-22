@@ -12,7 +12,7 @@ import Foundation
 // handle carries its `kind` so the configure/measure/setFrame/callback paths can dispatch on it. (HopUI's
 // public `WidgetKind` enum is gone; this one is internal to HopWinUI.)
 enum WidgetKind: Equatable {
-    case window, vstack, hstack, label, button, textField, slider
+    case window, vstack, hstack, label, button, textField, textEditor, slider
     case list, sidebarList, splitView, shape, menu, picker, datePicker, colorPicker
     case separator, progress, zstack, spacer, scroll, geometry, lazyStack
     case outline, sidebarOutline, image, toggle, secureField, groupBox, tabView
@@ -166,7 +166,9 @@ private let cbManip: @convention(c) (UnsafeMutableRawPointer?, Double, Double, I
 private let cbString: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = { s, ud in
     guard let w = widget(ud), let s else { return }
     let value = String(cString: s)
-    MainActor.assumeIsolated { if !w.suppress { w.onChangeString?(value) } }
+    // Track the widget's live text so configure's `value != lastValue` guard reflects reality after a user
+    // edit — otherwise lastValue goes stale and the next reconcile re-sets the same text, resetting the caret.
+    MainActor.assumeIsolated { if !w.suppress { w.lastValue = value; w.onChangeString?(value) } }
 }
 private let cbDouble: @convention(c) (Double, UnsafeMutableRawPointer?) -> Void = { v, ud in
     guard let w = widget(ud) else { return }
@@ -304,7 +306,7 @@ public final class WinUIToolkit: AppToolkit {
     /// Simple leaves (Text/Button/TextField/SecureField/Slider/Toggle/ProgressView/Divider): a native
     /// widget + a ``WidgetPatch`` + optional change handlers, all carried by ``PrimitiveLeafComponent``.
     private func registerLeafComponents() {
-        let leaves: [WidgetKey] = [.label, .button, .textField, .secureField, .slider, .progress, .separator]
+        let leaves: [WidgetKey] = [.label, .button, .textField, .secureField, .textEditor, .slider, .progress, .separator]
             + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
@@ -512,6 +514,7 @@ public final class WinUIToolkit: AppToolkit {
         case .label: return .label
         case .button: return .button
         case .textField: return .textField
+        case .textEditor: return .textEditor
         case .secureField: return .secureField
         case .slider: return .slider
         case .toggle: return .toggle
@@ -554,6 +557,12 @@ public final class WinUIToolkit: AppToolkit {
             let w = WinUIWidget(hopwinui_textbox_new(), kind: kind); w.flexibleWidth = true
             hopwinui_textbox_connect(w.handle, cbString, unmanaged(w))
             hopwinui_textbox_connect_submit(w.handle, cbSubmit, unmanaged(w))
+            return w
+        case .textEditor:
+            // A multiline TextBox (AcceptsReturn + Wrap + vertical scrollbar) — fills its frame (role .fill).
+            let w = WinUIWidget(hopwinui_textbox_new(), kind: kind)
+            hopwinui_textbox_set_multiline(w.handle, 1)
+            hopwinui_textbox_connect(w.handle, cbString, unmanaged(w))
             return w
         case .secureField:
             let w = WinUIWidget(hopwinui_passwordbox_new(), kind: kind); w.flexibleWidth = true
@@ -633,6 +642,10 @@ public final class WinUIToolkit: AppToolkit {
             if let title = patch.title { hopwinui_button_set_text(h, title) }
         case .textField:
             if let placeholder = patch.placeholder { hopwinui_textbox_set_placeholder(h, placeholder) }
+            if let value = patch.value, value != handle.lastValue {
+                handle.lastValue = value; handle.suppress = true; hopwinui_textbox_set_text(h, value); handle.suppress = false
+            }
+        case .textEditor:   // multiline TextBox — same value reflection as the text field (no placeholder)
             if let value = patch.value, value != handle.lastValue {
                 handle.lastValue = value; handle.suppress = true; hopwinui_textbox_set_text(h, value); handle.suppress = false
             }
@@ -984,6 +997,8 @@ public final class WinUIToolkit: AppToolkit {
         switch handle.kind {
         case .shape:
             return proposal.resolved(CGSize(width: 100, height: 100))
+        case .textEditor:   // role .fill — greedily fills the offered space along both axes
+            return proposal.resolved(CGSize(width: 240, height: 140))
         case .separator:
             return CGSize(width: proposal.width ?? 100, height: 1)
         case .image:

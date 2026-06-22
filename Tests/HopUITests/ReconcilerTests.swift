@@ -100,7 +100,7 @@ final class MockToolkit: AppToolkit {
     private func registerBuiltinComponents() {
         // Leaf widgets: delegate to the legacy makeWidget/configure so existing op-log assertions hold.
         let leaves: [WidgetKey] = [
-            .label, .button, .textField, .secureField,
+            .label, .button, .textField, .secureField, .textEditor,
             .slider, .progress, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
@@ -313,6 +313,7 @@ final class MockToolkit: AppToolkit {
         case .label: return CGSize(width: CGFloat((handle.text ?? "").count) * 8 + 8, height: 20)
         case .button: return CGSize(width: CGFloat((handle.title ?? "").count) * 8 + 16, height: 24)
         case .textField, .secureField: return CGSize(width: 120, height: 24)
+        case .textEditor: return proposal.resolved(CGSize(width: 240, height: 140))  // role .fill — greedy both axes
         case .slider: return CGSize(width: 100, height: 20)
         case let k where k.rawValue.hasPrefix("toggle."): return CGSize(width: 40, height: 22)  // any toggle style
         case .progress: return CGSize(width: 100, height: 8)
@@ -432,6 +433,33 @@ private struct TestCounter: View {
         // The label bound to the same @State updates, and no widgets were recreated.
         #expect(toolkit.widgets.contains { $0.text == "Hello, Ada!" })
         #expect(toolkit.makeCount == 0)
+    }
+
+    private struct TextEditorDemo: View {
+        @State var draft = "one"
+        var body: some View {
+            VStack {
+                TextEditor(text: $draft)
+                Text("len:\(draft.count)")
+            }
+        }
+    }
+
+    @Test func testTextEditorBindsAndRoundTripsMultilineText() throws {
+        let toolkit = MockToolkit()
+        runHopApp(TextEditorDemo(), toolkit: toolkit, title: "test")
+
+        let editor = try #require(toolkit.widgets.first { $0.kind == .textEditor })
+        #expect(editor.value == "one")                  // initial bound value reaches the widget
+        #expect(toolkit.widgets.contains { $0.text == "len:3" })
+
+        // The user types multi-line text; it flows back through the binding and the dependent label updates.
+        toolkit.clearOps()
+        editor.onChange?("line 1\nline 2")
+        toolkit.drainMainThread()
+        #expect(toolkit.firstLiveWidget { $0.kind == .textEditor }?.value == "line 1\nline 2")
+        #expect(toolkit.widgets.contains { $0.text == "len:13" })
+        #expect(toolkit.makeCount == 0)                 // reconfigured, not rebuilt
     }
 
     @Test func testSliderSharesCountStateWithButtonAndLabel() throws {
