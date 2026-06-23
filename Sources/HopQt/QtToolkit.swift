@@ -654,10 +654,15 @@ public final class QtToolkit: AppToolkit {
             hopqt_lineedit_connect_return(widget.ptr, qtSubmitCallback, Unmanaged.passUnretained(box).toOpaque())
             return widget
         case let k where k.rawValue.hasPrefix("toggle."):
-            // Qt has no native switch, so switch/checkbox both use a QCheckBox; .button is a checkable
-            // QPushButton. All drive the same QAbstractButton-based state path (hopqt_switch_*).
+            // switch/.automatic = custom switch-style HopSwitch (Qt ships no switch); .checkbox = QCheckBox;
+            // .button = checkable QPushButton. All drive the same QAbstractButton-based state path (hopqt_switch_*).
             let style = ToggleStyle(rawValue: String(k.rawValue.dropFirst("toggle.".count))) ?? .automatic
-            let ptr = style == .button ? hopqt_toggle_button_new()! : hopqt_switch_new()!
+            let ptr: UnsafeMutableRawPointer
+            switch style {
+            case .button: ptr = hopqt_toggle_button_new()!
+            case .checkbox: ptr = hopqt_checkbox_new()!
+            case .switch, .automatic: ptr = hopqt_switch_new()!
+            }
             let widget = QtWidget(ptr)
             widget.isToggle = true
             let box = QtActionBox()

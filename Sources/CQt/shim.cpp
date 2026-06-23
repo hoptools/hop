@@ -37,6 +37,7 @@
 #include <QtWidgets/QTreeWidgetItemIterator>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QAbstractButton>   // HopSwitch base (custom switch-style toggle)
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QButtonGroup>
@@ -1495,12 +1496,49 @@ void hopqt_image_natural_size(void *view, int *out_w, int *out_h) {
     *out_h = s.height();
 }
 
-// --- Toggle (QCheckBox for switch/checkbox; checkable QPushButton for .button) + SecureField ----
-// Qt has no native switch widget, so `.switch` and `.checkbox` both render as a QCheckBox. The state
-// accessors cast to QAbstractButton so a checkable QPushButton (`.button` style) works through the
-// same code path (QAbstractButton has setChecked/isChecked/toggled).
+// --- Toggle (switch / checkbox / button) + SecureField --------------------
+// Qt has no native switch widget, so `.switch`/`.automatic` use a custom-painted HopSwitch (so the default
+// toggle looks like a switch, matching AppKit/GTK/WinUI); `.checkbox` is a QCheckBox; `.button` a checkable
+// QPushButton. All three are QAbstractButtons, so the state accessors (setChecked/isChecked/toggled) below
+// drive every variant through one code path.
 
-void *hopqt_switch_new(void) { return new QCheckBox(); }
+namespace {
+/// A switch-style toggle: a checkable QAbstractButton painted as a rounded track + sliding thumb (accent
+/// when on, grey when off). Qt ships no such control, but this is the standard custom-widget approach.
+class HopSwitch : public QAbstractButton {
+public:
+    explicit HopSwitch(QWidget *parent = nullptr) : QAbstractButton(parent) {
+        setCheckable(true);
+        setCursor(Qt::PointingHandCursor);
+        connect(this, &QAbstractButton::toggled, this, [this] { update(); });  // repaint when flipped by the user
+    }
+    QSize sizeHint() const override { return QSize(40, 22); }
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const double trackH = qMin(double(height()), 22.0);
+        const double trackY = (height() - trackH) / 2.0;
+        const double w = width();
+        const double r = trackH / 2.0;
+        QColor on = palette().color(QPalette::Highlight);
+        QColor off = palette().color(QPalette::Mid);
+        if (!isEnabled()) { on.setAlpha(120); off.setAlpha(120); }
+        p.setPen(Qt::NoPen);
+        p.setBrush(isChecked() ? on : off);
+        p.drawRoundedRect(QRectF(0, trackY, w, trackH), r, r);
+        const double thumb = trackH - 4.0;
+        const double thumbX = isChecked() ? (w - thumb - 2.0) : 2.0;
+        p.setBrush(QColor(Qt::white));
+        p.drawEllipse(QRectF(thumbX, trackY + 2.0, thumb, thumb));
+    }
+};
+}
+
+void *hopqt_switch_new(void) { return new HopSwitch(); }
+
+// `.toggleStyle(.checkbox)`: a native QCheckBox.
+void *hopqt_checkbox_new(void) { return new QCheckBox(); }
 
 // `.toggleStyle(.button)`: a checkable push button that stays "pressed in" while on.
 void *hopqt_toggle_button_new(void) {

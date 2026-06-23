@@ -298,7 +298,8 @@ void hopqt_imageview_set_mode(void *view, int resizable, int mode);  // mode: 0=
 void hopqt_image_natural_size(void *view, int *out_w, int *out_h);
 
 // Switch (Toggle: QCheckBox) and password mode for a line edit (SecureField).
-void *hopqt_switch_new(void);                  // switch / checkbox toggle (QCheckBox)
+void *hopqt_switch_new(void);                  // .switch/.automatic: custom switch-style HopSwitch
+void *hopqt_checkbox_new(void);                // .toggleStyle(.checkbox): QCheckBox
 void *hopqt_toggle_button_new(void);           // .toggleStyle(.button): checkable QPushButton
 void hopqt_switch_set_checked(void *box, int on);
 int hopqt_switch_checked(void *box);
