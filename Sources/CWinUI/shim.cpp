@@ -810,3 +810,48 @@ void hopwinui_save_file_picker(const char* defaultName, const char* ext, const c
         if (dispatcher) dispatcher.TryEnqueue(call); else call();
     });
 }
+
+// --- Modals (ContentDialog) -----------------------------------------------
+
+void hopwinui_alert_show(const char* title, const char* message, const char* buttons_nl, hopwinui_int_cb cb, void* ud) {
+    muxc::ContentDialog dlg;
+    if (g.root) dlg.XamlRoot(g.root.XamlRoot());
+    dlg.Title(box_value(hs(title)));
+    if (message && *message) dlg.Content(box_value(hs(message)));
+    // Split the '\n'-joined labels; ContentDialog supports up to 3 (Primary / Secondary / Close).
+    std::string b = buttons_nl ? buttons_nl : "";
+    std::vector<std::string> labels; size_t pos = 0, nl;
+    while ((nl = b.find('\n', pos)) != std::string::npos) { labels.push_back(b.substr(pos, nl - pos)); pos = nl + 1; }
+    if (pos < b.size()) labels.push_back(b.substr(pos));
+    if (labels.size() > 0) dlg.PrimaryButtonText(hs(labels[0].c_str()));
+    if (labels.size() > 1) dlg.SecondaryButtonText(hs(labels[1].c_str()));
+    if (labels.size() > 2) dlg.CloseButtonText(hs(labels[2].c_str()));
+    auto op = dlg.ShowAsync();
+    op.Completed([cb, ud](auto const& sender, auto&&) {
+        auto r = sender.GetResults();
+        int idx = r == muxc::ContentDialogResult::Primary ? 0
+                : r == muxc::ContentDialogResult::Secondary ? 1 : 2;   // Close / dismiss → 2 (Swift bounds-checks)
+        if (cb) cb(idx, ud);
+    });
+}
+
+void* hopwinui_sheet_new(void) {
+    muxc::ContentDialog dlg;
+    if (g.root) dlg.XamlRoot(g.root.XamlRoot());
+    muxc::Canvas canvas;
+    canvas.Width(460); canvas.Height(360);
+    dlg.Content(canvas);
+    return mk(dlg);
+}
+void* hopwinui_sheet_canvas(void* dialog) {
+    auto dlg = as<muxc::ContentDialog>(dialog);
+    return dlg ? mk(dlg.Content().as<mux::FrameworkElement>()) : nullptr;
+}
+void hopwinui_sheet_show(void* dialog, hopwinui_void_cb on_dismiss, void* ud) {
+    auto dlg = as<muxc::ContentDialog>(dialog); if (!dlg) return;
+    auto op = dlg.ShowAsync();
+    op.Completed([on_dismiss, ud](auto&&, auto&&) { if (on_dismiss) on_dismiss(ud); });
+}
+void hopwinui_sheet_close(void* dialog) {
+    if (auto dlg = as<muxc::ContentDialog>(dialog)) dlg.Hide();
+}

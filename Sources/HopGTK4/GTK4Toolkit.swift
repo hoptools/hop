@@ -26,6 +26,11 @@ public final class GTK4Widget {
     // Guards against re-presenting a file dialog while one is already open (isPresented stays true).
     var importerPresenting = false
     var exporterPresenting = false
+    var alertPresenting = false
+    // A `.sheet`'s modal child window + its retained reconciler (the sheet content is mounted/updated through it).
+    var sheetPresenting = false
+    var sheetWindow: UnsafeMutableRawPointer?
+    var sheetReconciler: Reconciler<GTK4Toolkit>?
     // Action boxes for a drop-down menu's items, retained so their C callbacks stay valid.
     var retainedBoxes: [GTK4ActionBox] = []
     // For `.onTapGesture`: the retained callback box + the GtkGestureClick controller (so we can remove it).
@@ -50,6 +55,13 @@ public final class GTK4Widget {
 final class GTK4FileBox {
     let onComplete: (@MainActor ([URL]?) -> Void)
     init(_ onComplete: @escaping @MainActor ([URL]?) -> Void) { self.onComplete = onComplete }
+}
+
+/// Carries an `.alert`'s buttons + binding reset across the C alert callback. `onChoose(index)` runs the
+/// chosen button's action (index < 0 ⇒ dismissed) and resets the presenting binding.
+final class GTK4AlertBox {
+    let onChoose: (@MainActor (Int) -> Void)
+    init(_ onChoose: @escaping @MainActor (Int) -> Void) { self.onChoose = onChoose }
 }
 
 /// Carries a raw GTK pointer across the isolation boundary of a main-thread C callback. GTK
@@ -311,6 +323,13 @@ private let gtk4FileCallback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutab
     let box = Unmanaged<GTK4FileBox>.fromOpaque(userData).takeRetainedValue()
     let urls: [URL]? = paths.map { String(cString: $0).split(separator: "\n").map { URL(fileURLWithPath: String($0)) } }
     MainActor.assumeIsolated { box.onComplete(urls) }
+}
+
+// Alert choice callback (hop_index_fn): the chosen button index (-1 if dismissed).
+private let gtk4AlertCallback: @convention(c) (Int32, UnsafeMutableRawPointer?) -> Void = { index, userData in
+    guard let userData else { return }
+    let box = Unmanaged<GTK4AlertBox>.fromOpaque(userData).takeRetainedValue()
+    MainActor.assumeIsolated { box.onChoose(Int(index)) }
 }
 
 // GSimpleAction "activate" signature is (action, parameter, user_data).
@@ -1255,6 +1274,62 @@ public final class GTK4Toolkit: AppToolkit {
         let (name, patterns) = gtkFilter([spec.contentType])
         hop_file_save(handle.widget, spec.defaultFilename, name, patterns,
                       gtk4FileCallback, Unmanaged.passRetained(box).toOpaque())
+    }
+
+    public func configureAlert(_ handle: GTK4Widget, _ spec: AlertSpec) {
+        guard spec.isPresented else { handle.alertPresenting = false; return }
+        guard !handle.alertPresenting else { return }
+        handle.alertPresenting = true
+        let buttons = spec.buttons.isEmpty ? [AlertButton(title: "OK", role: nil, action: {})] : spec.buttons
+        let box = GTK4AlertBox { [weak handle] index in
+            handle?.alertPresenting = false
+            spec.setPresented(false)
+            if index >= 0, index < buttons.count { buttons[index].action() }
+        }
+        let labels = buttons.map(\.title).joined(separator: "\n")
+        let cancelIndex = Int32(buttons.firstIndex { $0.role == .cancel } ?? -1)
+        hop_alert_show(handle.widget, spec.title, spec.message ?? "", labels, cancelIndex,
+                       gtk4AlertCallback, Unmanaged.passRetained(box).toOpaque())
+    }
+
+    public func configureSheet(_ handle: GTK4Widget, _ spec: SheetSpec) {
+        guard spec.isPresented, let content = spec.content else {
+            if let win = handle.sheetWindow { hop_window_close(win) }
+            handle.sheetWindow = nil
+            handle.sheetReconciler = nil
+            if handle.sheetPresenting { spec.onDismiss?() }
+            handle.sheetPresenting = false
+            return
+        }
+        let bounds = CGRect(x: 0, y: 0, width: 460, height: 360)
+        if handle.sheetPresenting, let reconciler = handle.sheetReconciler {
+            reconciler.update(content)        // reactive in-place update
+            reconciler.layout(in: bounds)
+            return
+        }
+        guard let app else { return }
+        handle.sheetPresenting = true
+        let win = hop_window_new(app)!
+        hop_window_set_default_size(win, 460, 360)
+        hop_window_set_modal(win, 1)
+        hop_window_set_transient_for(win, window)   // attach to the main window
+        hop_window_set_deletable(win, 0)            // dismiss only via content (macOS-sheet-like)
+        let container = hop_fixed_new()!
+        hop_window_set_child(win, container)
+        let reconciler = Reconciler(toolkit: self)
+        reconciler.mount(content, into: GTK4Widget(container))
+        reconciler.layout(in: bounds)
+        handle.sheetWindow = win
+        handle.sheetReconciler = reconciler
+        hop_window_present(win)
+    }
+
+    public func releaseHandle(_ handle: GTK4Widget) {
+        guard handle.sheetPresenting else { return }
+        if let win = handle.sheetWindow { hop_window_close(win) }   // don't orphan the sheet on host removal
+        handle.sheetWindow = nil
+        handle.sheetReconciler = nil
+        handle.sheetPresenting = false
     }
 
     public func configureShape(_ handle: GTK4Widget, _ spec: ShapeSpec) {

@@ -85,7 +85,7 @@ enum Playground: String, CaseIterable, Hashable {
     case text, accessibility, label, link
     case shapes, images, color, gradient
     case layout, disclosure, groupBox, form, tabs
-    case observable, environment, menus, files
+    case observable, environment, menus, files, modals
     case gesture, modifiers
 
     var title: String {
@@ -119,6 +119,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .environment: return "Environment"
         case .menus: return "Menus"
         case .files: return "Files"
+        case .modals: return "Modals"
         case .gesture: return "Gestures"
         case .modifiers: return "Modifiers"
         }
@@ -155,7 +156,7 @@ let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "containers", title: "Containers",
                    items: [.layout, .modifiers, .disclosure, .groupBox, .form, .tabs]),
     SidebarSection(id: "data", title: "Data & Menus",
-                   items: [.observable, .environment, .menus, .files]),
+                   items: [.observable, .environment, .menus, .files, .modals]),
 ]
 
 // `hopTask` runs async work on the toolkit's run loop. The HopUI build gets it from `import HopUI`;
@@ -294,6 +295,8 @@ public struct ContentView: View {
                 TabsPlayground()
             } else if selection == .files {
                 FilePlayground()
+            } else if selection == .modals {
+                ModalsPlayground()
             } else if selection == .gesture {
                 GesturePlayground()
             } else if selection == .modifiers {
@@ -445,6 +448,50 @@ struct FilePlayground: View {
             }
             Text(status)
         }
+    }
+}
+
+/// Demonstrates native modal presentations: an `.alert` (with destructive + cancel buttons) and a `.sheet`
+/// hosting a LIVE HopUI view tree (the count updates as you tap inside the sheet) dismissed via
+/// `@Environment(\.dismiss)`. The same source compiles against HopUI and Apple's SwiftUI.
+struct ModalsPlayground: View {
+    @State private var showAlert = false
+    @State private var showSheet = false
+    @State private var lastAction = "—"
+    @State private var sheetCount = 0
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Native alerts and sheets, driven by @State bindings")
+            Button("Show Alert") { showAlert = true }
+            Button("Show Sheet") { showSheet = true }
+            Text("Last alert action: \(lastAction)")
+            Text("Sheet count: \(sheetCount)")
+        }
+        .alert("Delete item?", isPresented: $showAlert) {
+            Button("Delete", role: .destructive) { lastAction = "Delete" }
+            Button("Cancel", role: .cancel) { lastAction = "Cancel" }
+        } message: {
+            Text("This action cannot be undone.")
+        }
+        .sheet(isPresented: $showSheet) {
+            SheetContent(count: $sheetCount)
+        }
+    }
+}
+
+/// The sheet body — a live HopUI view tree. Tapping Increment updates "Live count" in place (proving the
+/// sheet is reactive, not a static snapshot); Done dismisses via `@Environment(\.dismiss)`.
+struct SheetContent: View {
+    @Binding var count: Int
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("This is a modal sheet")
+            Text("Live count: \(count)")
+            Button("Increment") { count += 1 }
+            Button("Done") { dismiss() }
+        }
+        .padding(24)
     }
 }
 

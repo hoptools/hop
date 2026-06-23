@@ -246,6 +246,12 @@ public struct RenderNode {
     public var fileImporter: FileImporterSpec?
     /// File-save-panel presentation attached via `.fileExporter`. Not part of equality.
     public var fileExporter: FileExporterSpec?
+    /// Native-alert presentation attached via `.alert`. Not part of equality.
+    public var alert: AlertSpec?
+    /// Modal-sheet presentation attached via `.sheet` (its `content` is the resolved sheet body). Not part of equality.
+    public var sheet: SheetSpec?
+    /// A `Button`'s semantic role from `Button(_:role:)`, read by ``Alert`` to style its buttons. Not rendered.
+    public var buttonRole: ButtonRole?
     /// Preferences this node contributes up the tree (`.toolbar`/`.preferredColorScheme`/
     /// `.navigationTitle`/`.navigationDestination`). Collected by a tree walk. Not part of equality.
     public var preferences: NodePreferences?
@@ -344,7 +350,8 @@ extension RenderNode {
     /// for the common case of a bare composite with no surrounding modifiers.
     var hasWrapperState: Bool {
         !layout.modifiers.isEmpty || preferences != nil || tag != nil || tabLabel != nil
-            || fileImporter != nil || fileExporter != nil || onTap != nil || patch != WidgetPatch()
+            || fileImporter != nil || fileExporter != nil || alert != nil || sheet != nil || onTap != nil
+            || patch != WidgetPatch()
             || onLongPress != nil || onHover != nil || dragGesture != nil || magnifyGesture != nil
             || rotateGesture != nil || onSubmit != nil
     }
@@ -361,6 +368,8 @@ extension RenderNode {
         if let tl = ref.tabLabel { tabLabel = tl }
         if let fi = ref.fileImporter { fileImporter = fi }
         if let fe = ref.fileExporter { fileExporter = fe }
+        if let al = ref.alert { alert = al }
+        if let sh = ref.sheet { sheet = sh }
         if let ot = ref.onTap { onTap = ot }
         if let lp = ref.onLongPress { onLongPress = lp }
         if let hv = ref.onHover { onHover = hv }

@@ -62,6 +62,15 @@ public protocol RenderToolkit: AnyObject {
     func configureFileImporter(_ handle: Handle, _ spec: FileImporterSpec)
     /// Drive a `.fileExporter` presentation: show the native save panel, write `spec.data`, then finish.
     func configureFileExporter(_ handle: Handle, _ spec: FileExporterSpec)
+    /// Drive a `.alert` presentation: when `spec.isPresented` transitions true, show a native alert whose
+    /// buttons run `spec.buttons`' actions, then reset via `setPresented(false)`.
+    func configureAlert(_ handle: Handle, _ spec: AlertSpec)
+    /// Drive a `.sheet` presentation: when `spec.isPresented` is true, host `spec.content` in a native modal
+    /// window (mounted/updated via a retained per-sheet reconciler); tear it down when false.
+    func configureSheet(_ handle: Handle, _ spec: SheetSpec)
+    /// Release any presentation resources attached to `handle` as it's dropped from the tree — notably an
+    /// open `.sheet` window, so it isn't orphaned when its host view is conditionally removed mid-presentation.
+    func releaseHandle(_ handle: Handle)
 
     // MARK: - Framework-owned layout
 

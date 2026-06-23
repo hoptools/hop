@@ -33,17 +33,28 @@ public struct Text: View, PrimitiveView {
 public struct Button: View, PrimitiveView {
     let title: String
     let action: @MainActor () -> Void
+    let role: ButtonRole?
     public init(_ title: String, action: @escaping @MainActor () -> Void) {
         self.title = title
         self.action = action
+        self.role = nil
+    }
+    /// Mirrors SwiftUI's `Button(_:role:action:)`. The role currently affects only ``Alert`` button
+    /// treatment (cancel/destructive); ordinary in-content buttons ignore it.
+    public init(_ title: String, role: ButtonRole?, action: @escaping @MainActor () -> Void) {
+        self.title = title
+        self.action = action
+        self.role = role
     }
 
     public typealias Body = Never
     public var body: Never { fatalError() }
 
     func makeNode(_ context: RenderContext) -> RenderNode {
-        RenderNode(id: context.id,
-                   component: PrimitiveLeafComponent(.button, patch: WidgetPatch(title: title), action: action))
+        var node = RenderNode(id: context.id,
+                              component: PrimitiveLeafComponent(.button, patch: WidgetPatch(title: title), action: action))
+        node.buttonRole = role
+        return node
     }
 }
 

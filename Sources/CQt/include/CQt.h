@@ -159,6 +159,13 @@ void hopqt_colorwell_connect(void *btn, hopqt_color_cb cb, void *user_data);
 char *hopqt_file_open(void *widget, int multiple, const char *filter);
 char *hopqt_file_save(void *widget, const char *default_name, const char *filter);
 
+// Alert (QMessageBox, blocking → clicked index or -1) + modal sheet (QDialog, non-blocking)
+int hopqt_alert_show(void *widget, const char *title, const char *message, const char *buttons_nl, int cancel_index);
+void *hopqt_modal_dialog_new(void *widget, const char *title);
+void hopqt_modal_dialog_set_content(void *dialog, void *content);
+void hopqt_modal_dialog_show(void *dialog);
+void hopqt_modal_dialog_close(void *dialog);
+
 // Menu bar (QMenuBar on the QMainWindow). `command` codes: 0 cut, 1 copy, 2 paste, 3 undo,
 // 4 redo, 5 select-all.
 void *hopqt_menu_bar(void *window);

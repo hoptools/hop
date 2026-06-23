@@ -68,6 +68,10 @@ public nonisolated struct EnvironmentValues {
     /// `runApp`; the default is a no-op so reads outside a running app are harmless.
     public var openWindow = OpenWindowAction()
 
+    /// Dismisses the current presentation (e.g. a `.sheet`). A `.sheet` installs a working action into its
+    /// content's environment; the default is a no-op. Read via `@Environment(\.dismiss)`.
+    public var dismiss = DismissAction()
+
     /// The enclosing `NavigationStack`'s push action, installed by the stack while it evaluates its
     /// content so that a `NavigationLink` inside can append a value to the stack's path. `nil` outside
     /// a navigation stack.

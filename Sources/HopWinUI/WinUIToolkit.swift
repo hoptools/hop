@@ -75,6 +75,11 @@ public final class WinUIWidget {
 
     // Caches.
     var lastValue: String?
+    // Modal-presentation state (`.alert` / `.sheet`).
+    var alertPresenting = false
+    var sheetPresenting = false
+    var sheetDialog: UnsafeMutableRawPointer?
+    var sheetReconciler: Reconciler<WinUIToolkit>?
     // `.disabled` state set on this node (nil = not specified). Stashed so `didInsertChildren` can re-cascade
     // a container's disable to children that are inserted after `configure` ran.
     var enabledState: Bool?
@@ -917,6 +922,53 @@ public final class WinUIToolkit: AppToolkit {
                                   spec.contentType.displayName, cbFileResult, Unmanaged.passRetained(box).toOpaque())
     }
 
+    public func configureAlert(_ handle: WinUIWidget, _ spec: AlertSpec) {
+        guard spec.isPresented else { handle.alertPresenting = false; return }
+        guard !handle.alertPresenting else { return }
+        handle.alertPresenting = true
+        let buttons = spec.buttons.isEmpty ? [AlertButton(title: "OK", role: nil, action: {})] : spec.buttons
+        let box = AlertResultBox { [weak handle] index in
+            handle?.alertPresenting = false
+            spec.setPresented(false)
+            if index >= 0, index < buttons.count { buttons[index].action() }
+        }
+        // ContentDialog supports up to 3 buttons (Primary/Secondary/Close); excess are dropped (logged-worthy).
+        let labels = buttons.prefix(3).map(\.title).joined(separator: "\n")
+        hopwinui_alert_show(spec.title, spec.message ?? "", labels, cbAlertResult, Unmanaged.passRetained(box).toOpaque())
+    }
+
+    public func configureSheet(_ handle: WinUIWidget, _ spec: SheetSpec) {
+        guard spec.isPresented, let content = spec.content else {
+            if let dialog = handle.sheetDialog { hopwinui_sheet_close(dialog) }
+            handle.sheetDialog = nil; handle.sheetReconciler = nil
+            if handle.sheetPresenting { spec.onDismiss?() }
+            handle.sheetPresenting = false
+            return
+        }
+        let bounds = CGRect(x: 0, y: 0, width: 460, height: 360)
+        if handle.sheetPresenting, let reconciler = handle.sheetReconciler {
+            reconciler.update(content); reconciler.layout(in: bounds); return   // reactive update
+        }
+        handle.sheetPresenting = true
+        let dialog = hopwinui_sheet_new()!
+        let canvas = hopwinui_sheet_canvas(dialog)!
+        let reconciler = Reconciler(toolkit: self)
+        reconciler.mount(content, into: WinUIWidget(canvas, kind: .vstack, isPanel: true))
+        reconciler.layout(in: bounds)
+        handle.sheetDialog = dialog
+        handle.sheetReconciler = reconciler
+        let box = SheetDismissBox { [weak handle] in handle?.sheetPresenting = false; spec.setPresented(false) }
+        hopwinui_sheet_show(dialog, cbSheetDismiss, Unmanaged.passRetained(box).toOpaque())
+    }
+
+    public func releaseHandle(_ handle: WinUIWidget) {
+        guard handle.sheetPresenting else { return }
+        if let dialog = handle.sheetDialog { hopwinui_sheet_close(dialog) }   // don't orphan the sheet
+        handle.sheetDialog = nil
+        handle.sheetReconciler = nil
+        handle.sheetPresenting = false
+    }
+
     public func configureTabs(_ handle: WinUIWidget, _ spec: TabSpec) {
         handle.tabOnSelect = spec.onSelect
         handle.tabSelected = max(0, min(spec.selectedIndex, max(0, handle.children.count - 1)))
@@ -1178,6 +1230,28 @@ private let cbMenuItem: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud
 final class FilesResultBox {
     let completion: @MainActor ([URL]) -> Void
     init(_ completion: @escaping @MainActor ([URL]) -> Void) { self.completion = completion }
+}
+
+/// Carries an `.alert`'s choice handler (index of the clicked button, -1 if dismissed) across the C callback.
+final class AlertResultBox {
+    let onChoose: @MainActor (Int) -> Void
+    init(_ onChoose: @escaping @MainActor (Int) -> Void) { self.onChoose = onChoose }
+}
+private let cbAlertResult: @convention(c) (Int32, UnsafeMutableRawPointer?) -> Void = { index, ud in
+    guard let ud else { return }
+    let box = Unmanaged<AlertResultBox>.fromOpaque(ud).takeRetainedValue()
+    MainActor.assumeIsolated { box.onChoose(Int(index)) }
+}
+
+/// Carries a `.sheet`'s dismiss handler (the dialog closed) across the C callback.
+final class SheetDismissBox {
+    let onDismiss: @MainActor () -> Void
+    init(_ onDismiss: @escaping @MainActor () -> Void) { self.onDismiss = onDismiss }
+}
+private let cbSheetDismiss: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
+    guard let ud else { return }
+    let box = Unmanaged<SheetDismissBox>.fromOpaque(ud).takeRetainedValue()
+    MainActor.assumeIsolated { box.onDismiss() }
 }
 private let cbFilesResult: @convention(c) (UnsafePointer<UnsafePointer<CChar>?>?, Int32, UnsafeMutableRawPointer?) -> Void = { paths, count, ud in
     guard let ud else { return }

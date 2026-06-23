@@ -8,7 +8,7 @@
 /// widget (and its native state) even if it moved, was inserted before, or had a sibling removed.
 /// New ids are realized in place; dropped ids are removed and their subtree torn down. This is what
 /// makes `ForEach` reorder/insert/delete and `if`/`else` branch switching behave like SwiftUI.
-final class Reconciler<Toolkit: RenderToolkit> {
+public final class Reconciler<Toolkit: RenderToolkit> {
     private let toolkit: Toolkit
     private var handles: [String: Toolkit.Handle] = [:]
     private var previous: RenderNode?
@@ -17,7 +17,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
     /// Safe by the same invariant as the reconcile skip — a stable revision means identical content.
     private var measureCache: [String: (revision: Int, width: Double?, height: Double?, size: CGSize)] = [:]
 
-    init(toolkit: Toolkit) { self.toolkit = toolkit }
+    public init(toolkit: Toolkit) { self.toolkit = toolkit }
 
     // An explicit nonisolated deinit avoids synthesizing an *isolating* destructor for this generic
     // MainActor class, which crashes Swift 6.3's SILGen (assertion in emitIsolatingDestructor). Tearing
@@ -28,14 +28,14 @@ final class Reconciler<Toolkit: RenderToolkit> {
     #endif
 
     /// Create the widget tree for `root` and insert it into `container`.
-    func mount(_ root: RenderNode, into container: Toolkit.Handle) {
+    public func mount(_ root: RenderNode, into container: Toolkit.Handle) {
         let handle = realize(root)
         toolkit.insert(handle, into: container, at: 0)
         previous = root
     }
 
     /// Diff `new` against the previously rendered tree and apply changes.
-    func update(_ new: RenderNode) {
+    public func update(_ new: RenderNode) {
         guard let old = previous else { return }
         reconcile(old: old, new: new)
         previous = new
@@ -44,7 +44,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
     /// Run HopUI's layout engine over the current tree, sizing/positioning every widget within `rect`
     /// (the window's content area). Leaves are measured through the toolkit; frames are applied via
     /// `setFrame`. Call after `mount`/`update` and whenever the window resizes.
-    func layout(in rect: CGRect) {
+    public func layout(in rect: CGRect) {
         guard let root = previous else { return }
         let engine = LayoutEngine(
             measureLeaf: { [self] node, proposal in
@@ -107,6 +107,8 @@ final class Reconciler<Toolkit: RenderToolkit> {
         toolkit.setSubmitHandler(handle, node.onSubmit)
         if let fileImporter = node.fileImporter { toolkit.configureFileImporter(handle, fileImporter) }
         if let fileExporter = node.fileExporter { toolkit.configureFileExporter(handle, fileExporter) }
+        if let alert = node.alert { toolkit.configureAlert(handle, alert) }
+        if let sheet = node.sheet { toolkit.configureSheet(handle, sheet) }
     }
 
     /// Keyed child diff: match by ``RenderNode/id``, reuse matched handles (preserving native state)
@@ -157,6 +159,7 @@ final class Reconciler<Toolkit: RenderToolkit> {
     /// parent detaches the whole subtree natively; this just clears our id → handle bookkeeping.
     private func teardown(_ node: RenderNode) {
         for child in node.children { teardown(child) }
+        if let handle = handles[node.id] { toolkit.releaseHandle(handle) }  // close an open sheet, etc.
         handles[node.id] = nil
     }
 }

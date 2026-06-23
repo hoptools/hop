@@ -54,6 +54,21 @@ static inline void hop_window_present(void *win) {
     gtk_window_present(GTK_WINDOW(win));
 }
 
+// Modal-window helpers (for `.sheet`): a modal, transient, non-deletable child window — dismissed only
+// through its content (like a macOS sheet), so no close-request plumbing is needed.
+static inline void hop_window_set_modal(void *win, int modal) {
+    gtk_window_set_modal(GTK_WINDOW(win), modal ? TRUE : FALSE);
+}
+static inline void hop_window_set_transient_for(void *win, void *parent) {
+    if (parent) gtk_window_set_transient_for(GTK_WINDOW(win), GTK_WINDOW(parent));
+}
+static inline void hop_window_set_deletable(void *win, int deletable) {
+    gtk_window_set_deletable(GTK_WINDOW(win), deletable ? TRUE : FALSE);
+}
+static inline void hop_window_close(void *win) {
+    gtk_window_close(GTK_WINDOW(win));
+}
+
 // --- Widgets ---------------------------------------------------------------
 
 static inline void *hop_box_new(int horizontal, int spacing) {
@@ -1194,6 +1209,33 @@ static inline void hop_listbox_set_selected(void *boxp, int index) {
         gtk_list_box_unselect_all(box);
     }
     g_object_set_data(G_OBJECT(box), "hop-building", NULL);
+}
+
+// --- Alert (GtkAlertDialog, GTK 4.10+) -------------------------------------
+// `.alert` → a native alert presented async; the chosen button's index is reported via hop_index_fn
+// (-1 if dismissed/errored). `buttons_nl` is the labels joined by '\n', in order.
+
+typedef struct { hop_index_fn cb; void *data; } HopAlertCtx;
+
+static inline void hop_alert_done(GObject *source, GAsyncResult *res, gpointer data) {
+    HopAlertCtx *ctx = (HopAlertCtx *)data;
+    int index = gtk_alert_dialog_choose_finish(GTK_ALERT_DIALOG(source), res, NULL);  // -1 on dismiss/error
+    if (ctx->cb) ctx->cb(index, ctx->data);
+    free(ctx);
+}
+
+static inline void hop_alert_show(void *widget, const char *title, const char *message,
+                                  const char *buttons_nl, int cancel_index, hop_index_fn cb, void *data) {
+    GtkAlertDialog *dlg = gtk_alert_dialog_new("%s", title ? title : "");
+    if (message && *message) gtk_alert_dialog_set_detail(dlg, message);
+    char **btns = g_strsplit(buttons_nl ? buttons_nl : "", "\n", -1);
+    gtk_alert_dialog_set_buttons(dlg, (const char * const *)btns);
+    if (cancel_index >= 0) gtk_alert_dialog_set_cancel_button(dlg, cancel_index);  // Escape → cancel button
+    HopAlertCtx *ctx = (HopAlertCtx *)malloc(sizeof(HopAlertCtx));
+    ctx->cb = cb; ctx->data = data;
+    gtk_alert_dialog_choose(dlg, hop_widget_window(widget), NULL, hop_alert_done, ctx);
+    g_strfreev(btns);
+    g_object_unref(dlg);
 }
 
 // --- Custom drawing (GtkDrawingArea + Cairo) -------------------------------

@@ -18,10 +18,13 @@
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QCloseEvent>   // HopModalDialog blocks the X close (content-only dismiss)
 #include <QtGui/QNativeGestureEvent>
 #include <QtWidgets/QGraphicsOpacityEffect>
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QFileDialog>
+#include <QtWidgets/QMessageBox>   // .alert
+#include <QtWidgets/QDialog>       // .sheet (modal dialog hosting HopUI content)
 #include <QtGui/QColor>
 #include <QtGui/QBrush>
 #include <QtGui/QGradient>
@@ -788,6 +791,61 @@ char *hopqt_file_save(void *widget, const char *default_name, const char *filter
     QString file = QFileDialog::getSaveFileName(parent, QStringLiteral("Save"), dir, f);
     if (file.isEmpty()) return nullptr;
     return strdup(file.toUtf8().constData());
+}
+
+// --- Alert (QMessageBox) + modal sheet (QDialog) --------------------------
+// Alert is blocking (exec): returns the clicked button's index (0-based), or -1 if dismissed.
+int hopqt_alert_show(void *widget, const char *title, const char *message, const char *buttons_nl, int cancel_index) {
+    QWidget *parent = widget ? static_cast<QWidget *>(widget)->window() : nullptr;
+    QMessageBox box(parent);
+    box.setWindowTitle(QString::fromUtf8(title ? title : ""));
+    box.setText(QString::fromUtf8(title ? title : ""));
+    if (message && *message) box.setInformativeText(QString::fromUtf8(message));
+    QStringList labels = QString::fromUtf8(buttons_nl ? buttons_nl : "").split('\n', Qt::SkipEmptyParts);
+    std::vector<QAbstractButton *> btns;
+    for (int i = 0; i < labels.size(); i++) {
+        auto role = (i == cancel_index) ? QMessageBox::RejectRole : QMessageBox::ActionRole;
+        btns.push_back(box.addButton(labels[i], role));
+    }
+    box.exec();
+    QAbstractButton *clicked = box.clickedButton();
+    for (size_t i = 0; i < btns.size(); i++) if (btns[i] == clicked) return (int)i;
+    return -1;
+}
+
+// Sheet: a modal QDialog shown non-blocking (so the hosted content stays reactive via later updates).
+// A content-dismiss-only modal dialog (like a macOS sheet / non-deletable GTK window): the window-manager
+// close (X) and Escape are blocked, so the only dismiss path is the bound content — keeping the Swift
+// `isPresented` binding and the native dialog in sync. Programmatic dismiss uses hide() (bypasses closeEvent).
+namespace {
+class HopModalDialog : public QDialog {
+public:
+    using QDialog::QDialog;
+    void reject() override {}  // ignore Escape (and programmatic reject); dismiss only via the content binding
+protected:
+    void closeEvent(QCloseEvent *e) override { e->ignore(); }  // ignore the window-manager / X close
+};
+}
+
+void *hopqt_modal_dialog_new(void *widget, const char *title) {
+    QWidget *parent = widget ? static_cast<QWidget *>(widget)->window() : nullptr;
+    HopModalDialog *d = new HopModalDialog(parent);
+    d->setModal(true);
+    if (title && *title) d->setWindowTitle(QString::fromUtf8(title));
+    d->resize(460, 360);
+    return d;
+}
+void hopqt_modal_dialog_set_content(void *dialog, void *content) {
+    QWidget *c = static_cast<QWidget *>(content);
+    c->setParent(static_cast<QDialog *>(dialog));
+    c->setGeometry(0, 0, 460, 360);
+    c->show();
+}
+void hopqt_modal_dialog_show(void *dialog) { static_cast<QDialog *>(dialog)->show(); }
+void hopqt_modal_dialog_close(void *dialog) {
+    QDialog *d = static_cast<QDialog *>(dialog);
+    d->hide();          // hide(), not close() — closeEvent is intentionally blocked above
+    d->deleteLater();
 }
 
 void *hopqt_splitter_new(void) {

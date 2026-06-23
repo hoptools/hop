@@ -30,6 +30,11 @@ public final class QtWidget {
     var flexibleWidth = false  // text fields / sliders / progress bars fill the offered width (SwiftUI-like)
     // Guards re-entrant file-dialog presentation (a nested modal event loop can re-run a flush).
     var importerPresenting = false
+    var alertPresenting = false
+    // A `.sheet`'s modal dialog + its retained reconciler.
+    var sheetPresenting = false
+    var sheetDialog: UnsafeMutableRawPointer?
+    var sheetReconciler: Reconciler<QtToolkit>?
     var exporterPresenting = false
     var scrollHandler: (@MainActor (CGSize) -> Void)?
     var scrollConnected = false
@@ -1053,6 +1058,56 @@ public final class QtToolkit: AppToolkit {
             do { try spec.data.write(to: url); spec.onCompletion(.success(url)) }
             catch { spec.onCompletion(.failure(error)) }
         }
+    }
+
+    public func configureAlert(_ handle: QtWidget, _ spec: AlertSpec) {
+        guard spec.isPresented else { handle.alertPresenting = false; return }
+        guard !handle.alertPresenting else { return }
+        handle.alertPresenting = true
+        let buttons = spec.buttons.isEmpty ? [AlertButton(title: "OK", role: nil, action: {})] : spec.buttons
+        let labels = buttons.map(\.title).joined(separator: "\n")
+        let cancelIndex = Int32(buttons.firstIndex { $0.role == .cancel } ?? -1)
+        let index = Int(hopqt_alert_show(handle.ptr, spec.title, spec.message ?? "", labels, cancelIndex))
+        handle.alertPresenting = false
+        spec.setPresented(false)
+        if index >= 0, index < buttons.count { buttons[index].action() }
+    }
+
+    public func configureSheet(_ handle: QtWidget, _ spec: SheetSpec) {
+        guard spec.isPresented, let content = spec.content else {
+            if let dialog = handle.sheetDialog { hopqt_modal_dialog_close(dialog) }
+            handle.sheetDialog = nil
+            handle.sheetReconciler = nil
+            if handle.sheetPresenting { spec.onDismiss?() }
+            handle.sheetPresenting = false
+            return
+        }
+        let bounds = CGRect(x: 0, y: 0, width: 460, height: 360)
+        if handle.sheetPresenting, let reconciler = handle.sheetReconciler {
+            reconciler.update(content)        // reactive in-place update
+            reconciler.layout(in: bounds)
+            return
+        }
+        handle.sheetPresenting = true
+        let dialog = hopqt_modal_dialog_new(handle.ptr, "")!
+        let content_widget = hopqt_fixed_new()!
+        hopqt_modal_dialog_set_content(dialog, content_widget)
+        let container = QtWidget(content_widget)
+        container.isFixed = true
+        let reconciler = Reconciler(toolkit: self)
+        reconciler.mount(content, into: container)
+        reconciler.layout(in: bounds)
+        handle.sheetDialog = dialog
+        handle.sheetReconciler = reconciler
+        hopqt_modal_dialog_show(dialog)
+    }
+
+    public func releaseHandle(_ handle: QtWidget) {
+        guard handle.sheetPresenting else { return }
+        if let dialog = handle.sheetDialog { hopqt_modal_dialog_close(dialog) }   // don't orphan the sheet
+        handle.sheetDialog = nil
+        handle.sheetReconciler = nil
+        handle.sheetPresenting = false
     }
 
     public func configureShape(_ handle: QtWidget, _ spec: ShapeSpec) {

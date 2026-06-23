@@ -147,6 +147,14 @@ int32_t hopwinui_combobox_selected(void* h);
 void hopwinui_combobox_set_selected(void* h, int32_t index);
 void hopwinui_combobox_connect(void* h, hopwinui_int_cb cb, void* user_data);
 
+// Modals. Alert: a ContentDialog (buttons '\n'-joined, up to 3); `cb` reports the clicked index (-1 if none).
+void hopwinui_alert_show(const char* title, const char* message, const char* buttons_nl, hopwinui_int_cb cb, void* user_data);
+// Sheet: a ContentDialog hosting a Canvas (HopUI content is mounted into it). `cb` fires when it closes.
+void* hopwinui_sheet_new(void);
+void* hopwinui_sheet_canvas(void* dialog);
+void hopwinui_sheet_show(void* dialog, hopwinui_void_cb on_dismiss, void* user_data);
+void hopwinui_sheet_close(void* dialog);
+
 // Button group (Picker .segmented / .radioGroup). horizontal=1 → segmented row; toggle=1 → ToggleButtons
 // (segmented), toggle=0 → RadioButtons. `cb` reports the checked button's index.
 void* hopwinui_buttongroup_new(int32_t horizontal);

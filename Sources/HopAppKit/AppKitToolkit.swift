@@ -36,6 +36,11 @@ public final class AppKitWidget {
     // Guards against re-presenting a file panel while one is already showing (isPresented stays true).
     var importerPresenting = false
     var exporterPresenting = false
+    var alertPresenting = false
+    // A `.sheet`'s child window + its retained reconciler (the sheet content is mounted/updated through it).
+    var sheetPresenting = false
+    var sheetWindow: NSWindow?
+    var sheetReconciler: Reconciler<AppKitToolkit>?
     // For a `.scroll` widget: the clip-view bounds-change observer driving the scroll handler.
     var scrollObserver: NSObjectProtocol?
     // For `.onTapGesture`: the installed click recognizer + its retained target.
@@ -1656,6 +1661,80 @@ public final class AppKitToolkit: AppToolkit {
         } else {
             finish(panel.runModal())
         }
+    }
+
+    public func configureAlert(_ handle: AppKitWidget, _ spec: AlertSpec) {
+        guard spec.isPresented else { handle.alertPresenting = false; return }
+        guard !handle.alertPresenting else { return }
+        handle.alertPresenting = true
+
+        let alert = NSAlert()
+        alert.messageText = spec.title
+        if let message = spec.message { alert.informativeText = message }
+        // NSAlert lists buttons right-to-left in add order (the first is the default, rightmost). Add in the
+        // declared order; an empty action list still gets an OK so the dialog is dismissable.
+        let buttons = spec.buttons.isEmpty
+            ? [AlertButton(title: "OK", role: nil, action: {})]
+            : spec.buttons
+        for button in buttons {
+            let nsButton = alert.addButton(withTitle: button.title)
+            if button.role == .destructive { nsButton.hasDestructiveAction = true }
+        }
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            handle.alertPresenting = false
+            spec.setPresented(false)
+            let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+            if index >= 0, index < buttons.count { buttons[index].action() }
+        }
+        if let window = handle.view.window ?? self.window {
+            alert.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            finish(alert.runModal())
+        }
+    }
+
+    public func configureSheet(_ handle: AppKitWidget, _ spec: SheetSpec) {
+        // Dismiss: tear the sheet down when the binding goes false (or the content vanished).
+        guard spec.isPresented, let content = spec.content else {
+            if let sheetWindow = handle.sheetWindow, let parent = handle.view.window ?? self.window {
+                parent.endSheet(sheetWindow)
+            }
+            handle.sheetWindow = nil
+            handle.sheetReconciler = nil
+            if handle.sheetPresenting { spec.onDismiss?() }
+            handle.sheetPresenting = false
+            return
+        }
+        let bounds = NSRect(x: 0, y: 0, width: 460, height: 360)
+        if handle.sheetPresenting, let reconciler = handle.sheetReconciler {
+            // Already shown — reactively update the hosted content in place.
+            reconciler.update(content)
+            reconciler.layout(in: bounds)
+            return
+        }
+        guard let parent = handle.view.window ?? self.window else { return }  // need a parent window to attach to
+        handle.sheetPresenting = true
+
+        let sheetWindow = NSWindow(contentRect: bounds, styleMask: [.titled], backing: .buffered, defer: false)
+        sheetWindow.isReleasedWhenClosed = false
+        let container = FlippedView(frame: bounds)
+        sheetWindow.contentView = container
+
+        let reconciler = Reconciler(toolkit: self)
+        reconciler.mount(content, into: AppKitWidget(container))
+        reconciler.layout(in: bounds)
+        handle.sheetWindow = sheetWindow
+        handle.sheetReconciler = reconciler
+
+        parent.beginSheet(sheetWindow) { _ in }  // ended programmatically via endSheet on the next false reconcile
+    }
+
+    public func releaseHandle(_ handle: AppKitWidget) {
+        guard handle.sheetPresenting, let sheetWindow = handle.sheetWindow else { return }
+        (handle.view.window ?? self.window)?.endSheet(sheetWindow)   // don't orphan the sheet on host removal
+        handle.sheetWindow = nil
+        handle.sheetReconciler = nil
+        handle.sheetPresenting = false
     }
 
     public func configureOutline(_ handle: AppKitWidget, _ spec: OutlineSpec) {

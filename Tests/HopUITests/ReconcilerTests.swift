@@ -44,6 +44,12 @@ final class MockWidget {
     var colorPicker: ColorPickerSpec?
     var fileImporter: FileImporterSpec?
     var fileExporter: FileExporterSpec?
+    var alertSpec: AlertSpec?
+    var alertPresenting = false
+    var sheetSpec: SheetSpec?
+    var sheetPresenting = false
+    var sheetReconciler: Reconciler<MockToolkit>?
+    var sheetContainer: MockWidget?
     var outline: OutlineSpec?
     var imageSpec: ImageSpec?
     var tabSpec: TabSpec?
@@ -281,6 +287,32 @@ final class MockToolkit: AppToolkit {
     func configureColorPicker(_ handle: MockWidget, _ spec: ColorPickerSpec) { ops.append("colorPicker:\(spec.supportsOpacity)"); handle.colorPicker = spec }
     func configureFileImporter(_ handle: MockWidget, _ spec: FileImporterSpec) { handle.fileImporter = spec; if spec.isPresented { ops.append("fileImporter") } }
     func configureFileExporter(_ handle: MockWidget, _ spec: FileExporterSpec) { handle.fileExporter = spec; if spec.isPresented { ops.append("fileExporter") } }
+    func configureAlert(_ handle: MockWidget, _ spec: AlertSpec) {
+        guard spec.isPresented else { handle.alertPresenting = false; return }
+        guard !handle.alertPresenting else { return }
+        handle.alertPresenting = true; handle.alertSpec = spec; ops.append("alert:\(spec.title)")
+    }
+    func configureSheet(_ handle: MockWidget, _ spec: SheetSpec) {
+        handle.sheetSpec = spec
+        guard spec.isPresented, let content = spec.content else {
+            handle.sheetReconciler = nil; handle.sheetContainer = nil; handle.sheetPresenting = false
+            return
+        }
+        if handle.sheetPresenting, let reconciler = handle.sheetReconciler {
+            reconciler.update(content)   // reactive in-place update of the hosted content
+            reconciler.layout(in: CGRect(x: 0, y: 0, width: 460, height: 360))
+            return
+        }
+        handle.sheetPresenting = true
+        let container = MockWidget(kind: .vstack)
+        let reconciler = Reconciler(toolkit: self)
+        reconciler.mount(content, into: container)
+        reconciler.layout(in: CGRect(x: 0, y: 0, width: 460, height: 360))   // match the real backends
+        handle.sheetContainer = container; handle.sheetReconciler = reconciler; ops.append("sheet")
+    }
+    func releaseHandle(_ handle: MockWidget) {
+        handle.sheetReconciler = nil; handle.sheetContainer = nil; handle.sheetPresenting = false
+    }
     func configureOutline(_ handle: MockWidget, _ spec: OutlineSpec) { ops.append("outline:\(spec.roots.count)"); handle.outline = spec }
     func configureImage(_ handle: MockWidget, _ spec: ImageSpec) {
         let kind: String
@@ -1012,6 +1044,108 @@ private struct SimpleNavDemo: View {
             #expect(toolkit.liveLabels().contains("ON"))       // bound state updated…
             #expect(toolkit.firstLiveWidget { $0.kind == .toggle(style) }?.boolValue == true)  // …and reflected back
         }
+    }
+}
+
+// MARK: - Modals (alert + sheet)
+
+@MainActor @Suite struct ModalTests {
+    private struct AlertDemo: View {
+        @State var show = true
+        @State var picked = "none"
+        var body: some View {
+            Text("picked:\(picked)")
+                .alert("Delete?", isPresented: $show) {
+                    Button("Delete", role: .destructive) { picked = "delete" }
+                    Button("Cancel", role: .cancel) { picked = "cancel" }
+                } message: { Text("Cannot be undone.") }
+        }
+    }
+
+    @Test func testAlertSpecCarriesTitleMessageButtonsAndRoundTrips() throws {
+        let toolkit = MockToolkit()
+        runHopApp(AlertDemo(), toolkit: toolkit, title: "t")
+
+        let host = try #require(toolkit.firstLiveWidget { $0.alertSpec != nil })
+        let spec = try #require(host.alertSpec)
+        #expect(spec.title == "Delete?")
+        #expect(spec.message == "Cannot be undone.")
+        #expect(spec.buttons.map(\.title) == ["Delete", "Cancel"])
+        #expect(spec.buttons[0].role == .destructive)
+        #expect(spec.buttons[1].role == .cancel)
+
+        // Simulate the user choosing "Delete" (as the toolkit's completion handler would): run its action,
+        // then reset the binding. The dependent label updates and the presenting flag clears.
+        spec.buttons[0].action()
+        spec.setPresented(false)
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("picked:delete"))
+        #expect(toolkit.firstLiveWidget { $0.alertSpec != nil }?.alertPresenting == false)
+    }
+
+    private struct SheetDemo: View {
+        @State var show = true
+        @State var count = 0
+        var body: some View {
+            VStack {
+                Text("outer:\(count)")
+            }
+            .sheet(isPresented: $show) {
+                VStack {
+                    Text("sheet:\(count)")
+                    Button("inc") { count += 1 }
+                }
+            }
+        }
+    }
+
+    @Test func testSheetHostsLiveContentReactivelyThenDismisses() throws {
+        let toolkit = MockToolkit()
+        runHopApp(SheetDemo(), toolkit: toolkit, title: "t")
+
+        // The sheet body is hosted (its widgets are realized through the same toolkit) — separate from the
+        // main tree (rootContainer only has the outer label).
+        let host = try #require(toolkit.firstLiveWidget { $0.sheetSpec != nil })
+        #expect(host.sheetPresenting)
+        #expect(toolkit.widgets.contains { $0.text == "sheet:0" })
+        #expect(!toolkit.liveLabels().contains("sheet:0"))   // not in the MAIN window's tree
+
+        // REACTIVITY: tapping the sheet's button mutates the bound state; the hosted content updates in place.
+        let inc = try #require(toolkit.widgets.first { $0.title == "inc" })
+        inc.action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.widgets.contains { $0.text == "sheet:1" })   // sheet re-rendered live
+        #expect(!toolkit.widgets.contains { $0.text == "sheet:0" })  // old text reconfigured, not duplicated
+
+        // DISMISS: flipping the binding false tears the sheet down.
+        try #require(toolkit.firstLiveWidget { $0.sheetSpec != nil }?.sheetSpec).setPresented(false)
+        toolkit.drainMainThread()
+        #expect(toolkit.firstLiveWidget { $0.sheetSpec != nil }?.sheetPresenting == false)
+    }
+
+    private struct ConditionalSheetDemo: View {
+        @State var showHost = true
+        @State var showSheet = true
+        var body: some View {
+            VStack {
+                if showHost {
+                    Text("host").sheet(isPresented: $showSheet) { Text("sheet body") }
+                }
+                Button("remove") { showHost = false }
+            }
+        }
+    }
+
+    @Test func testRemovingHostViewClosesItsOpenSheet() throws {
+        let toolkit = MockToolkit()
+        runHopApp(ConditionalSheetDemo(), toolkit: toolkit, title: "t")
+        let host = try #require(toolkit.firstLiveWidget { $0.sheetSpec != nil })
+        #expect(host.sheetPresenting)
+
+        // Remove the host view (conditional) while its sheet is open → teardown must close it, not orphan it.
+        try #require(toolkit.firstLiveWidget { $0.title == "remove" }).action?()
+        toolkit.drainMainThread()
+        #expect(host.sheetPresenting == false)   // releaseHandle ran during teardown
     }
 }
 
