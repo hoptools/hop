@@ -86,6 +86,46 @@ import Foundation
     }
 }
 
+#if canImport(Darwin)
+/// `UserDefaultsSettingsStore` — the Apple-native backend. Uses an isolated suite (not `.standard`) so the
+/// test never touches real preferences, and removes it afterward.
+@Suite struct UserDefaultsSettingsStoreTests {
+    private func withSuite(_ body: (UserDefaultsSettingsStore, String) throws -> Void) rethrows {
+        let suite = "dev.hop.test.\(UUID().uuidString)"
+        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        try body(UserDefaultsSettingsStore(suiteName: suite), suite)
+    }
+
+    @Test func roundTripsNativePlistTypes() throws {
+        try withSuite { store, suite in
+            store.set(true, forKey: "enabled")
+            store.set(42, forKey: "count")
+            store.set(3.5, forKey: "ratio")
+            store.set("hello", forKey: "greeting")
+            #expect(store.value(Bool.self, forKey: "enabled") == true)
+            #expect(store.value(Int.self, forKey: "count") == 42)
+            #expect(store.value(Double.self, forKey: "ratio") == 3.5)
+            #expect(store.value(String.self, forKey: "greeting") == "hello")
+            #expect(store.value(Int.self, forKey: "absent") == nil)   // missing ≠ 0
+            // Stored NATIVELY (not a Data blob), so the suite's UserDefaults sees it directly — proving
+            // ecosystem visibility (`defaults read`, App Groups, etc.).
+            #expect(UserDefaults(suiteName: suite)?.integer(forKey: "count") == 42)
+        }
+    }
+
+    @Test func notifiesObserverOnWrite() throws {
+        try withSuite { store, _ in
+            let hits = Hits()
+            let token = store.observe("k") { hits.bump() }
+            store.set(1, forKey: "k")
+            store.set(2, forKey: "k")
+            #expect(hits.count == 2)
+            _ = token
+        }
+    }
+}
+#endif
+
 // Thread-safe counter (observer callbacks are @Sendable).
 private final class Hits: @unchecked Sendable {
     private let lock = NSLock()

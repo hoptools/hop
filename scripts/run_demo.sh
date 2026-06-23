@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build and launch the HopUI demo app against a chosen toolkit paradigm.
 #
-# Usage: scripts/run_demo.sh <gtk4|appkit|qt|swiftui|all>
+# Usage: scripts/run_demo.sh <gtk4|appkit|qt|swiftui|all> [playground]
 #
 #   gtk4     GTK4 toolkit      (macOS/Linux/Windows; needs GTK4 — macOS: `brew install gtk4`)
 #   appkit   AppKit toolkit    (macOS only)
@@ -9,17 +9,27 @@
 #   swiftui  Apple SwiftUI     (macOS only; the same ContentView built against real SwiftUI)
 #   all      build everything, then launch all four side by side
 #
+#   [playground]  optional: pre-select a playground on launch (its sidebar id, e.g. `toggle`, `picker`,
+#                 `appStorage`). Passed via HOP_PLAYGROUND_ID; an unknown id just starts with no selection.
+#                 Example: scripts/run_demo.sh all toggle   # all four demos, Toggle pre-selected.
+#
 # A single paradigm runs in the foreground via `swift run`. `all` builds once, launches the four
 # prebuilt binaries concurrently in the background, and stays attached so Ctrl-C stops them all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 usage() {
-    echo "Usage: $(basename "$0") <gtk4|appkit|qt|swiftui|all>" >&2
+    echo "Usage: $(basename "$0") <gtk4|appkit|qt|swiftui|all> [playground]" >&2
     exit 2
 }
 
-[ $# -eq 1 ] || usage
+[ $# -ge 1 ] && [ $# -le 2 ] || usage
+
+# Optional second arg: pre-select a playground by exporting HOP_PLAYGROUND_ID (inherited by `swift run` and
+# by every backgrounded binary under `all`). The demo reads it via Playground(rawValue:).
+if [ $# -eq 2 ]; then
+    export HOP_PLAYGROUND_ID="$2"
+fi
 
 # The demo apps live in their own package now; build/run them there (it depends on the root package and on
 # the standalone HopUIComboBox component package).

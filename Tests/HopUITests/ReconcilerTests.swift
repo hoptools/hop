@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import Testing
+import Foundation
 @testable import HopUI
+import HopPlatform
 import Observation
 
 /// A toolkit that records every operation and never opens a window, so the full
@@ -1146,6 +1148,111 @@ private struct SimpleNavDemo: View {
         try #require(toolkit.firstLiveWidget { $0.title == "remove" }).action?()
         toolkit.drainMainThread()
         #expect(host.sheetPresenting == false)   // releaseHandle ran during teardown
+    }
+}
+
+// MARK: - @AppStorage (persisted, reactive preferences)
+
+@MainActor @Suite struct AppStorageTests {
+    /// A fresh, isolated on-disk store per test (a unique temp file) so tests never read/write each other's
+    /// or the real app's settings. Installed as the default store; the registry is cleared on each runHopApp.
+    private func isolatedStore() -> SettingsStore {
+        FileSettingsStore(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("hop-appstorage-test-\(UUID().uuidString).json", isDirectory: false))
+    }
+
+    private struct CounterDemo: View {
+        @AppStorage("count") var count = 0
+        var body: some View {
+            VStack {
+                Text("count:\(count)")
+                Button("inc") { count += 1 }
+            }
+        }
+    }
+
+    @Test func testReadsDefaultAndUpdatesDependentsReactively() throws {
+        AppStorageConfiguration.defaultStore = isolatedStore()
+        let toolkit = MockToolkit()
+        runHopApp(CounterDemo(), toolkit: toolkit, title: "t")
+        #expect(toolkit.liveLabels().contains("count:0"))   // default (store empty)
+
+        try #require(toolkit.firstLiveWidget { $0.title == "inc" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("count:1"))   // the reader re-rendered
+        #expect(!toolkit.liveLabels().contains("count:0"))
+    }
+
+    @Test func testWritePersistsToStore() throws {
+        let store = isolatedStore()
+        AppStorageConfiguration.defaultStore = store
+        let toolkit = MockToolkit()
+        runHopApp(CounterDemo(), toolkit: toolkit, title: "t")
+        try #require(toolkit.firstLiveWidget { $0.title == "inc" }).action?()
+        toolkit.drainMainThread()
+        #expect(store.value(Int.self, forKey: "count") == 1)   // written through to disk
+    }
+
+    @Test func testLoadsPersistedValueOverDefault() throws {
+        let store = isolatedStore()
+        store.set(7, forKey: "count")                 // a value already on disk (e.g. a prior launch)
+        AppStorageConfiguration.defaultStore = store
+        let toolkit = MockToolkit()
+        runHopApp(CounterDemo(), toolkit: toolkit, title: "t")
+        #expect(toolkit.liveLabels().contains("count:7"))   // loaded from the store, not the declared default 0
+    }
+
+    private struct MirrorView: View {        // a SEPARATE composite reading the same key
+        @AppStorage("count") var value = 0
+        var body: some View { Text("mirror:\(value)") }
+    }
+    private struct SharedKeyDemo: View {
+        var body: some View {
+            VStack {
+                CounterDemo()
+                MirrorView()
+            }
+        }
+    }
+
+    @Test func testAllReadersOfAKeyShareValueAndReRenderTogether() throws {
+        AppStorageConfiguration.defaultStore = isolatedStore()
+        let toolkit = MockToolkit()
+        runHopApp(SharedKeyDemo(), toolkit: toolkit, title: "t")
+        #expect(toolkit.liveLabels().contains("count:0"))
+        #expect(toolkit.liveLabels().contains("mirror:0"))
+
+        try #require(toolkit.firstLiveWidget { $0.title == "inc" }).action?()
+        toolkit.drainMainThread()
+        // App-global key: BOTH the counter and the independent mirror view see the new value.
+        #expect(toolkit.liveLabels().contains("count:1"))
+        #expect(toolkit.liveLabels().contains("mirror:1"))
+    }
+
+    // A String-raw enum that is RawRepresentable but NOT Codable → exercises the RawRepresentable overload.
+    private enum Mode: String, CaseIterable { case light, dark, auto }
+    private struct ModeDemo: View {
+        @AppStorage("mode") var mode = Mode.light
+        var body: some View {
+            VStack {
+                Text("mode:\(mode.rawValue)")
+                Button("dark") { mode = .dark }
+            }
+        }
+    }
+
+    @Test func testRawRepresentableEnumLoadsAndPersistsRawValue() throws {
+        let store = isolatedStore()
+        store.set("auto", forKey: "mode")              // a raw value already on disk
+        AppStorageConfiguration.defaultStore = store
+        let toolkit = MockToolkit()
+        runHopApp(ModeDemo(), toolkit: toolkit, title: "t")
+        #expect(toolkit.liveLabels().contains("mode:auto"))   // loaded via Mode(rawValue:), not default .light
+
+        try #require(toolkit.firstLiveWidget { $0.title == "dark" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.liveLabels().contains("mode:dark"))   // reactive
+        #expect(store.value(String.self, forKey: "mode") == "dark")   // persisted as the raw value
     }
 }
 

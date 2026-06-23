@@ -85,7 +85,7 @@ enum Playground: String, CaseIterable, Hashable {
     case text, accessibility, label, link
     case shapes, images, color, gradient
     case layout, disclosure, groupBox, form, tabs
-    case observable, environment, menus, files, modals
+    case observable, environment, menus, files, modals, appStorage
     case gesture, modifiers
 
     var title: String {
@@ -120,6 +120,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .menus: return "Menus"
         case .files: return "Files"
         case .modals: return "Modals"
+        case .appStorage: return "App Storage"
         case .gesture: return "Gestures"
         case .modifiers: return "Modifiers"
         }
@@ -156,7 +157,7 @@ let sidebarSections: [SidebarSection] = [
     SidebarSection(id: "containers", title: "Containers",
                    items: [.layout, .modifiers, .disclosure, .groupBox, .form, .tabs]),
     SidebarSection(id: "data", title: "Data & Menus",
-                   items: [.observable, .environment, .menus, .files, .modals]),
+                   items: [.observable, .environment, .menus, .files, .modals, .appStorage]),
 ]
 
 // `hopTask` runs async work on the toolkit's run loop. The HopUI build gets it from `import HopUI`;
@@ -297,6 +298,8 @@ public struct ContentView: View {
                 FilePlayground()
             } else if selection == .modals {
                 ModalsPlayground()
+            } else if selection == .appStorage {
+                AppStoragePlayground()
             } else if selection == .gesture {
                 GesturePlayground()
             } else if selection == .modifiers {
@@ -475,6 +478,27 @@ struct ModalsPlayground: View {
         }
         .sheet(isPresented: $showSheet) {
             SheetContent(count: $sheetCount)
+        }
+    }
+}
+
+/// Demonstrates `@AppStorage` — preferences that persist across launches (HopUI backs it with a JSON
+/// settings file; Apple SwiftUI backs it with UserDefaults). Edit any value, relaunch, and it's remembered.
+/// All views reading a key re-render together when it changes. The same source compiles against both.
+struct AppStoragePlayground: View {
+    @AppStorage("hop.demo.username") private var username = ""
+    @AppStorage("hop.demo.launchTaps") private var launchTaps = 0
+    @AppStorage("hop.demo.preferDark") private var preferDark = false
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Preferences persisted to disk — change them, relaunch, and they're remembered")
+            TextField("Your name", text: $username)
+                .frame(width: 260)
+            Toggle("Prefer dark", isOn: $preferDark)
+                .frame(width: 260)
+            Text("Taps so far: \(launchTaps)")
+            Button("Tap (persists)") { launchTaps += 1 }
+            Text(username.isEmpty ? "No name saved yet" : "Saved name: \(username) · dark: \(preferDark ? "on" : "off")")
         }
     }
 }

@@ -57,6 +57,7 @@ public enum GraphContext {
     static func resetForNewApp() {
         flushScheduled = false
         flushCount = 0
+        AppStorageRegistry.reset()  // its cached key sources belong to the graph being replaced
     }
 
     /// Called from the Observation `onChange` handler. Kept argument-free so the (`@Sendable`)

@@ -159,6 +159,11 @@ func openSecondaryWindow<Toolkit: AppToolkit>(_ def: _WindowDef, toolkit: Toolki
     let savedGraph = GraphContext.current
     let savedViewGraph = GraphContext.viewGraph
     let savedEnv = EnvironmentStore.currentAttr
+    // Isolate @AppStorage's per-key sources for this throwaway graph (then hand the main window's boxes back
+    // intact). Without this, an @AppStorage key first touched here would cache a source bound to the
+    // throwaway graph and corrupt the main graph when read there later.
+    let savedAppStorage = AppStorageRegistry.snapshot()
+    AppStorageRegistry.reset()
     let graph = Graph()
     let viewGraph = ViewGraph(graph: graph)
     GraphContext.current = graph
@@ -168,6 +173,7 @@ func openSecondaryWindow<Toolkit: AppToolkit>(_ def: _WindowDef, toolkit: Toolki
         GraphContext.current = savedGraph
         GraphContext.viewGraph = savedViewGraph
         EnvironmentStore.currentAttr = savedEnv
+        AppStorageRegistry.restore(savedAppStorage)
     }
 
     let nodes = evaluateResolved(def.content(), RenderContext(path: [.index(0)]))
