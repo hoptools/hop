@@ -43,6 +43,8 @@ public extension WidgetKey {
     static let scroll = WidgetKey("scroll")
     static let geometry = WidgetKey("geometry")
     static let lazyStack = WidgetKey("lazyStack")
+    static let grid = WidgetKey("grid")
+    static let gridRow = WidgetKey("gridRow")
     static let groupBox = WidgetKey("groupBox")
     static let label = WidgetKey("label")
     static let button = WidgetKey("button")
@@ -90,6 +92,25 @@ public enum WidgetRole {
     case geometry
     /// A virtualizing lazy stack: only the visible window of rows is materialized.
     case lazyStack(LazyInfo, alignment: Alignment)
+    /// A non-lazy column-aligned `Grid`: columns are sized to the widest cell across rows. Children are
+    /// `.gridRow` containers (and/or loose full-span views); cells are positioned by the grid (2-pass).
+    case grid(GridConfig)
+    /// A `GridRow` — a marker container the enclosing `.grid` positions through (its cells are the grid's
+    /// real layout units). Outside a Grid it degrades to a horizontal stack.
+    case gridRow(VerticalAlignment?)
+}
+
+/// Configuration for a ``Grid`` carried on its role: the content alignment + the inter-column/-row gaps
+/// (nil → the framework default).
+public struct GridConfig: Equatable, Sendable {
+    public var alignment: Alignment
+    public var horizontalSpacing: Double?
+    public var verticalSpacing: Double?
+    public init(alignment: Alignment = .center, horizontalSpacing: Double? = nil, verticalSpacing: Double? = nil) {
+        self.alignment = alignment
+        self.horizontalSpacing = horizontalSpacing
+        self.verticalSpacing = verticalSpacing
+    }
 }
 
 /// A toolkit-agnostic description of one native widget — the open replacement for `WidgetKind` + the
@@ -176,6 +197,14 @@ public struct ContainerComponent: WidgetComponent {
     /// A plain overlay (z-)stack.
     public static func zstack(alignment: Alignment = .center) -> ContainerComponent {
         ContainerComponent(.zstack, role: .zstack(alignment: alignment))
+    }
+    /// A non-lazy column-aligned ``Grid`` container (the engine runs the 2-pass column layout).
+    public static func grid(_ config: GridConfig) -> ContainerComponent {
+        ContainerComponent(.grid, role: .grid(config))
+    }
+    /// A ``GridRow`` container the enclosing grid positions through.
+    public static func gridRow(_ verticalAlignment: VerticalAlignment?) -> ContainerComponent {
+        ContainerComponent(.gridRow, role: .gridRow(verticalAlignment))
     }
 }
 

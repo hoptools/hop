@@ -449,6 +449,7 @@ public final class QtToolkit: AppToolkit {
         let containers: [WidgetKey] = [
             .vstack, .hstack, .zstack, .groupBox,
             .scroll, .geometry, .lazyStack, .spacer,
+            .grid, .gridRow,
         ]
         for key in containers {
             components.register(.init(
@@ -604,7 +605,7 @@ public final class QtToolkit: AppToolkit {
 
     public func makeNativeWidget(_ key: WidgetKey) -> QtWidget {
         switch key {
-        case .vstack, .hstack, .zstack, .spacer, .window, .geometry, .lazyStack:
+        case .vstack, .hstack, .zstack, .spacer, .window, .geometry, .lazyStack, .grid, .gridRow:
             // Box-model containers are absolute-positioning layers; the layout engine owns geometry.
             let widget = QtWidget(hopqt_fixed_new()!)
             widget.isFixed = true

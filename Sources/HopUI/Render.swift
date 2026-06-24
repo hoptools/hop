@@ -259,6 +259,13 @@ public struct RenderNode {
     public var tag: AnyHashable?
     /// Tab title from `.tabItem`, read by a ``TabView`` to build its tab bar. Not rendered directly.
     public var tabLabel: String?
+    /// Grid cell metadata, read by the enclosing ``Grid``'s layout. `.gridCellColumns(_:)` (column span),
+    /// `.gridColumnAlignment(_:)` (whole-column H-alignment), `.gridCellAnchor(_:)` (UnitPoint within the
+    /// cell), `.gridCellUnsizedAxes(_:)` (axes on which the cell uses its intrinsic size, not the cell's).
+    public var gridCellColumns: Int?
+    public var gridColumnAlignment: HorizontalAlignment?
+    public var gridCellAnchor: UnitPoint?
+    public var gridCellUnsizedAxes: Axis.Set?
     /// How the framework-owned layout engine sizes and positions this node (and its children).
     public var layout: LayoutInfo
     /// For a `.geometry` or `.scroll` node: called by the layout engine with the node's laid-out
@@ -302,7 +309,10 @@ public struct RenderNode {
 
     /// Reuse identity for the keyed child diff: the component's `widgetKey`. A child is reused across a
     /// reconcile only when this matches — so a `Picker` whose style changed its native widget (different
-    /// `widgetKey`) is correctly torn down and recreated rather than reconfigured.
+    /// `widgetKey`) is correctly torn down and recreated rather than reconfigured. Grid cell metadata
+    /// (span/alignment/anchor/unsized axes) is deliberately NOT part of it: it only feeds the layout
+    /// engine's frame math (recomputed every pass), never the choice of native widget — so a span change
+    /// reconfigures the cell in place and preserves its native state (text cursor, focus, scroll offset).
     var reuseSignature: String { "c:\(component.widgetKey.rawValue)" }
 
     /// The node's widget patch, read through its leaf component (whose patch holds the text/title/value),
@@ -354,6 +364,8 @@ extension RenderNode {
             || patch != WidgetPatch()
             || onLongPress != nil || onHover != nil || dragGesture != nil || magnifyGesture != nil
             || rotateGesture != nil || onSubmit != nil
+            || gridCellColumns != nil || gridColumnAlignment != nil || gridCellAnchor != nil
+            || gridCellUnsizedAxes != nil
     }
 
     /// Overlay onto `self` the modifier state a wrapping modifier accumulated on a composite reference
@@ -366,6 +378,10 @@ extension RenderNode {
         if let refPrefs = ref.preferences { preferences = (preferences ?? NodePreferences()).merging(refPrefs) }
         if let t = ref.tag { tag = t }
         if let tl = ref.tabLabel { tabLabel = tl }
+        if let gc = ref.gridCellColumns { gridCellColumns = gc }
+        if let ga = ref.gridColumnAlignment { gridColumnAlignment = ga }
+        if let gan = ref.gridCellAnchor { gridCellAnchor = gan }
+        if let gu = ref.gridCellUnsizedAxes { gridCellUnsizedAxes = gu }
         if let fi = ref.fileImporter { fileImporter = fi }
         if let fe = ref.fileExporter { fileExporter = fe }
         if let al = ref.alert { alert = al }

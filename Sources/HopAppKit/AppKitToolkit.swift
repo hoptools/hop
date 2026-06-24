@@ -485,6 +485,7 @@ public final class AppKitToolkit: AppToolkit {
         let containers: [WidgetKey] = [
             .vstack, .hstack, .zstack, .groupBox,
             .scroll, .geometry, .lazyStack, .spacer,
+            .grid, .gridRow,
         ]
         for key in containers {
             components.register(.init(
@@ -930,7 +931,7 @@ public final class AppKitToolkit: AppToolkit {
             let box = NSBox()
             box.boxType = .separator
             return AppKitWidget(box)
-        case .zstack, .geometry, .lazyStack, .spacer:
+        case .zstack, .geometry, .lazyStack, .spacer, .grid, .gridRow:
             // Absolute-positioning layers for the layout engine (no native auto-layout).
             return AppKitWidget(FlippedView())
         case .scroll:

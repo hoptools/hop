@@ -101,7 +101,17 @@ public struct Alignment: Equatable, Sendable {
 }
 
 /// The axis of a stack/scroll. Mirrors SwiftUI's `Axis`.
-public enum Axis: Sendable { case horizontal, vertical }
+public enum Axis: Sendable, CaseIterable { case horizontal, vertical
+
+    /// A set of axes, for `.gridCellUnsizedAxes(_:)`. Mirrors SwiftUI's `Axis.Set`.
+    public struct Set: OptionSet, Sendable, Equatable {
+        public let rawValue: Int
+        public init(rawValue: Int) { self.rawValue = rawValue }
+        public static let horizontal = Set(rawValue: 1 << 0)
+        public static let vertical = Set(rawValue: 1 << 1)
+        public static let both: Set = [.horizontal, .vertical]
+    }
+}
 
 // MARK: - Node layout description
 
@@ -155,6 +165,10 @@ enum LayoutRole {
     /// A virtualizing ``LazyVStack``/``LazyHStack``: sized to the full row count, but only the visible
     /// window of rows is materialized; each row is positioned at its `lazyIndex` offset.
     case lazyStack(LazyInfo, alignment: Alignment)
+    /// A non-lazy column-aligned ``Grid`` (2-pass: measure all cells → column widths → place). Its
+    /// `.gridRow` children are identified by their `WidgetRole` and positioned by the grid; a stray
+    /// `GridRow` outside a grid degrades to a horizontal stack (see `role(of:)`).
+    case grid(GridConfig)
 }
 
 /// Per-node layout metadata carried on a ``RenderNode``. The role itself comes from the node's

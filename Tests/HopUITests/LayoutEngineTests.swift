@@ -65,4 +65,52 @@ import Testing
         #expect(frames["a"] == CGRect(x: 0, y: 0, width: 16, height: 20))
         #expect(frames["b"] == CGRect(x: 16, y: 0, width: 16, height: 20))
     }
+
+    // MARK: shape greediness in stacks (parity with grid cellFlexible)
+
+    @Test func testShapeFramedOnCrossAxisFillsStackMainAxis() {
+        var frames: [String: CGRect] = [:]
+        let engine = LayoutEngine(measureLeaf: Self.measure, setFrame: { node, rect in frames[node.id] = rect })
+        // HStack { Text("A"); Rectangle().frame(height: 36) } — the shape's frame only fixes HEIGHT, so it
+        // must still fill the leftover WIDTH (SwiftUI parity; was a sliver before greedyAlong saw through
+        // a frame that doesn't constrain the queried axis).
+        var rect = RenderNode(id: "rect", component: PrimitiveLeafComponent(.shape))
+        rect.layout = LayoutInfo(modifiers: [.frame(FrameSpec(height: 36))])
+        let hstack = RenderNode(id: "h", component: ContainerComponent.hstack(spacing: 0),
+                                patch: WidgetPatch(spacing: 0), children: [
+            RenderNode(id: "a", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "A")),
+            rect,
+        ])
+        engine.place(hstack, CGRect(x: 0, y: 0, width: 800, height: 100))
+        #expect(frames["rect"] == CGRect(x: 16, y: 0, width: 784, height: 36))   // "A"=16, shape fills 800-16
+    }
+
+    @Test func testBareShapeFillsStackMainAxis() {
+        var frames: [String: CGRect] = [:]
+        let engine = LayoutEngine(measureLeaf: Self.measure, setFrame: { node, rect in frames[node.id] = rect })
+        let hstack = RenderNode(id: "h", component: ContainerComponent.hstack(spacing: 0),
+                                patch: WidgetPatch(spacing: 0), children: [
+            RenderNode(id: "a", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "A")),
+            RenderNode(id: "rect", component: PrimitiveLeafComponent(.shape)),   // bare shape
+        ])
+        engine.place(hstack, CGRect(x: 0, y: 0, width: 800, height: 100))
+        #expect(frames["rect"]?.minX == 16)
+        #expect(frames["rect"]?.width == 784)        // a bare shape fills the leftover main-axis width
+    }
+
+    @Test func testDividerStaysThinOnStackMainAxis() {
+        var frames: [String: CGRect] = [:]
+        let engine = LayoutEngine(measureLeaf: Self.measure, setFrame: { node, rect in frames[node.id] = rect })
+        // A Divider in a VStack must NOT be greedy along the (vertical) main axis — it stays thin, so the
+        // rows below it are not pushed apart (it fills its CROSS axis via measurement instead).
+        let vstack = RenderNode(id: "v", component: ContainerComponent.vstack(spacing: 0),
+                                patch: WidgetPatch(spacing: 0), children: [
+            RenderNode(id: "a", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "A")),
+            RenderNode(id: "div", component: PrimitiveLeafComponent(.separator)),
+            RenderNode(id: "b", component: PrimitiveLeafComponent(.label), patch: WidgetPatch(text: "B")),
+        ])
+        engine.place(vstack, CGRect(x: 0, y: 0, width: 200, height: 600))
+        #expect(frames["div"]?.height == 0)          // thin on the main axis (stub separator measures 0 tall)
+        #expect(frames["b"]?.minY == 20)             // "B" sits right under "A"+divider, NOT pushed to ~580
+    }
 }

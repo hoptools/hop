@@ -359,7 +359,8 @@ public final class WinUIToolkit: AppToolkit {
     /// Layout containers (VStack/HStack/ZStack/GroupBox + the framework's scroll/geometry/lazyStack/spacer
     /// wrappers): just the empty native Canvas/ScrollViewer — the layout engine arranges children from `role`.
     private func registerContainerComponents() {
-        let containers: [WidgetKey] = [.vstack, .hstack, .zstack, .groupBox, .scroll, .geometry, .lazyStack, .spacer]
+        let containers: [WidgetKey] = [.vstack, .hstack, .zstack, .groupBox, .scroll, .geometry, .lazyStack, .spacer,
+                                       .grid, .gridRow]
         for key in containers {
             components.register(.init(
                 make: { [unowned self] _ in makeNativeWidget(key) },
@@ -515,6 +516,9 @@ public final class WinUIToolkit: AppToolkit {
         case .scroll: return .scroll
         case .geometry: return .geometry
         case .lazyStack: return .lazyStack
+        // Grid/GridRow are plain absolute-positioning canvas panels (like a stack); the shared layout
+        // engine positions their cells from `role`, so they reuse the `.vstack` canvas-panel widget kind.
+        case .grid, .gridRow: return .vstack
         case .groupBox: return .groupBox
         case .label: return .label
         case .button: return .button

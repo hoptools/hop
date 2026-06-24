@@ -122,6 +122,7 @@ final class MockToolkit: AppToolkit {
         let containerKinds: [WidgetKey] = [
             .vstack, .hstack, .zstack, .groupBox,
             .scroll, .geometry, .lazyStack, .spacer,
+            .grid, .gridRow,
         ]
         for key in containerKinds {
             components.register(.init(

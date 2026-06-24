@@ -638,6 +638,7 @@ public final class GTK4Toolkit: AppToolkit {
         let containers: [WidgetKey] = [
             .vstack, .hstack, .zstack, .groupBox,
             .scroll, .geometry, .lazyStack, .spacer,
+            .grid, .gridRow,
         ]
         for key in containers {
             components.register(.init(
@@ -811,7 +812,7 @@ public final class GTK4Toolkit: AppToolkit {
         let widget: UnsafeMutableRawPointer
         switch key {
         // Box-model containers are absolute-positioning GtkFixed layers; the layout engine owns geometry.
-        case .vstack, .hstack, .zstack, .spacer, .window, .geometry, .lazyStack: widget = hop_fixed_new()!
+        case .vstack, .hstack, .zstack, .spacer, .window, .geometry, .lazyStack, .grid, .gridRow: widget = hop_fixed_new()!
         case .groupBox:
             widget = hop_fixed_new()!
             hop_widget_add_css_class(widget, "card")  // Adwaita's rounded, bordered, filled card chrome

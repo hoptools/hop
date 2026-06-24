@@ -85,6 +85,7 @@ enum Playground: String, CaseIterable, Hashable {
     case text, accessibility, label, link
     case shapes, images, color, gradient
     case layout, disclosure, groupBox, form, tabs
+    case gridTable
     case observable, environment, menus, files, modals, appStorage
     case gesture, modifiers
 
@@ -115,6 +116,7 @@ enum Playground: String, CaseIterable, Hashable {
         case .groupBox: return "GroupBox"
         case .form: return "Form"
         case .tabs: return "Tabs"
+        case .gridTable: return "Grid"
         case .observable: return "Observable"
         case .environment: return "Environment"
         case .menus: return "Menus"
@@ -156,6 +158,8 @@ let sidebarSections: [SidebarSection] = [
                    items: [.shapes, .images, .color, .gradient]),
     SidebarSection(id: "containers", title: "Containers",
                    items: [.layout, .modifiers, .disclosure, .groupBox, .form, .tabs]),
+    SidebarSection(id: "grid", title: "Grid",
+                   items: [.gridTable]),
     SidebarSection(id: "data", title: "Data & Menus",
                    items: [.observable, .environment, .menus, .files, .modals, .appStorage]),
 ]
@@ -294,6 +298,8 @@ public struct ContentView: View {
                 FormPlayground(name: $name, password: $password, wifi: $wifiOn, volume: $sliderValue)
             } else if selection == .tabs {
                 TabsPlayground()
+            } else if selection == .gridTable {
+                GridTablePlayground()
             } else if selection == .files {
                 FilePlayground()
             } else if selection == .modals {
@@ -1710,6 +1716,97 @@ struct TabsPlayground: View {
                 .tag(DemoTab.settings)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// One planet row for the Grid demo's table.
+private struct Planet: Identifiable {
+    let name: String
+    let moons: Int
+    let diameter: Int        // km
+    var id: String { name }
+}
+
+private let demoPlanets: [Planet] = [
+    Planet(name: "Mercury", moons: 0, diameter: 4_879),
+    Planet(name: "Earth", moons: 1, diameter: 12_742),
+    Planet(name: "Jupiter", moons: 95, diameter: 139_820),
+    Planet(name: "Saturn", moons: 146, diameter: 116_460),
+    Planet(name: "Neptune", moons: 14, diameter: 49_244),
+]
+
+/// Demonstrates `Grid`/`GridRow`: a non-lazy, column-*aligned* 2D layout. Each column is sized to its
+/// widest cell across every row, so values line up into a table automatically. Shows `.gridCellColumns`
+/// (a header spanning all columns), a loose `Divider()` that spans the full grid width, and
+/// `.gridColumnAlignment(.trailing)` (which right-aligns a whole numeric column). `.gridCellAnchor`
+/// positions a cell's content within its (larger) cell. The same source compiles against HopUI and
+/// Apple's SwiftUI.
+struct GridTablePlayground: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Grid — column-aligned 2D layout").font(.system(size: 16, weight: .semibold))
+                Text("Columns size to their widest cell across all rows, so the numbers line up. Numeric "
+                   + "columns use .gridColumnAlignment(.trailing); the title spans all columns; the rule "
+                   + "below it is a loose, full-width Divider.")
+                    .foregroundStyle(.secondary)
+
+                // The loose Divider is horizontally greedy, so (like SwiftUI) the grid fills the offered
+                // width and distributes the surplus equally across its flexible columns — spreading the
+                // table to the scroll width.
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                    GridRow {
+                        Text("Planetary Data")
+                            .font(.system(size: 15, weight: .bold))
+                            .gridCellColumns(3)
+                    }
+                    Divider()                                   // loose child → spans the full grid width
+                    GridRow {
+                        Text("Planet").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                        Text("Moons").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                            .gridColumnAlignment(.trailing)     // right-aligns this WHOLE column
+                        Text("Diameter (km)").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                            .gridColumnAlignment(.trailing)
+                    }
+                    ForEach(demoPlanets) { planet in
+                        GridRow {
+                            Text(planet.name)
+                            Text("\(planet.moons)")
+                            Text("\(planet.diameter)")
+                        }
+                    }
+                }
+                .padding(16)
+                .background(.white)
+
+                Text("Spanning + cell anchor").font(.system(size: 16, weight: .semibold))
+                Text("The blue banner spans both columns. The small label sits in a cell made wide by the "
+                   + "green bar below it and tall by the orange bar beside it, and .gridCellAnchor pins it "
+                   + "to the bottom-trailing corner of that cell.")
+                    .foregroundStyle(.secondary)
+
+                Grid(alignment: .center, horizontalSpacing: 16, verticalSpacing: 12) {
+                    GridRow {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8).fill(.blue).frame(height: 36)
+                            Text("Two-column banner").foregroundStyle(.white)
+                        }
+                        .gridCellColumns(2)
+                    }
+                    GridRow {
+                        Text("anchored ↘").gridCellAnchor(.bottomTrailing)   // small content in a large cell
+                        RoundedRectangle(cornerRadius: 8).fill(.orange).frame(width: 180, height: 60)
+                    }
+                    GridRow {
+                        RoundedRectangle(cornerRadius: 8).fill(.green).frame(width: 160, height: 24)
+                        Text("second cell")
+                    }
+                }
+                .padding(16)
+                .background(.white)
+            }
+            .padding()
         }
     }
 }
