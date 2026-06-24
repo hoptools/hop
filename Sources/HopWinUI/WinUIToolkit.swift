@@ -85,6 +85,12 @@ public final class WinUIWidget {
     var enabledState: Bool?
     var listCount = -1
     var pickerOptions: [String] = []
+    // Which native form a `.picker` took. The ComboBox / segmented button-group / inline ListView each
+    // render very differently and their WinRT `DesiredSize` is unreliable (a ComboBox reports its dropped-
+    // down items' height; un-templated ToggleButtons report only text height), so `measure` returns an
+    // explicit size per style instead of trusting the measurement. nil for non-picker widgets.
+    enum PickerRender { case combo, segmented, radio, inline }
+    var pickerRender: PickerRender?
     var outlineSignature: String?
     var outlineKeyByRow: [String] = []
     var outlineIDByKey: [String: AnyHashable] = [:]
@@ -421,7 +427,7 @@ public final class WinUIToolkit: AppToolkit {
     /// RadioButtons. The reconciler recreates the widget when the style changes.
     private func registerPickerComponents() {
         let combo = ComponentRegistry<WinUIWidget>.Renderer(
-            make: { [unowned self] c in let h = makeWidget(.picker); if let s = (c as? PickerComponent)?.spec { configurePicker(h, s) }; return h },
+            make: { [unowned self] c in let h = makeWidget(.picker); h.pickerRender = .combo; if let s = (c as? PickerComponent)?.spec { configurePicker(h, s) }; return h },
             update: { [unowned self] h, c in if let s = (c as? PickerComponent)?.spec { configurePicker(h, s) } },
             measure: { [unowned self] h, _, p in measure(h, p) })
         components.register(combo, for: .picker(.menu))
@@ -431,6 +437,7 @@ public final class WinUIToolkit: AppToolkit {
             components.register(.init(
                 make: { [unowned self] c in
                     let w = WinUIWidget(hopwinui_buttongroup_new(horizontal ? 1 : 0), kind: .picker)
+                    w.pickerRender = horizontal ? .segmented : .radio
                     if let s = (c as? PickerComponent)?.spec { configureButtonGroupPicker(w, s, toggle: toggle) }
                     return w
                 },
@@ -445,6 +452,7 @@ public final class WinUIToolkit: AppToolkit {
         components.register(.init(
             make: { [unowned self] c in
                 let w = WinUIWidget(hopwinui_listview_new(), kind: .picker)
+                w.pickerRender = .inline
                 hopwinui_listview_connect(w.handle, cbComboSelect, unmanaged(w))
                 if let s = (c as? PickerComponent)?.spec { configureInlinePicker(w, s) }
                 return w
@@ -1071,6 +1079,25 @@ public final class WinUIToolkit: AppToolkit {
             var w = 0.0, h = 0.0
             hopwinui_measure(handle.handle, .infinity, .infinity, &w, &h)
             return CGSize(width: max(w, 240), height: max(h, 32))
+        case .picker:
+            // These controls' WinRT DesiredSize is unreliable (see `PickerRender`), so size them explicitly:
+            // a ComboBox is a standard-height popup (capped width); a segmented group fills its width with
+            // equal segments; an inline list fills its width and is tall enough to show every row.
+            let offered = proposal.width ?? 240
+            let rows = Double(Swift.max(1, handle.pickerOptions.count))
+            switch handle.pickerRender {
+            case .combo:     return CGSize(width: Swift.min(offered, 260), height: 32)
+            case .segmented: return CGSize(width: offered, height: 32)
+            case .radio:
+                // A vertical RadioButton stack: keep its natural (content) width, but force the height to the
+                // real laid-out row height (its `DesiredSize` reports an un-templated, too-short height, so the
+                // rows would otherwise overflow + clip — like the segmented buttons did).
+                var mw = 0.0, mh = 0.0
+                hopwinui_measure(handle.handle, .infinity, .infinity, &mw, &mh)
+                return CGSize(width: Swift.max(mw, 160), height: rows * 36 + 4)
+            case .inline:    return CGSize(width: offered, height: rows * 36 + 8)
+            case .none:      break
+            }
         default:
             break
         }

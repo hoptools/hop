@@ -482,17 +482,23 @@ void hopwinui_combobox_connect(void* h, hopwinui_int_cb cb, void* ud) {
 // A StackPanel of mutually-exclusive buttons; each button's Checked handler reports its index (the toolkit
 // suppresses the callback during programmatic changes). RadioButtons share a GroupName for exclusivity;
 // segmented ToggleButtons uncheck their siblings manually and re-check to keep exactly one selected.
+// Segmented (horizontal) → a Grid of equal `*`-width, stretch-filled ToggleButtons, so the segments split
+// the offered width evenly and render at full control height. Radio (vertical) → a StackPanel of
+// RadioButtons. Both are `muxc::Panel`s, so set_items / set_selected iterate their `Children()` uniformly.
 void* hopwinui_buttongroup_new(int32_t horizontal) {
+    if (horizontal) return mk(muxc::Grid());   // a `*` column is added per option in set_items
     muxc::StackPanel p;
-    p.Orientation(horizontal ? muxc::Orientation::Horizontal : muxc::Orientation::Vertical);
-    p.Spacing(horizontal ? 0 : 4);
+    p.Orientation(muxc::Orientation::Vertical);
+    p.Spacing(4);
     return mk(p);
 }
 
 void hopwinui_buttongroup_set_items(void* h, const char* const* items, int32_t count, int32_t selected,
                                     int32_t toggle, hopwinui_int_cb cb, void* ud) {
-    auto panel = as<muxc::StackPanel>(h); if (!panel) return;
+    auto panel = as<muxc::Panel>(h); if (!panel) return;
     panel.Children().Clear();
+    auto grid = panel.try_as<muxc::Grid>();
+    if (grid) grid.ColumnDefinitions().Clear();
     static int groupCounter = 0;
     hstring groupName{ L"hopgrp" + std::to_wstring(groupCounter++) };  // unique per group → no cross-interference
     for (int32_t i = 0; i < count; i++) {
@@ -501,6 +507,8 @@ void hopwinui_buttongroup_set_items(void* h, const char* const* items, int32_t c
             muxc::Primitives::ToggleButton btn;
             btn.Content(box_value(label));
             btn.IsChecked(i == selected);
+            btn.HorizontalAlignment(mux::HorizontalAlignment::Stretch);  // fill its grid column → equal segments
+            btn.VerticalAlignment(mux::VerticalAlignment::Stretch);
             btn.Checked([cb, ud, i, panel](wf::IInspectable const& sender, auto&&) {
                 auto self = sender.as<muxc::Primitives::ToggleButton>();
                 for (auto const& child : panel.Children()) {
@@ -519,6 +527,12 @@ void hopwinui_buttongroup_set_items(void* h, const char* const* items, int32_t c
                 }
                 if (!any) sender.as<muxc::Primitives::ToggleButton>().IsChecked(true);  // keep one selected
             });
+            if (grid) {
+                muxc::ColumnDefinition cd;
+                cd.Width(mux::GridLengthHelper::FromValueAndType(1.0, mux::GridUnitType::Star));
+                grid.ColumnDefinitions().Append(cd);
+                muxc::Grid::SetColumn(btn, i);
+            }
             panel.Children().Append(btn);
         } else {
             muxc::RadioButton btn;
@@ -532,7 +546,7 @@ void hopwinui_buttongroup_set_items(void* h, const char* const* items, int32_t c
 }
 
 void hopwinui_buttongroup_set_selected(void* h, int32_t index) {
-    auto panel = as<muxc::StackPanel>(h); if (!panel) return;
+    auto panel = as<muxc::Panel>(h); if (!panel) return;
     int32_t i = 0;
     for (auto const& child : panel.Children()) {
         if (auto tb = child.try_as<muxc::Primitives::ToggleButton>()) tb.IsChecked(i == index);
