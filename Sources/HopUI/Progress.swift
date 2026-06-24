@@ -1,9 +1,11 @@
 // Copyright 2026
 // SPDX-License-Identifier: MPL-2.0
 
-// A progress indicator, mirroring SwiftUI's `ProgressView`. Determinate when given a `value` (shown as
-// a fraction of `total`); indeterminate (animated) otherwise. Maps to NSProgressIndicator /
-// GtkProgressBar / QProgressBar.
+// A progress indicator, mirroring SwiftUI's `ProgressView`. Determinate when given a `value` (a linear bar
+// showing the fraction of `total`); indeterminate otherwise — conveyed as a circular spinner, like SwiftUI.
+// Determinate maps to NSProgressIndicator(.bar) / GtkProgressBar / QProgressBar / WinUI ProgressBar;
+// indeterminate (the `.spinner` widget) maps to NSProgressIndicator(.spinning) / GtkSpinner / a custom
+// painted Qt widget / WinUI ProgressRing.
 
 public struct ProgressView: View, PrimitiveView {
     let value: Double?
@@ -36,12 +38,17 @@ public struct ProgressView: View, PrimitiveView {
 
     func makeNode(_ context: RenderContext) -> RenderNode {
         var patch = WidgetPatch()
-        // nil → indeterminate; otherwise the clamped fraction of `total`.
+        // A value → a determinate linear bar (`.progress`); no value → indeterminate, conveyed as a circular
+        // spinner (`.spinner`), matching SwiftUI (whose indeterminate `ProgressView` is a circular spinner).
+        let key: WidgetKey
         if let value, total > 0 {
             patch.progressValue = Swift.max(0, Swift.min(1, value / total))
+            key = .progress
+        } else {
+            key = .spinner
         }
         if let label { patch.accessibilityLabel = label }
         return RenderNode(id: context.id,
-                          component: PrimitiveLeafComponent(.progress, patch: patch))
+                          component: PrimitiveLeafComponent(key, patch: patch))
     }
 }

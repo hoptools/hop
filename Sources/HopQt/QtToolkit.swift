@@ -486,7 +486,7 @@ public final class QtToolkit: AppToolkit {
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField, .textEditor,
-            .slider, .progress, .separator,
+            .slider, .progress, .spinner, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
@@ -731,6 +731,10 @@ public final class QtToolkit: AppToolkit {
             widget.isProgress = true
             widget.flexibleWidth = true
             return widget
+        case .spinner:
+            // Indeterminate → a custom-painted circular HopSpinner (Qt has no native busy spinner); a fixed
+            // square (its sizeHint), so NOT flexibleWidth and not `isProgress` (it self-animates).
+            return QtWidget(hopqt_spinner_new()!)
         default:
             // Only registered renderers call this, with keys this switch knows — an unknown key is a bug.
             assertionFailure("HopUI/Qt: makeNativeWidget has no native widget for key \"\(key.rawValue)\"")

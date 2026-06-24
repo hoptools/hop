@@ -1537,6 +1537,47 @@ protected:
 
 void *hopqt_switch_new(void) { return new HopSwitch(); }
 
+namespace {
+/// An indeterminate progress conveyance: Qt ships no native circular busy spinner, so this custom QWidget
+/// paints a rotating accent arc over a faint track ring (a QTimer advances the angle), matching SwiftUI's
+/// circular indeterminate ProgressView and the native spinners on AppKit/GTK/WinUI.
+class HopSpinner : public QWidget {
+public:
+    explicit HopSpinner(QWidget *parent = nullptr) : QWidget(parent) {
+        // The native spinners (NSProgressIndicator/GtkSpinner/ProgressRing) carry a built-in a11y identity;
+        // this custom widget has none, so give it a default accessible name (a labeled ProgressView still
+        // overrides it via configure → setAccessibleName).
+        setAccessibleName(QStringLiteral("In progress"));
+        QTimer *timer = new QTimer(this);   // parented → torn down with the widget
+        connect(timer, &QTimer::timeout, this, [this] { angle_ = (angle_ + 30) % 360; update(); });
+        timer->start(80);                   // 30°/tick → ~one revolution per second
+    }
+    QSize sizeHint() const override { return QSize(24, 24); }
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const double side = qMin(width(), height());
+        const double pen = qMax(2.0, side / 10.0);
+        const double margin = pen;
+        const QRectF box(margin, margin, side - 2 * margin, side - 2 * margin);
+        QColor track = palette().color(QPalette::Mid);       track.setAlpha(70);
+        QColor arc = palette().color(QPalette::Highlight);
+        if (!isEnabled()) arc.setAlpha(120);
+        p.setPen(QPen(track, pen, Qt::SolidLine, Qt::RoundCap));
+        p.drawEllipse(box);
+        p.setPen(QPen(arc, pen, Qt::SolidLine, Qt::RoundCap));
+        // Qt angles are 1/16°, 0° at 3 o'clock, +ve counter-clockwise. A 90° arc whose start decreases with
+        // `angle_` sweeps clockwise.
+        p.drawArc(box, (90 - angle_) * 16, -90 * 16);
+    }
+private:
+    int angle_ = 0;
+};
+}
+
+void *hopqt_spinner_new(void) { return new HopSpinner(); }
+
 // `.toggleStyle(.checkbox)`: a native QCheckBox.
 void *hopqt_checkbox_new(void) { return new QCheckBox(); }
 

@@ -193,6 +193,9 @@ void* hopwinui_slider_new(void) {
 void* hopwinui_listview_new(void) { return mk(muxc::ListView()); }
 void* hopwinui_combobox_new(void) { return mk(muxc::ComboBox()); }
 void* hopwinui_progressbar_new(void) { muxc::ProgressBar b; b.Minimum(0); b.Maximum(1); return mk(b); }
+// Indeterminate progress → a circular ProgressRing. IsActive starts its self-animation; an explicit small
+// square size keeps it a compact spinner (the WinUI 3 default ProgressRing is much larger).
+void* hopwinui_progressring_new(void) { muxc::ProgressRing r; r.IsActive(true); r.Width(24); r.Height(24); return mk(r); }
 void* hopwinui_image_new(void) { return mk(muxc::Image()); }
 void* hopwinui_path_new(void) { muxs::Path p; p.Stretch(muxm::Stretch::None); return mk(p); }
 void* hopwinui_calendardatepicker_new(void) { return mk(muxc::CalendarDatePicker()); }

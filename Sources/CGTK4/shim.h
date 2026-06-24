@@ -1496,6 +1496,15 @@ static inline void hop_progress_pulse(void *pb) {
     gtk_progress_bar_pulse(GTK_PROGRESS_BAR(pb));
 }
 
+// Indeterminate progress → a circular spinner (GtkSpinner self-animates once started). Sized to a small
+// fixed square so the layout engine lays it out as a compact spinner, not a fill-width bar.
+static inline void *hop_spinner_new(void) {
+    GtkWidget *s = gtk_spinner_new();
+    gtk_widget_set_size_request(s, 24, 24);
+    gtk_spinner_start(GTK_SPINNER(s));
+    return s;
+}
+
 // A bare GLib main loop on the default context — used by the headless executor check (no GTK window).
 static inline void *hop_main_loop_new(void) { return g_main_loop_new(NULL, FALSE); }
 static inline void hop_main_loop_run(void *loop) { g_main_loop_run((GMainLoop *)loop); }

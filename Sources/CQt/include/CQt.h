@@ -249,6 +249,7 @@ int hopqt_image_save_png(void *image, const char *path);
 void *hopqt_progress_new(void);
 void hopqt_progress_set_fraction(void *bar, double fraction);
 void hopqt_progress_set_indeterminate(void *bar);
+void *hopqt_spinner_new(void);   // indeterminate progress: custom-painted circular HopSpinner
 
 // Selection drop-down (QComboBox) — for the `Picker` view.
 void *hopqt_combo_new(void);

@@ -53,6 +53,7 @@ void* hopwinui_slider_new(void);
 void* hopwinui_listview_new(void);
 void* hopwinui_combobox_new(void);
 void* hopwinui_progressbar_new(void);
+void* hopwinui_progressring_new(void);
 void* hopwinui_image_new(void);
 void* hopwinui_path_new(void);
 void* hopwinui_calendardatepicker_new(void);

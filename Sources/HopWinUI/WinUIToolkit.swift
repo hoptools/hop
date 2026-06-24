@@ -14,7 +14,7 @@ import Foundation
 enum WidgetKind: Equatable {
     case window, vstack, hstack, label, button, textField, textEditor, slider
     case list, sidebarList, splitView, shape, menu, picker, datePicker, colorPicker
-    case separator, progress, zstack, spacer, scroll, geometry, lazyStack
+    case separator, progress, spinner, zstack, spacer, scroll, geometry, lazyStack
     case outline, sidebarOutline, image, toggle, secureField, groupBox, tabView
 }
 
@@ -325,7 +325,7 @@ public final class WinUIToolkit: AppToolkit {
     /// Simple leaves (Text/Button/TextField/SecureField/Slider/Toggle/ProgressView/Divider): a native
     /// widget + a ``WidgetPatch`` + optional change handlers, all carried by ``PrimitiveLeafComponent``.
     private func registerLeafComponents() {
-        let leaves: [WidgetKey] = [.label, .button, .textField, .secureField, .textEditor, .slider, .progress, .separator]
+        let leaves: [WidgetKey] = [.label, .button, .textField, .secureField, .textEditor, .slider, .progress, .spinner, .separator]
             + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
@@ -544,6 +544,7 @@ public final class WinUIToolkit: AppToolkit {
         case .slider: return .slider
         case .toggle: return .toggle
         case .progress: return .progress
+        case .spinner: return .spinner
         case .separator: return .separator
         case .shape: return .shape
         case .menu: return .menu
@@ -623,6 +624,9 @@ public final class WinUIToolkit: AppToolkit {
         case .progress:
             let w = WinUIWidget(hopwinui_progressbar_new(), kind: kind); w.flexibleWidth = true
             return w
+        case .spinner:
+            // Indeterminate → a circular ProgressRing (self-animating); fixed square, not a fill-width bar.
+            return WinUIWidget(hopwinui_progressring_new(), kind: kind)
         case .datePicker:
             // A row hosting a CalendarDatePicker (min-width 240) + a TimePicker (min-width 150); both are
             // shown/hidden by configureDatePicker per the bound components.

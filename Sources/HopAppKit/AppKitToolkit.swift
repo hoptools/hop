@@ -525,7 +525,7 @@ public final class AppKitToolkit: AppToolkit {
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField, .textEditor,
-            .slider, .progress, .separator,
+            .slider, .progress, .spinner, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
@@ -950,6 +950,14 @@ public final class AppKitToolkit: AppToolkit {
             indicator.minValue = 0
             indicator.maxValue = 1
             return AppKitWidget(indicator)
+        case .spinner:
+            // Indeterminate progress → a circular spinner (SwiftUI's indeterminate ProgressView). The
+            // `.spinning` style is a self-animating ring; `configure` calls `startAnimation`.
+            let indicator = NSProgressIndicator()
+            indicator.style = .spinning
+            indicator.isIndeterminate = true
+            indicator.controlSize = .small
+            return AppKitWidget(indicator)
         case .window:
             return AppKitWidget(NSView())
         default:
@@ -1338,6 +1346,8 @@ public final class AppKitToolkit: AppToolkit {
             return proposal.resolved(CGSize(width: 240, height: 140))
         }
         let fitting = handle.view.fittingSize
+        // A spinning progress indicator is a fixed-size circular spinner, not a fill-width bar.
+        if let pi = handle.view as? NSProgressIndicator, pi.style == .spinning { return fitting }
         // Flexible-width controls (text fields, sliders, progress bars) expand to the offered width.
         let flexibleWidth = (handle.view as? NSTextField)?.isEditable == true
             || handle.view is NSSlider || handle.view is NSProgressIndicator

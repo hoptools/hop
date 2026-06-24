@@ -54,6 +54,9 @@ public extension WidgetKey {
     static let slider = WidgetKey("slider")
     static let toggle = WidgetKey("toggle")
     static let progress = WidgetKey("progress")
+    /// An indeterminate progress conveyance — a circular spinner (SwiftUI renders an indeterminate
+    /// `ProgressView` this way), distinct from the determinate linear `.progress` bar.
+    static let spinner = WidgetKey("spinner")
     static let separator = WidgetKey("separator")
     static let shape = WidgetKey("shape")
     static let menu = WidgetKey("menu")

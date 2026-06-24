@@ -675,7 +675,7 @@ public final class GTK4Toolkit: AppToolkit {
     private func registerLeafComponents() {
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField, .textEditor,
-            .slider, .progress, .separator,
+            .slider, .progress, .spinner, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
@@ -848,6 +848,7 @@ public final class GTK4Toolkit: AppToolkit {
         case .datePicker: widget = hop_datepicker_new()!
         case .colorPicker: widget = hop_colorbutton_new()!
         case .progress: widget = hop_progress_bar_new()!
+        case .spinner: widget = hop_spinner_new()!  // indeterminate → self-animating GtkSpinner (fixed square)
         case .separator:
             widget = hop_separator_new(1)!  // a divider between stacked rows is a horizontal line
         default:

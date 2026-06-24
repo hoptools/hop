@@ -109,7 +109,7 @@ final class MockToolkit: AppToolkit {
         // Leaf widgets: delegate to the legacy makeWidget/configure so existing op-log assertions hold.
         let leaves: [WidgetKey] = [
             .label, .button, .textField, .secureField, .textEditor,
-            .slider, .progress, .separator,
+            .slider, .progress, .spinner, .separator,
         ] + ToggleStyle.allCases.map { .toggle($0) }   // toggle.switch / .checkbox / .button / .automatic
         for key in leaves {
             components.register(.init(
@@ -247,8 +247,10 @@ final class MockToolkit: AppToolkit {
         if let italic = patch.italic { handle.italic = italic }
         if let monospaced = patch.monospaced { handle.monospaced = monospaced }
         if let alignment = patch.textAlignment { handle.textAlignment = alignment }
-        // Progress: kind tells us it's a bar; a nil progressValue means indeterminate.
-        if handle.kind == .progress { handle.hasProgress = true; handle.progressValue = patch.progressValue }
+        // Progress: a `.progress` bar carries a fraction; a `.spinner` is the indeterminate circular form.
+        if handle.kind == .progress || handle.kind == .spinner {
+            handle.hasProgress = true; handle.progressValue = patch.progressValue
+        }
     }
 
     func setSubmitHandler(_ handle: MockWidget, _ handler: (@MainActor () -> Void)?) { handle.onSubmit = handler }
@@ -352,6 +354,7 @@ final class MockToolkit: AppToolkit {
         case .slider: return CGSize(width: 100, height: 20)
         case let k where k.rawValue.hasPrefix("toggle."): return CGSize(width: 40, height: 22)  // any toggle style
         case .progress: return CGSize(width: 100, height: 8)
+        case .spinner: return CGSize(width: 24, height: 24)   // fixed square (circular spinner)
         case .shape: return proposal.resolved(CGSize(width: 10, height: 10))  // shapes are greedy
         case .image:
             let natural = CGSize(width: 30, height: 20)  // deterministic natural size for layout assertions
@@ -1758,15 +1761,28 @@ private struct MenuDemo: View {
     }
 }
 
+@MainActor private struct ProgressSwitchDemo: View {
+    @State var value: Double? = 0.5   // flips between determinate (bar) and indeterminate (spinner)
+    var body: some View {
+        VStack {
+            ProgressView(value: value)
+            Button("indeterminate") { value = nil }
+            Button("determinate") { value = 0.5 }
+        }
+    }
+}
+
 @MainActor @Suite struct ProgressTests {
     @Test func testDeterminateAndIndeterminateProgress() throws {
         let toolkit = MockToolkit()
         runHopApp(ProgressDemo(), toolkit: toolkit, title: "test")
 
         let bars = toolkit.widgets.filter { $0.kind == .progress }
-        #expect(bars.count == 2)
-        #expect(bars.contains { $0.progressValue == 0.3 })                 // determinate
-        #expect(bars.contains { $0.hasProgress && $0.progressValue == nil }) // indeterminate
+        let spinners = toolkit.widgets.filter { $0.kind == .spinner }
+        #expect(bars.count == 1)
+        #expect(bars.contains { $0.progressValue == 0.3 })                      // determinate → linear bar
+        #expect(spinners.count == 1)                                           // indeterminate → circular spinner
+        #expect(spinners.contains { $0.hasProgress && $0.progressValue == nil })
 
         // Advancing the bound state updates the determinate bar in place.
         toolkit.clearOps()
@@ -1774,5 +1790,30 @@ private struct MenuDemo: View {
         toolkit.drainMainThread()
         #expect(toolkit.widgets.contains { $0.kind == .progress && $0.progressValue == 0.8 })
         #expect(toolkit.makeCount == 0)
+    }
+
+    @Test func testProgressSwitchesBetweenBarAndSpinnerByRecreating() throws {
+        let toolkit = MockToolkit()
+        runHopApp(ProgressSwitchDemo(), toolkit: toolkit, title: "test")
+        let vstack = try #require(toolkit.widgets.first { $0.kind == .vstack })
+        #expect(vstack.children.first?.kind == .progress)   // starts determinate → linear bar
+
+        // value → nil flips to a circular spinner: the bar's widgetKey changes (.progress → .spinner), so the
+        // reconciler tears it down and builds a spinner (incompatible native widgets can't be reconfigured).
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "indeterminate" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.makeCount == 1)
+        #expect(toolkit.removeCount == 1)
+        #expect(vstack.children.first?.kind == .spinner)
+
+        // value → 0.5 flips back to the determinate bar (recreated again).
+        toolkit.clearOps()
+        try #require(toolkit.widgets.first { $0.title == "determinate" }).action?()
+        toolkit.drainMainThread()
+        #expect(toolkit.makeCount == 1)
+        #expect(toolkit.removeCount == 1)
+        #expect(vstack.children.first?.kind == .progress)
+        #expect(vstack.children.first?.progressValue == 0.5)
     }
 }
