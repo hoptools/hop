@@ -40,6 +40,24 @@ static void *mk(mux::FrameworkElement const &e) { return new Handle{e}; }
 template <typename T> static T as(void *h) { return elem(h).try_as<T>(); }
 static hstring hs(const char *u) { return u ? winrt::to_hstring(std::string_view(u)) : hstring{}; }
 
+// Show `value` in the (editable) combo. WinUI 3 does NOT reliably render ComboBox.Text on its own —
+// the editable TextBox part stays blank/placeholder until first interaction (open bug microsoft-ui-xaml
+// #7103). The selection system IS reliable, so if the value matches a menu item we select it (which renders
+// its text); only a freeform value that's in no menu item falls back to Text.
+static void combo_apply_value(muxc::ComboBox const &combo, hstring const &value) {
+    int32_t match = -1;
+    auto items = combo.Items();
+    for (uint32_t i = 0; i < items.Size(); ++i) {
+        if (winrt::unbox_value_or<hstring>(items.GetAt(i), hstring{}) == value) { match = static_cast<int32_t>(i); break; }
+    }
+    if (match >= 0) {
+        combo.SelectedIndex(match);   // a menu item: selection renders its text reliably
+    } else {
+        combo.SelectedIndex(-1);      // freeform value (not in the menu)
+        combo.Text(value);
+    }
+}
+
 extern "C" {
 
 void *hopwinui_combo_new(void) {
@@ -71,18 +89,18 @@ void hopwinui_combo_set_text(void *h, const char *text) {
     auto c = as<muxc::ComboBox>(h);
     if (!c) return;
     auto value = hs(text);
-    c.Text(value);
-    // An editable WinUI 3 ComboBox does not reliably display Text set before its template part
-    // (PART_EditableTextBox) is realized — it shows blank/placeholder until first interaction
-    // (microsoft-ui-xaml #7103). set_text runs at creation time, before the control is loaded, so the
-    // initial value would be dropped. Re-apply the value once the control fires Loaded (the template is
-    // applied by then). The token is stored in a heap box that the lambda deletes when it detaches itself,
-    // so the handler fires exactly once and leaks nothing.
+    combo_apply_value(c, value);
+    // set_text runs at creation time, before the control is in the visual tree and its template part
+    // (PART_EditableTextBox) is realized; WinUI 3 drops the displayed value until then (#7103). Re-apply it
+    // once the control fires Loaded (template is up by then) and force a layout pass so the editable text
+    // syncs immediately rather than only on first interaction. The token lives in a heap box the lambda
+    // deletes when it detaches itself, so the handler fires exactly once and leaks nothing.
     if (!c.IsLoaded()) {
         auto token = std::make_shared<winrt::event_token>();
         *token = c.Loaded([value, token](wf::IInspectable const &sender, mux::RoutedEventArgs const &) {
             if (auto combo = sender.try_as<muxc::ComboBox>()) {
-                combo.Text(value);
+                combo_apply_value(combo, value);
+                combo.UpdateLayout();
                 combo.Loaded(*token);   // detach: fire once
             }
         });

@@ -271,7 +271,15 @@ public final class WinUIToolkit: AppToolkit {
 
     public func realize(_ component: any WidgetComponent) -> WinUIWidget {
         if let renderer = components.renderer(for: component.widgetKey) { return renderer.make(component) }
-        if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer { return WinUIWidget(ptr, kind: .vstack) }
+        if let ptr = component.makeNative(Self.toolkitID) as? UnsafeMutableRawPointer {
+            // A self-hosted widget (e.g. HopUIComboBox's editable ComboBox) is a control that should fill the
+            // width it's given — otherwise its WinRT DesiredSize.Width (often just its glyph/min width) is what
+            // `.frame(width:)` lays out, collapsing the control. Mark it flexibleWidth so `measure` reports the
+            // proposed width, mirroring AppKit (which treats an editable NSTextField/NSComboBox as fill-width).
+            let widget = WinUIWidget(ptr, kind: .vstack)
+            widget.flexibleWidth = true
+            return widget
+        }
         assertionFailure("HopUI/WinUI: no renderer registered for WidgetKey \"\(component.widgetKey.rawValue)\", and the component self-hosts no native element")
         return makeWidget(.vstack)
     }
