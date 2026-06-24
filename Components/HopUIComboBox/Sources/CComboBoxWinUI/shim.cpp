@@ -21,6 +21,7 @@
 // must be included or the call fails with "deduced return type cannot be used before it is defined".
 #include <winrt/Microsoft.UI.Xaml.Controls.Primitives.h>
 
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -44,6 +45,19 @@ extern "C" {
 void *hopwinui_combo_new(void) {
     muxc::ComboBox c;
     c.IsEditable(true);   // editable: freeform typing AND menu selection
+    // hop measures self-hosted leaves with INFINITE height. An editable ComboBox measured with infinite
+    // height over-reports its DesiredSize as itemCount*rowHeight, because its dropdown list (Popup ->
+    // ScrollViewer -> ItemsPresenter) shares the template's visual tree and ComboBox.MaxDropDownHeight
+    // defaults to infinity, so nothing bounds the vertical extent during measure. hop then stamps that
+    // inflated DesiredSize.Height as an explicit Height in hopwinui_set_frame, rendering a ~190px-tall box
+    // with no editable field. The XAML render height is min(Height, MaxHeight), so capping MaxHeight to the
+    // standard compact closed-box height (ComboBoxMinHeight = 32 in the default WinUI 3 style) both bounds
+    // the DesiredSize from the infinite measure AND clamps the explicit Height from set_frame, pinning the
+    // closed combo to a single line. The dropdown is hosted in a SEPARATE top-level Popup governed only by
+    // MaxDropDownHeight, so this does NOT clip the open menu. VerticalAlignment::Top keeps the single-line
+    // box top-aligned within whatever (possibly taller) frame hop allocates.
+    c.MaxHeight(32.0);
+    c.VerticalAlignment(mux::VerticalAlignment::Top);
     return mk(c);
 }
 
@@ -54,7 +68,25 @@ void hopwinui_combo_add_item(void *h, const char *text) {
 }
 
 void hopwinui_combo_set_text(void *h, const char *text) {
-    if (auto c = as<muxc::ComboBox>(h)) c.Text(hs(text));
+    auto c = as<muxc::ComboBox>(h);
+    if (!c) return;
+    auto value = hs(text);
+    c.Text(value);
+    // An editable WinUI 3 ComboBox does not reliably display Text set before its template part
+    // (PART_EditableTextBox) is realized — it shows blank/placeholder until first interaction
+    // (microsoft-ui-xaml #7103). set_text runs at creation time, before the control is loaded, so the
+    // initial value would be dropped. Re-apply the value once the control fires Loaded (the template is
+    // applied by then). The token is stored in a heap box that the lambda deletes when it detaches itself,
+    // so the handler fires exactly once and leaks nothing.
+    if (!c.IsLoaded()) {
+        auto token = std::make_shared<winrt::event_token>();
+        *token = c.Loaded([value, token](wf::IInspectable const &sender, mux::RoutedEventArgs const &) {
+            if (auto combo = sender.try_as<muxc::ComboBox>()) {
+                combo.Text(value);
+                combo.Loaded(*token);   // detach: fire once
+            }
+        });
+    }
 }
 
 void hopwinui_combo_set_placeholder(void *h, const char *text) {
